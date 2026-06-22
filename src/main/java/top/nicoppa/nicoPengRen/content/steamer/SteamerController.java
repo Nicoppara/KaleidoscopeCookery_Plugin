@@ -1,0 +1,382 @@
+package top.nicoppa.nicoPengRen.content.steamer;
+
+import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
+import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import net.momirealms.craftengine.core.block.ImmutableBlockState;
+import net.momirealms.craftengine.core.block.entity.BlockEntity;
+import net.momirealms.craftengine.core.block.entity.BlockEntityController;
+import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
+import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
+import net.momirealms.craftengine.core.block.property.type.SlabType;
+import net.momirealms.craftengine.core.entity.player.Player;
+import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.plugin.config.Config;
+import net.momirealms.craftengine.core.world.CEWorld;
+import net.momirealms.craftengine.core.world.WorldPosition;
+import net.momirealms.craftengine.libraries.adventure.text.Component;
+import net.momirealms.craftengine.libraries.nbt.CompoundTag;
+import net.momirealms.craftengine.libraries.nbt.ListTag;
+import net.momirealms.craftengine.libraries.nbt.Tag;
+import top.nicoppa.nicoPengRen.recipe.ApplianceType;
+import top.nicoppa.nicoPengRen.recipe.food.FoodRecipeRegistry;
+import top.nicoppa.nicoPengRen.recipe.food.FoodRecipeResult;
+import top.nicoppa.nicoPengRen.common.block.HeatSourceUtils;
+import top.nicoppa.nicoPengRen.common.item.DropUtils;
+import top.nicoppa.nicoPengRen.common.render.TrackedPlayers;
+
+import java.util.Arrays;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.Random;
+
+/**
+ * 蒸笼方块实体控制器 持有 8 格物品/火力/烹饪进度，按 tick 推进蒸制状态机，并负责 NBT 存取与多层火力传导
+ * 交互入口见 {@link SteamerBehavior}，渲染 {@link SteamerElement}
+ */
+public class SteamerController extends BlockEntityController {
+    private static final int MAX_LIT_LEVEL = 4;
+    private static final int SLOTS = 8;
+    private final SteamerBehavior behavior;
+    private final int[] cookingProgress = new int[SLOTS];
+    private final int[] cookingTime = new int[SLOTS];
+    private final Item[] items = new Item[SLOTS];
+    private final Random random = new Random();
+    private int itemCount = 0;
+    private final SteamerElement element;
+    private boolean hasLid = false;
+    private boolean wasCovered = false;
+    private long seed = System.currentTimeMillis();
+    private int tickCounter = 0;
+    private int litLevel = 0;
+    private boolean fallingAway = false;
+    private boolean creativeBreak = false;
+
+    public SteamerController(BlockEntity blockEntity, SteamerBehavior behavior) {
+        super(blockEntity);
+        this.behavior = behavior;
+        Arrays.fill(this.items, Item.empty());
+        this.element = new SteamerElement(this, new WorldPosition(
+                null, (float) super.blockEntity.pos.x() + 0.5f,
+                (float) super.blockEntity.pos.y() + 0.1f,
+                (float) super.blockEntity.pos.z() + 0.5f
+        ));
+    }
+
+    @Override
+    public <C extends BlockEntityController> BlockEntityTicker<C> createBlockEntityTicker(
+            CEWorld world, ImmutableBlockState blockState) {
+        return createTickerHelper((w, pos, state, controller) -> this.tick());
+    }
+
+    public void refreshDynamicElement(BiConsumer<SteamerElement, Player> consumer) {
+        TrackedPlayers.forEach(super.blockEntity, trackedPlayer -> consumer.accept(this.element, trackedPlayer));
+    }
+
+    public void refreshElementState() {
+        if (this.element != null) {
+            this.element.prepareUpdate();
+            refreshDynamicElement(SteamerElement::update);
+        }
+    }
+
+    public void tick() {
+        boolean aboveSteamer = isAboveSteamer();
+        boolean currentlyCovered = hasLid || aboveSteamer;
+        if (currentlyCovered != wasCovered) {
+            wasCovered = currentlyCovered;
+            refreshElementState();
+        }
+
+        if (++tickCounter >= 5) {
+            tickCounter = 0;
+            updateLitLevel();
+            for (int i = 0; i < itemCount; i++) {
+                if (cookingTime[i] == -1) {
+                    makeRipeParticles();
+                    break;
+                }
+            }
+        }
+        if (litLevel > 0) {
+            cookingTick(aboveSteamer);
+        } else {
+            cooldownTick();
+        }
+    }
+
+    private void updateLitLevel() {
+        Object level = super.blockEntity.world.world().minecraftWorld();
+        Object belowPos = net.momirealms.craftengine.bukkit.util.LocationUtils.below(
+                net.momirealms.craftengine.bukkit.util.LocationUtils.toBlockPos(super.blockEntity.pos));
+
+        if (HeatSourceUtils.isHeatSource(level, belowPos)) {
+            this.litLevel = MAX_LIT_LEVEL;
+        } else {
+            Object belowState = net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy.INSTANCE.getBlockState(level, belowPos);
+            var optionalCustomState = net.momirealms.craftengine.bukkit.util.BlockStateUtils.getOptionalCustomBlockState(belowState);
+
+            if (optionalCustomState.isPresent()) {
+                ImmutableBlockState belowCustomState = optionalCustomState.get();
+                if (belowCustomState.owner().value() == super.blockEntity.blockState.owner().value()) {
+                    SteamerBehavior belowBehavior = belowCustomState.behavior().getFirst(SteamerBehavior.class);
+                    if (belowBehavior != null) {
+                        SlabType type = belowCustomState.get(belowBehavior.getTypeProperty());
+
+                        if (type == SlabType.DOUBLE) {
+                            net.momirealms.craftengine.core.world.BlockPos ceBelowPos = new net.momirealms.craftengine.core.world.BlockPos(
+                                    super.blockEntity.pos.x, super.blockEntity.pos.y - 1, super.blockEntity.pos.z);
+                            BlockEntity belowEntity = super.blockEntity.world.getBlockEntityAtIfLoaded(ceBelowPos);
+
+                            if (belowEntity != null) {
+                                SteamerController belowController = belowEntity.controller.get(SteamerController.class, belowBehavior.getControllerId());
+                                if (belowController != null) {
+                                    this.litLevel = Math.max(belowController.getLitLevel() - 1, 0);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            this.litLevel = 0;
+        }
+    }
+
+    private void cookingTick(boolean aboveIsSteamer) {
+        if (!aboveIsSteamer) {
+            makeCookingParticles();
+            if (!this.hasLid) return;
+        }
+
+        boolean stateChanged = false;
+        for (int i = 0; i < itemCount; i++) {
+            if (cookingTime[i] <= 0) continue;
+            cookingProgress[i]++;
+            if (cookingProgress[i] >= cookingTime[i]) {
+                Item resultItem = getRecipeResult(items[i]);
+                if (resultItem != null && !resultItem.isEmpty()) {
+                    items[i] = resultItem;
+                    cookingTime[i] = -1;
+                    cookingProgress[i] = 0;
+                    stateChanged = true;
+                    this.refreshElementState();
+                }
+            }
+        }
+        if (stateChanged) {
+            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+        }
+    }
+
+    private void cooldownTick() {
+        for (int i = 0; i < itemCount; i++) {
+            if (cookingProgress[i] > 0) {
+                cookingProgress[i] = Math.max(0, cookingProgress[i] - 2);
+            }
+        }
+    }
+
+    private Item getRecipeResult(Item input) {
+        return FoodRecipeRegistry.instance()
+                .findAccurate(ApplianceType.STEAMER, input.id())
+                .map(FoodRecipeResult::item)
+                .orElse(input);
+    }
+
+    public int capacity() {
+        SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+        return (type == SlabType.DOUBLE) ? SLOTS : SLOTS / 2;
+    }
+
+    public boolean hasSpace() { return itemCount < capacity(); }
+
+    public boolean canSteam(Item food) {
+        return top.nicoppa.nicoPengRen.recipe.food.ApplianceFoodRegistry.instance()
+                .isAllowed(ApplianceType.STEAMER, food.id());
+    }
+
+    public boolean tryAddOne(Item food) {
+        if (!hasSpace() || !canSteam(food)) return false;
+        items[itemCount] = food.copyWithCount(1);
+        cookingProgress[itemCount] = 0;
+        cookingTime[itemCount] = behavior.cookingTime;
+        itemCount++;
+        refreshElementState();
+        super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+        return true;
+    }
+
+    public Item takeFood(Player player) {
+        if (itemCount == 0) return null;
+        int target = -1;
+        for (int i = 0; i < itemCount; i++) {
+            if (items[i].isEmpty()) continue;
+            if (cookingTime[i] == -1) { target = i; break; }
+            if (target == -1) target = i;
+        }
+        if (target == -1) return null;
+
+        Item taken = items[target].copyWithCount(1);
+        for (int i = target; i < itemCount - 1; i++) {
+            items[i] = items[i + 1];
+            cookingProgress[i] = cookingProgress[i + 1];
+            cookingTime[i] = cookingTime[i + 1];
+        }
+        items[itemCount - 1] = Item.empty();
+        cookingProgress[itemCount - 1] = 0;
+        cookingTime[itemCount - 1] = 0;
+        itemCount--;
+
+        refreshElementState();
+        super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+        return taken;
+    }
+
+    private void makeCookingParticles() {
+        if (random.nextDouble() >= 0.1) return;
+        try {
+            org.bukkit.World bukkitWorld = (org.bukkit.World) super.blockEntity.world.world().platformWorld();
+            SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+            double yOffset = (type != SlabType.DOUBLE) ? 0.5 : 1.0;
+
+            double x = super.blockEntity.pos.x + 0.5 + (random.nextDouble() / 2) * (random.nextBoolean() ? 1 : -1);
+            double y = super.blockEntity.pos.y + yOffset + random.nextDouble() / 2;
+            double z = super.blockEntity.pos.z + 0.5 + (random.nextDouble() / 2) * (random.nextBoolean() ? 1 : -1);
+
+            bukkitWorld.spawnParticle(org.bukkit.Particle.CLOUD, new org.bukkit.Location(bukkitWorld, x, y, z), 1, 0, 0, 0, 0.05);
+        } catch (Exception ignored) {}
+    }
+
+    private void makeRipeParticles() {
+        if (random.nextDouble() >= 0.5) return;
+        try {
+            org.bukkit.World bukkitWorld = (org.bukkit.World) super.blockEntity.world.world().platformWorld();
+            SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+            double yOffset = (type != SlabType.DOUBLE) ? 0.25 : 0.75;
+
+            double x = super.blockEntity.pos.x + 0.5 + (random.nextDouble() / 1.25) * (random.nextBoolean() ? 1 : -1);
+            double y = super.blockEntity.pos.y + yOffset + random.nextDouble() / 2;
+            double z = super.blockEntity.pos.z + 0.5 + (random.nextDouble() / 1.25) * (random.nextBoolean() ? 1 : -1);
+
+            bukkitWorld.spawnParticle(org.bukkit.Particle.CLOUD, new org.bukkit.Location(bukkitWorld, x, y, z), 1, 0, 0, 0, 0.05);
+        } catch (Exception ignored) {}
+    }
+
+    public boolean isCovered() {
+        return this.hasLid || isAboveSteamer();
+    }
+
+    private boolean isAboveSteamer() {
+        Object level = super.blockEntity.world.world().minecraftWorld();
+        Object abovePos = net.momirealms.craftengine.bukkit.util.LocationUtils.toBlockPos(
+                super.blockEntity.pos.x, super.blockEntity.pos.y + 1, super.blockEntity.pos.z
+        );
+        Object aboveState = net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy.INSTANCE.getBlockState(level, abovePos);
+        var opt = net.momirealms.craftengine.bukkit.util.BlockStateUtils.getOptionalCustomBlockState(aboveState);
+        return opt.isPresent() && opt.get().owner().value() == super.blockEntity.blockState.owner().value();
+    }
+
+    @Override
+    public boolean hasElement() { return true; }
+
+    @Override
+    public void gatherElements(Consumer<BlockEntityElement> consumer) { consumer.accept(element); }
+
+    public void markFallingAway() { this.fallingAway = true; }
+    public void clearFallingAway() { this.fallingAway = false; }
+    public void markCreativeBreak() { this.creativeBreak = true; }
+
+    private void dropSteamerBlockItem() {
+        SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+        int count = (type == SlabType.DOUBLE) ? 2 : 1;
+        Key key = super.blockEntity.blockState.owner().value().id();
+        Item steamerItem = BukkitItemManager.instance().createWrappedItem(key, null);
+        if (steamerItem != null) DropUtils.dropAtCenter(super.blockEntity, steamerItem.copyWithCount(count));
+    }
+
+    @Override
+    public void onRemove() {
+        if (!fallingAway) {
+            if (!creativeBreak) dropSteamerBlockItem();
+            for (int i = 0; i < itemCount; i++) {
+                if (!items[i].isEmpty()) DropUtils.dropAtCenter(super.blockEntity, items[i]);
+            }
+        }
+        int oldCount = this.itemCount;
+        this.itemCount = 0;
+        Arrays.fill(this.items, Item.empty());
+        if (oldCount > 0) this.refreshElementState();
+
+        super.onRemove();
+    }
+
+    @Override
+    public void loadCustomDataFromItem(Item item) {
+        Object nmsItem = item.minecraftItem();
+        Tag tag = net.momirealms.craftengine.bukkit.util.ItemStackUtils.saveMinecraftItemStackAsTag(nmsItem);
+        if (tag instanceof CompoundTag compoundTag && compoundTag.containsKey("BlockEntityTag")) {
+            loadCustomData(compoundTag.getCompound("BlockEntityTag"));
+        }
+    }
+
+    @Override
+    public void saveCustomData(CompoundTag tag) {
+        CompoundTag data = new CompoundTag();
+        data.putInt("data_version", net.momirealms.craftengine.core.util.VersionHelper.WORLD_VERSION);
+        data.putLong("seed", this.seed);
+        data.putBoolean("has_lid", hasLid);
+        data.putInt("lit_level", litLevel);
+        ListTag itemsTag = new ListTag();
+        for (int i = 0; i < itemCount; i++) {
+            itemsTag.add(ItemStackUtils.saveMinecraftItemStackAsTag(items[i].minecraftItem()));
+        }
+        data.put("items", itemsTag);
+        data.putIntArray("cooking_progress", cookingProgress);
+        data.putIntArray("cooking_time", cookingTime);
+        tag.put("steamer_data", data);
+    }
+
+    @Override
+    public void loadCustomData(CompoundTag tag) {
+        CompoundTag data = tag.getCompound("steamer_data");
+        if (data != null) {
+            this.seed = data.getLong("seed", System.currentTimeMillis());
+            this.hasLid = data.getBoolean("has_lid", false);
+            this.litLevel = data.getInt("lit_level", 0);
+            ListTag itemsTag = data.getList("items");
+            Arrays.fill(this.items, Item.empty());
+            this.itemCount = 0;
+            if (itemsTag != null) {
+                int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
+                for (Tag itemTag : itemsTag) {
+                    if (this.itemCount >= SLOTS) break;
+                    Object nmsItem = ItemStackUtils.parseMinecraftItem(itemTag, dataVersion);
+                    if (nmsItem != null) {
+                        this.items[this.itemCount] = ItemStackUtils.wrap(nmsItem);
+                        this.itemCount++;
+                    }
+                }
+            }
+            int[] progress = data.getIntArray("cooking_progress");
+            if (progress != null && progress.length == SLOTS) System.arraycopy(progress, 0, this.cookingProgress, 0, SLOTS);
+            int[] time = data.getIntArray("cooking_time");
+            if (time != null && time.length == SLOTS) System.arraycopy(time, 0, this.cookingTime, 0, SLOTS);
+        }
+    }
+
+    public boolean hasLid() { return hasLid; }
+
+    public void setHasLid(boolean hasLid) {
+        this.hasLid = hasLid;
+        this.wasCovered = isCovered();
+        refreshElementState();
+    }
+
+    public Item[] getItems() { return items; }
+    public int getItemCount() { return itemCount; }
+    public int[] getCookingProgress() { return cookingProgress; }
+    public int[] getCookingTime() { return cookingTime; }
+    public int getLitLevel() { return litLevel; }
+    public long getSeed() { return seed; }
+}

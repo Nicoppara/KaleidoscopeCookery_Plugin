@@ -1,0 +1,10 @@
+name: NicoPengRen
+version: '1.0-SNAPSHOT'
+main: top.nicoppa.nicoPengRen.NicoPengRen
+api-version: '21.1.2'
+
+dependencies:
+  server:
+    CraftEngine:
+      load: BEFORE
+      required: true
