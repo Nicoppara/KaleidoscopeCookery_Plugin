@@ -4,7 +4,7 @@ plugins {
     id("com.gradleup.shadow") version "9.2.2"
 }
 
-group = 'top.nicoppa'
+group = 'net.kaleidoscope'
 version = '1.0-SNAPSHOT'
 
 repositories {
@@ -44,7 +44,11 @@ dependencies {
     compileOnly("net.momirealms:sparrow-metadata:1.13")
     compileOnly("net.momirealms:sparrow-reflection:0.31")
     compileOnly("net.momirealms:sparrow-reflection-proxy-scanner:1.1")
-    compileOnly("net.momirealms:antigrieflib:1.0.11")
+    implementation("net.momirealms:antigrieflib:1.0.11")
+}
+
+shadowJar {
+    relocate 'net.momirealms.antigrieflib', 'net.kaleidoscope.cookery.libs.antigrieflib'
 }
 
 tasks {

@@ -1,6 +1,6 @@
-name: NicoPengRen
+name: KaleidoscopeCookeryPlugin
 version: '1.0-SNAPSHOT'
-main: top.nicoppa.nicoPengRen.NicoPengRen
+main: net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin
 api-version: '21.1.2'
 
 dependencies:
