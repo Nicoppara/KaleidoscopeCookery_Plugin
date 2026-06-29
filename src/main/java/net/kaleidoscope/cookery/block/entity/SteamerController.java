@@ -1,8 +1,7 @@
 package net.kaleidoscope.cookery.block.entity;
-import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
-import net.kaleidoscope.cookery.block.entity.render.SteamerElement;
 
-import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
+import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
+
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
@@ -25,9 +24,9 @@ import net.momirealms.craftengine.libraries.nbt.ListTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.food.ApplianceFoodRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
@@ -45,6 +44,7 @@ import java.util.function.Consumer;
 import java.util.Random;
 
 public class SteamerController extends BlockEntityController {
+    public static final String DATA_KEY = "kaleidoscopecookery:steamer";
     private static final int MAX_LIT_LEVEL = 4;
     private static final int SLOTS = 8;
     private final SteamerBehavior behavior;
@@ -60,7 +60,6 @@ public class SteamerController extends BlockEntityController {
     private int tickCounter = 0;
     private int litLevel = 0;
     private boolean fallingAway = false;
-    private boolean creativeBreak = false;
     private boolean skipFoodDrop = false;
 
     public SteamerController(BlockEntity blockEntity, SteamerBehavior behavior) {
@@ -133,7 +132,7 @@ public class SteamerController extends BlockEntityController {
                     if (belowBehavior != null) {
                         SlabType type = belowCustomState.get(belowBehavior.getTypeProperty());
 
-                        // 下层是双层蒸笼时，火力按层向上递减传导
+                        // 下层是双层蒸笼时 火力按层向上递减传导
                         if (type == SlabType.DOUBLE) {
                             BlockPos ceBelowPos = new BlockPos(
                                     super.blockEntity.pos.x, super.blockEntity.pos.y - 1, super.blockEntity.pos.z);
@@ -170,7 +169,7 @@ public class SteamerController extends BlockEntityController {
             cookingProgress[i]++;
             if (cookingProgress[i] >= cookingTime[i]) {
                 Item resultItem = getRecipeResult(items[i]);
-                if (resultItem != null && !resultItem.isEmpty()) {
+                if (!resultItem.isEmpty()) {
                     items[i] = resultItem;
                     cookingTime[i] = -1;
                     cookingProgress[i] = 0;
@@ -225,7 +224,7 @@ public class SteamerController extends BlockEntityController {
 
     public Item takeFood(Player player) {
         if (itemCount == 0) {
-            return null;
+            return Item.empty();
         }
         int target = -1;
         for (int i = 0; i < itemCount; i++) {
@@ -241,7 +240,7 @@ public class SteamerController extends BlockEntityController {
             }
         }
         if (target == -1) {
-            return null;
+            return Item.empty();
         }
 
         Item taken = items[target].copyWithCount(1);
@@ -326,10 +325,6 @@ public class SteamerController extends BlockEntityController {
         this.fallingAway = false;
     }
 
-    public void markCreativeBreak() {
-        this.creativeBreak = true;
-    }
-
     public void markSkipFoodDrop() {
         this.skipFoodDrop = true;
     }
@@ -347,7 +342,7 @@ public class SteamerController extends BlockEntityController {
         return true;
     }
 
-    // 即将掉落的成品（bukkit 物品堆）
+    // 即将掉落的成品
     public List<ItemStack> finishedProductStacks() {
         List<ItemStack> products = new ArrayList<>();
         for (int i = 0; i < itemCount; i++) {
@@ -358,23 +353,11 @@ public class SteamerController extends BlockEntityController {
         return products;
     }
 
-    private void dropSteamerBlockItem() {
-        SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
-        int count = (type == SlabType.DOUBLE) ? 2 : 1;
-        Key key = super.blockEntity.blockState.owner().value().id();
-        Item steamerItem = BukkitItemManager.instance().createWrappedItem(key, null);
-        if (steamerItem != null) {
-            DropUtils.dropAtCenter(super.blockEntity, steamerItem.copyWithCount(count));
-        }
-    }
-
     @Override
     public void onRemove() {
         if (!fallingAway) {
-            if (!creativeBreak) {
-                dropSteamerBlockItem();
-            }
-            // skipFoodDrop：SteamerBreakFullEvent 被取消时跳过成品掉落
+            // 蒸笼方块物品本身的掉落交给方块 loot 创造爆炸等场景行为统一 这里只负责内容物
+            // skipFoodDrop 在 SteamerBreakFullEvent 被取消时跳过成品掉落
             if (!skipFoodDrop) {
                 for (int i = 0; i < itemCount; i++) {
                     if (!items[i].isEmpty()) {
@@ -416,12 +399,12 @@ public class SteamerController extends BlockEntityController {
         data.put("items", itemsTag);
         data.putIntArray("cooking_progress", cookingProgress);
         data.putIntArray("cooking_time", cookingTime);
-        tag.put("steamer_data", data);
+        tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
-        CompoundTag data = tag.getCompound("steamer_data");
+        CompoundTag data = tag.getCompound(DATA_KEY);
         if (data != null) {
             this.seed = data.getLong("seed", System.currentTimeMillis());
             this.hasLid = data.getBoolean("has_lid", false);

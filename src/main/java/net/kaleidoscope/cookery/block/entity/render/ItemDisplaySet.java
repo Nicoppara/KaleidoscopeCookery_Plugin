@@ -8,7 +8,7 @@ import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy;
 import java.util.List;
 import java.util.UUID;
 
-// 展示实体槽集合：管理一组假 ItemDisplay 的 entityId/uuid 与已构建的生成/元数据包
+// 展示实体槽集合 管理一组假 ItemDisplay 的 entityId/uuid 与已构建的生成/元数据包
 public final class ItemDisplaySet {
     private final int[] entityIds;
     private final UUID[] uuids;
@@ -56,7 +56,7 @@ public final class ItemDisplaySet {
         this.metaPackets[index] = null;
     }
 
-    // 若该槽已构建生成包，则向玩家发送 生成包 + 元数据包
+    // 若该槽已构建生成包 则向玩家发送 生成包 + 元数据包
     public void showSlot(Player player, int index) {
         if (spawnPackets[index] != null) {
             player.sendPackets(List.of(spawnPackets[index], metaPackets[index]), false);

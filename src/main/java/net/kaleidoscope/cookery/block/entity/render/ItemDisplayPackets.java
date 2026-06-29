@@ -14,19 +14,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-// ItemDisplay 假实体发包构建器：链式设置数据后调用 spawn/meta；只更新数据时用 builder()
+// ItemDisplay 假实体发包构建器 链式设置数据后调用 spawn 或 meta 只更新数据时用 builder
 public final class ItemDisplayPackets {
     private final List<Object> data = new ArrayList<>();
     private double baseX, baseY, baseZ;
 
     private ItemDisplayPackets() {}
 
-    // 仅构建元数据（不带生成位置），适合只更新已存在实体的场景
+    // 仅构建元数据 适合只更新已存在实体的场景
     public static ItemDisplayPackets builder() {
         return new ItemDisplayPackets();
     }
 
-    // 带生成位置，适合需要 spawn 包的场景
+    // 带生成位置 适合需要 spawn 包的场景
     public static ItemDisplayPackets at(WorldPosition pos) {
         ItemDisplayPackets b = new ItemDisplayPackets();
         b.baseX = pos.x;

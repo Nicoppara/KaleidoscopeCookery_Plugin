@@ -1,6 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
+
 import net.kaleidoscope.cookery.block.behavior.KitchenwareRacksBehavior;
-import net.kaleidoscope.cookery.block.entity.render.KitchenwareRacksElement;
 
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -8,6 +8,7 @@ import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
@@ -21,6 +22,8 @@ import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import java.util.function.Consumer;
 
 public final class KitchenwareRacksController extends BlockEntityController {
+    private static final String DATA_KEY = "kaleidoscopecookery:kitchenware_racks";
+
     private final KitchenwareRacksBehavior behavior;
     private final KitchenwareRacksElement element;
 
@@ -166,12 +169,12 @@ public final class KitchenwareRacksController extends BlockEntityController {
         if (!ItemUtils.isEmpty(itemRight)) {
             data.put("item_right", ItemStackUtils.saveMinecraftItemStackAsTag(itemRight.minecraftItem()));
         }
-        tag.put(behavior.customDataKey, data);
+        tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
-        CompoundTag dataTag = tag.getCompound(behavior.customDataKey);
+        CompoundTag dataTag = tag.getCompound(DATA_KEY);
         if (dataTag == null) {
             this.itemLeft = Item.empty();
             this.itemRight = Item.empty();
@@ -179,7 +182,7 @@ public final class KitchenwareRacksController extends BlockEntityController {
             return;
         }
 
-        int dataVersion = dataTag.getInt("data_version", VersionHelper.WORLD_VERSION);
+        int dataVersion = dataTag.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
 
         Tag leftTag = dataTag.get("item_left");
         if (leftTag != null) {

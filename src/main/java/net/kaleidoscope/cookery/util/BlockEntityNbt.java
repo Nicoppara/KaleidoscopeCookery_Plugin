@@ -8,7 +8,7 @@ import net.momirealms.craftengine.libraries.nbt.Tag;
 
 import java.util.List;
 
-// 方块实体 NBT：统一 Item 列表的存读
+// 方块实体 NBT 统一 Item 列表的存读
 public final class BlockEntityNbt {
     private BlockEntityNbt() {}
 
@@ -20,7 +20,7 @@ public final class BlockEntityNbt {
         return list;
     }
 
-    // 从 tag[key] 读出物品列表，写入 out（先清空 out）
+    // 从 tag[key] 读出物品列表 写入 out
     public static void loadItems(CompoundTag tag, String key, int dataVersion, List<Item> out) {
         out.clear();
         if (!tag.containsKey(key)) {

@@ -5,7 +5,7 @@ import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.Clientbo
 
 import java.util.List;
 
-// 发包打包工具：把多个数据包合并为一个 Bundle 包一次性下发，空列表则跳过
+// 发包打包工具 把多个数据包合并为一个 Bundle 包一次性下发 空列表则跳过
 public final class PacketBundles {
     private PacketBundles() {}
 

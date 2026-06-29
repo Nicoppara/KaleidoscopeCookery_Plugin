@@ -1,10 +1,7 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.block.entity.ChoppingBoardController;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
-import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
@@ -26,6 +23,8 @@ import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
+import net.kaleidoscope.cookery.util.Hands;
+import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import org.bukkit.Location;
@@ -39,7 +38,6 @@ import java.util.Set;
 public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<ChoppingBoardBehavior> FACTORY = new Factory();
 
-    // 四把厨房菜刀
     public Set<Key> knives = Set.of(
             ItemKeys.DIAMOND_KITCHEN_KNIFE,
             ItemKeys.GOLD_KITCHEN_KNIFE,
@@ -67,9 +65,7 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         World level = context.getLevel();
         BlockPos pos = context.getClickedPos();
 
-        // 领地权限校验
-        Location agLoc = new Location((org.bukkit.World) level.platformWorld(), pos.x, pos.y, pos.z);
-        if (!KaleidoscopeCookeryPlugin.antiGrief().test((org.bukkit.entity.Player) player.platformPlayer(), Flag.INTERACT, agLoc)) {
+        if (!InteractGuard.canInteract(player, level, pos)) {
             return InteractionResult.PASS;
         }
 
@@ -83,29 +79,34 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
             return InteractionResult.PASS;
         }
 
-        InteractionHand hand = context.getHand();
-        Item itemInHand = player.getItemInHand(hand);
-
-        // 手持菜刀：切一刀
-        if (!itemInHand.isEmpty() && knives.contains(itemInHand.id())) {
-            return handleCut(context, controller);
+        // 只处理主手那次调用 避免主副手各触发一次
+        if (context.getHand() == InteractionHand.OFF_HAND) {
+            return InteractionResult.PASS;
         }
 
-        // 空手：取回原料
-        if (itemInHand.isEmpty()) {
-            return handleTakeBack(context, controller);
+        // 切菜的刀副手优先
+        InteractionHand toolHand = Hands.toolHand(player, it -> knives.contains(it.id()));
+        Item toolItem = player.getItemInHand(toolHand);
+        if (!toolItem.isEmpty() && knives.contains(toolItem.id())) {
+            InteractionResult cut = handleCut(context, controller, toolHand);
+            if (cut != InteractionResult.PASS) {
+                return cut;
+            }
         }
 
-        // 手持其它物品：放上原料
-        return handlePlaceRaw(context, controller, itemInHand);
+        // 取放食材只认主手
+        Item mainItem = player.getItemInHand(InteractionHand.MAIN_HAND);
+        if (mainItem.isEmpty()) {
+            return handleTakeBack(context, controller, InteractionHand.MAIN_HAND);
+        }
+        return handlePlaceRaw(context, controller, mainItem, InteractionHand.MAIN_HAND);
     }
 
-    // 推进一个切割阶段，切完则产出
-    private InteractionResult handleCut(UseOnContext context, ChoppingBoardController controller) {
+    // 处理切菜逻辑
+    private InteractionResult handleCut(UseOnContext context, ChoppingBoardController controller, InteractionHand hand) {
         Player player = context.getPlayer();
         World level = context.getLevel();
         BlockPos pos = context.getClickedPos();
-        InteractionHand hand = context.getHand();
         Vec3d center = Vec3d.atCenterOf(pos);
 
         ChoppingBoardController.CutResult result = controller.cut();
@@ -113,6 +114,8 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
             return InteractionResult.PASS;
         }
         player.swingHand(hand);
+
+        // 扣菜刀耐久
         if (!player.canInstabuild()) {
             damageHeldKnife((org.bukkit.entity.Player) player.platformPlayer(), hand);
         }
@@ -125,15 +128,14 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    // 空手取回未切完的原料
-    private InteractionResult handleTakeBack(UseOnContext context, ChoppingBoardController controller) {
+    // 拿回砧板上的原料
+    private InteractionResult handleTakeBack(UseOnContext context, ChoppingBoardController controller, InteractionHand hand) {
         Player player = context.getPlayer();
         World level = context.getLevel();
-        InteractionHand hand = context.getHand();
         Vec3d center = Vec3d.atCenterOf(context.getClickedPos());
 
         Item taken = controller.takeBack();
-        if (taken != null && !taken.isEmpty()) {
+        if (!taken.isEmpty()) {
             InventoryUtils.giveOrHold(player, hand, taken);
             player.swingHand(hand);
             playSound(level, center, TAKE_SOUND, 1.2f + (float) Math.random() * 0.2f);
@@ -142,8 +144,8 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         return InteractionResult.PASS;
     }
 
-    // 砧板为空时把手持物品作为原料放上
-    private InteractionResult handlePlaceRaw(UseOnContext context, ChoppingBoardController controller, Item itemInHand) {
+    // 放置原料
+    private InteractionResult handlePlaceRaw(UseOnContext context, ChoppingBoardController controller, Item itemInHand, InteractionHand hand) {
         if (!controller.isEmpty()) {
             return InteractionResult.PASS;
         }
@@ -152,10 +154,8 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         }
         if (controller.place(itemInHand)) {
             Player player = context.getPlayer();
-            if (!player.canInstabuild()) {
-                itemInHand.shrink(1);
-            }
-            player.swingHand(context.getHand());
+            InventoryUtils.shrinkHeld(player, itemInHand, 1);
+            player.swingHand(hand);
             playSound(context.getLevel(), Vec3d.atCenterOf(context.getClickedPos()), PLACE_SOUND, 1.2f);
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
@@ -166,7 +166,7 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         world.playSound(pos, sound, DEFAULT_VOLUME, pitch, SoundSource.BLOCK);
     }
 
-    // 菜刀耐久 -1，耗尽自动损坏
+    // 菜刀扣 1 点耐久
     private void damageHeldKnife(org.bukkit.entity.Player bukkitPlayer, InteractionHand hand) {
         EquipmentSlot slot = hand == InteractionHand.OFF_HAND ? EquipmentSlot.OFF_HAND : EquipmentSlot.HAND;
         ItemStack stack = bukkitPlayer.getInventory().getItem(slot);
@@ -176,6 +176,7 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         bukkitPlayer.getInventory().setItem(slot, stack.damage(1, bukkitPlayer));
     }
 
+    // 剁菜时的粒子
     private void spawnCutParticles(CEWorld world, BlockPos pos) {
         try {
             org.bukkit.World bw = (org.bukkit.World) world.world().platformWorld();
@@ -211,10 +212,10 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
             behavior.facingProperty = BlockBehaviorFactory.getProperty(section.path(), block, "facing", Direction.class);
 
             Set<Key> knives = new HashSet<>();
-            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.DIAMOND_KITCHEN_KNIFE.toString(), "diamond_knife_item", "diamond-knife-item")));
-            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.GOLD_KITCHEN_KNIFE.toString(), "gold_knife_item", "gold-knife-item")));
-            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.IRON_KITCHEN_KNIFE.toString(), "iron_knife_item", "iron-knife-item")));
-            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.NETHERITE_KITCHEN_KNIFE.toString(), "netherite_knife_item", "netherite-knife-item")));
+            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.DIAMOND_KITCHEN_KNIFE.asString(), "diamond_knife_item", "diamond-knife-item")));
+            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.GOLD_KITCHEN_KNIFE.asString(), "gold_knife_item", "gold-knife-item")));
+            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.IRON_KITCHEN_KNIFE.asString(), "iron_knife_item", "iron-knife-item")));
+            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.NETHERITE_KITCHEN_KNIFE.asString(), "netherite_knife_item", "netherite-knife-item")));
             behavior.knives = knives;
             return behavior;
         }

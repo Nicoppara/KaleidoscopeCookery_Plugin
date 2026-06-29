@@ -6,6 +6,7 @@ import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.util.AdventureHelper;
 import net.momirealms.craftengine.core.util.Key;
+import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -14,31 +15,32 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.food.AccurateFoodRecipe;
-import net.kaleidoscope.cookery.recipe.food.FlexFoodRecipe;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.AccurateFoodRecipe;
+import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
+import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemNames;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-// 菜谱物品工具：读写菜谱 NBT 标记、写入 lore，并把背包食材一键投入炒锅
-// TODO: Lore 待优化
-public class RecipeUtils {
-    private static final NamespacedKey HAS_RECIPE_KEY = new NamespacedKey(KaleidoscopeCookeryPlugin.getPlugin(KaleidoscopeCookeryPlugin.class), "has_recipe");
+// 菜谱物品工具 读写菜谱 NBT 标记 写入 lore 并把背包食材一键投入炒锅
+public final class RecipeUtils {
+    private RecipeUtils() {}
 
+    private static final NamespacedKey HAS_RECIPE_KEY =
+            new NamespacedKey(KaleidoscopeCookeryPlugin.instance(), "has_recipe");
     public static final NamespacedKey RECIPE_ID_KEY =
-            new NamespacedKey(KaleidoscopeCookeryPlugin.getPlugin(KaleidoscopeCookeryPlugin.class), "recipe_id");
+            new NamespacedKey(KaleidoscopeCookeryPlugin.instance(), "recipe_id");
     public static final NamespacedKey RECIPE_TYPE_KEY =
-            new NamespacedKey(KaleidoscopeCookeryPlugin.getPlugin(KaleidoscopeCookeryPlugin.class), "recipe_type");
+            new NamespacedKey(KaleidoscopeCookeryPlugin.instance(), "recipe_type");
     public static final NamespacedKey RECIPE_INGREDIENTS_KEY =
-            new NamespacedKey(KaleidoscopeCookeryPlugin.getPlugin(KaleidoscopeCookeryPlugin.class), "recipe_ingredients");
+            new NamespacedKey(KaleidoscopeCookeryPlugin.instance(), "recipe_ingredients");
 
     public static boolean hasRecipe(ItemStack stack) {
         if (stack == null || stack.getItemMeta() == null) {
@@ -54,45 +56,23 @@ public class RecipeUtils {
             return false;
         }
 
-        String recipeIdStr = meta.getPersistentDataContainer().get(RECIPE_ID_KEY, PersistentDataType.STRING);
-        String recipeType  = meta.getPersistentDataContainer().get(RECIPE_TYPE_KEY, PersistentDataType.STRING);
-        if (recipeIdStr == null || recipeType == null) {
+        // 读持久化的实际食材列表 大乱炖食谱也能精准还原当时丢了哪些材料
+        String ingStr = meta.getPersistentDataContainer().get(RECIPE_INGREDIENTS_KEY, PersistentDataType.STRING);
+        if (ingStr == null || ingStr.isEmpty()) {
             return false;
         }
+        List<Key> needed = Arrays.stream(ingStr.split(","))
+                .map(Key::of)
+                .toList();
 
-        Key recipeId = Key.of(recipeIdStr);
-
-        // 优先读持久化的实际食材列表，这样大乱炖食谱也能精准还原当时丢了哪些材料
-        List<Key> needed;
-        String ingStr = meta.getPersistentDataContainer().get(RECIPE_INGREDIENTS_KEY, PersistentDataType.STRING);
-        if (ingStr != null && !ingStr.isEmpty()) {
-            needed = Arrays.stream(ingStr.split(","))
-                    .map(Key::of)
-                    .toList();
-        } else {
-            // 旧数据兼容
-            if ("accurate".equals(recipeType)) {
-                AccurateFoodRecipe r = FoodRecipeRegistry.instance().findAccurateById(recipeId);
-                if (r == null) {
-                    return false;
-                }
-                needed = List.of(r.id());
-            } else {
-                FlexFoodRecipe r = FoodRecipeRegistry.instance().findFlexById(recipeId);
-                if (r == null) {
-                    return false;
-                }
-                needed = r.require().stream()
-                        .flatMap(req -> Collections.nCopies(req.count(), req.item()).stream())
-                        .toList();
-            }
-        }
-
+        boolean creative = player.getGameMode() == GameMode.CREATIVE;
         boolean any = false;
         for (Key ingredientKey : needed) {
             ItemStack found = findInInventory(player, ingredientKey);
             if (found != null) {
-                found.setAmount(found.getAmount() - 1);
+                if (!creative) {
+                    found.setAmount(found.getAmount() - 1);
+                }
                 Item ceItem = BukkitItemManager.instance().createWrappedItem(ingredientKey, null);
                 addIngredient.accept(ceItem);
                 any = true;
@@ -171,7 +151,7 @@ public class RecipeUtils {
                         .orElse(getDisplayName(out.id()));
             } else {
                 outLine = "<white><!i>输出: <image:kaleidoscopecookery:suspicious_stir_fry>";
-                resultName = getDisplayName(Key.of("cook:suspicious_stir_fry"));
+                resultName = getDisplayName(ItemKeys.SUSPICIOUS_STIR_FRY);
             }
         } else {
             resultName = getDisplayName(resultKey);
@@ -187,7 +167,7 @@ public class RecipeUtils {
         lore.add(MiniMessage.miniMessage().deserialize(ingLine.toString()));
         lore.add(MiniMessage.miniMessage().deserialize(""));
         lore.add(MiniMessage.miniMessage().deserialize(outLine));
-        if (liquid != null && !liquid.toString().equals("minecraft:water")) {
+        if (liquid != null && !liquid.asString().equals("minecraft:water")) {
             lore.add(MiniMessage.miniMessage().deserialize(""));
             lore.add(MiniMessage.miniMessage().deserialize("<white><!i>所需汤底：<image:kaleidoscopecookery:" + liquid.value() + ">"));
         }
@@ -201,10 +181,10 @@ public class RecipeUtils {
 
     private static String applianceDisplayName(ApplianceType type) {
         return switch (type) {
-            case POT      -> "炒锅";
+            case POT -> "炒锅";
             case STOCKPOT -> "煮锅";
             case SHAWARMA -> "沙威玛烤架";
-            default       -> type.name();
+            default -> type.name();
         };
     }
 

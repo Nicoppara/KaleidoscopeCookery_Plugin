@@ -1,9 +1,7 @@
 package net.kaleidoscope.cookery.block.entity;
-import net.kaleidoscope.cookery.block.behavior.PotBehavior;
-import net.kaleidoscope.cookery.block.entity.render.PotElement;
 
-import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import net.kaleidoscope.cookery.block.behavior.PotBehavior;
+
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
@@ -12,7 +10,9 @@ import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityEl
 import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.sound.SoundSource;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.CEWorld;
@@ -24,14 +24,17 @@ import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.util.DropUtils;
+import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.food.FoodCategoryRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.FoodCategoryRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 import net.kaleidoscope.cookery.util.EventUtils;
+import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.api.event.PotStirFryEvent;
 import org.bukkit.Location;
+import org.bukkit.World;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,11 +43,11 @@ import java.util.function.Consumer;
 
 public class PotController extends BlockEntityController {
     private static final int MAX_INGREDIENTS = 8;
-    private static final Key OVERCOOKED_RESULT = Key.of("cook:dark_cuisine");
-    private static final Key NO_RECIPE_RESULT = Key.of("cook:suspicious_stir_fry");
-    private static final Key CHARCOAL = Key.of("minecraft:charcoal");
+    private static final String DATA_KEY = "kaleidoscopecookery:cooking_pot";
+    private static final Key DAMAGE_GENERIC = Key.of("minecraft:generic");
+    private static final Key SOUND_FIRE_AMBIENT = Key.of("minecraft:block.fire.ambient");
 
-    private CookingStage stage = CookingStage.IDLE;
+    private PotStage stage = PotStage.IDLE;
     private int currentTick = 0;
     private final List<Item> results = new ArrayList<>();
     private final List<Item> ingredients = new ArrayList<>();
@@ -75,14 +78,18 @@ public class PotController extends BlockEntityController {
         return createTickerHelper((w, pos, state, controller) -> this.tick());
     }
 
+    public int animChunkRadius() {
+        return behavior.animChunkRadius;
+    }
+
     public void refreshDynamicElement(BiConsumer<PotElement, Player> consumer) {
         TrackedPlayers.forEach(blockEntity, player -> consumer.accept(element, player));
     }
 
     public void tick() {
-        if (stage == CookingStage.IDLE) return;
+        if (stage == PotStage.IDLE) return;
 
-        if (stage == CookingStage.DONE || stage == CookingStage.BURNT) {
+        if (stage == PotStage.DONE || stage == PotStage.BURNT) {
             if (heatCheckTick++ % 20 == 0) heated = hasHeatBelow();
             if (!heated) return;
         }
@@ -91,7 +98,7 @@ public class PotController extends BlockEntityController {
 
         if (currentTick % 20 == 0) {
             playCookingSound();
-            if (stage == CookingStage.BURNT) {
+            if (stage == PotStage.BURNT) {
                 int newBrightness = PotElement.burntBrightness(currentTick, behavior.burntToCharcoalTime);
                 if (newBrightness != lastSentBrightness) {
                     lastSentBrightness = newBrightness;
@@ -101,9 +108,9 @@ public class PotController extends BlockEntityController {
         }
 
         if (currentTick == 0) {
-            if (stage == CookingStage.DONE) {
+            if (stage == PotStage.DONE) {
                 burnDish();
-            } else if (stage == CookingStage.BURNT) {
+            } else if (stage == PotStage.BURNT) {
                 dropCharcoal();
                 resetPot();
             }
@@ -115,12 +122,12 @@ public class PotController extends BlockEntityController {
         int prevCount = 0;
         for (Item it : results) prevCount += it.count();
         results.clear();
-        Item dark = BukkitItemManager.instance().createWrappedItem(OVERCOOKED_RESULT, null);
-        if (dark != null) results.add(dark.count(Math.max(1, prevCount)));
+        Item dark = InventoryUtils.createOrEmpty(ItemKeys.DARK_CUISINE);
+        if (!ItemUtils.isEmpty(dark)) results.add(dark.count(Math.max(1, prevCount)));
         cookedIngredientCount = ingredients.size();
         cookedDishCount = Math.max(1, prevCount);
 
-        stage = CookingStage.BURNT;
+        stage = PotStage.BURNT;
         currentTick = behavior.burntToCharcoalTime;
         lastSentBrightness = -1;
         updateBlockState();
@@ -134,12 +141,12 @@ public class PotController extends BlockEntityController {
     }
 
     public boolean stirFry(boolean hasHeatSource, Player player) {
-        if (stage == CookingStage.DONE || stage == CookingStage.BURNT || animating || ingredients.isEmpty()) return false;
+        if (stage == PotStage.DONE || stage == PotStage.BURNT || animating || ingredients.isEmpty()) return false;
 
-        // 翻炒前触发事件，本次结果次数取决于是否真正受热
+        // 翻炒前触发事件 本次结果次数取决于是否真正受热
         if (player != null) {
             int resultCount = (hasHeatSource && hasOil) ? stirFryCount + 1 : stirFryCount;
-            Location stirLoc = new Location((org.bukkit.World) blockEntity.world.world().platformWorld(), blockEntity.pos.x(), blockEntity.pos.y(), blockEntity.pos.z());
+            Location stirLoc = new Location((World) blockEntity.world.world().platformWorld(), blockEntity.pos.x(), blockEntity.pos.y(), blockEntity.pos.z());
             PotStirFryEvent event = new PotStirFryEvent((org.bukkit.entity.Player) player.platformPlayer(), stirLoc, resultCount);
             if (EventUtils.fireAndCheckCancel(event)) return false;
         }
@@ -153,7 +160,7 @@ public class PotController extends BlockEntityController {
         if (hasHeatSource && hasOil) {
             boolean firstStir = stirFryCount == 0;
             stirFryCount++;
-            if (stage == CookingStage.IDLE) stage = CookingStage.COOKING;
+            if (stage == PotStage.IDLE) stage = PotStage.COOKING;
             if (firstStir && player != null) player.sendActionBar(Component.text(behavior.msgStartCooking));
         }
 
@@ -176,13 +183,13 @@ public class PotController extends BlockEntityController {
 
         if (fr != null) {
             results.add(fr.item().count(fr.count()));
-            stage = CookingStage.DONE;
+            stage = PotStage.DONE;
             currentTick = behavior.cookDoneTime;
             if (triggerPlayer != null) triggerPlayer.sendActionBar(Component.text(behavior.msgDishReady));
         } else {
-            Item suspense = BukkitItemManager.instance().createWrappedItem(NO_RECIPE_RESULT, null);
-            if (suspense != null) results.add(suspense.count(1));
-            stage = CookingStage.BURNT;
+            Item suspense = InventoryUtils.createOrEmpty(ItemKeys.SUSPICIOUS_STIR_FRY);
+            if (!ItemUtils.isEmpty(suspense)) results.add(suspense.count(1));
+            stage = PotStage.BURNT;
             currentTick = behavior.burntToCharcoalTime;
             lastSentBrightness = -1;
             if (triggerPlayer != null) triggerPlayer.sendActionBar(Component.text(behavior.msgAllBurnt));
@@ -203,7 +210,7 @@ public class PotController extends BlockEntityController {
             if (player != null) player.sendActionBar(Component.text(behavior.msgNotIngredient));
             return;
         }
-        if (stage == CookingStage.DONE || stage == CookingStage.BURNT || animating || ingredients.size() >= MAX_INGREDIENTS) return;
+        if (stage == PotStage.DONE || stage == PotStage.BURNT || animating || ingredients.size() >= MAX_INGREDIENTS) return;
         stirFryCount = 0;
         int index = ingredients.size();
         ingredients.add(item);
@@ -213,9 +220,9 @@ public class PotController extends BlockEntityController {
     }
 
     public Item extractItem(Player player) {
-        if (stage == CookingStage.DONE || stage == CookingStage.BURNT || animating || ingredients.isEmpty()) return null;
+        if (stage == PotStage.DONE || stage == PotStage.BURNT || animating || ingredients.isEmpty()) return null;
         if (this.hasOil && player != null) {
-            player.damage(2, Key.of("minecraft:generic"), null);
+            player.damage(2, DAMAGE_GENERIC, null);
         }
         stirFryCount = 0;
         int index = ingredients.size() - 1;
@@ -231,7 +238,7 @@ public class PotController extends BlockEntityController {
         hasOil = false;
         stirFryCount = 0;
         results.clear();
-        stage = CookingStage.IDLE;
+        stage = PotStage.IDLE;
         currentTick = 0;
         lastSentBrightness = -1;
         heated = false;
@@ -294,16 +301,16 @@ public class PotController extends BlockEntityController {
     }
 
     private void dropCharcoal() {
-        DropUtils.dropAtCenter(blockEntity, BukkitItemManager.instance().createWrappedItem(CHARCOAL, null));
+        DropUtils.dropAtCenter(blockEntity, InventoryUtils.createOrEmpty(ItemKeys.CHARCOAL));
     }
 
     private void playCookingSound() {
         float volume = 0.5f + (float) Math.random() * 0.5f;
         float pitch = 0.8f + (float) Math.random() * 0.5f;
-        blockEntity.world.world().playSound(Vec3d.atCenterOf(blockEntity.pos), Key.of("minecraft:block.fire.ambient"), volume, pitch, SoundSource.BLOCK);
+        blockEntity.world.world().playSound(Vec3d.atCenterOf(blockEntity.pos), SOUND_FIRE_AMBIENT, volume, pitch, SoundSource.BLOCK);
     }
 
-    public CookingStage stage() {
+    public PotStage stage() {
         return stage;
     }
 
@@ -363,36 +370,27 @@ public class PotController extends BlockEntityController {
         data.put("results", BlockEntityNbt.saveItems(results));
         data.putInt("cooked_ing", cookedIngredientCount);
         data.putInt("cooked_dish", cookedDishCount);
-        tag.put(behavior.customDataKey, data);
+        tag.put(DATA_KEY, data);
     }
 
-    // TODO: 含旧存档迁移逻辑，正式版删除
     @Override
     public void loadCustomData(CompoundTag tag) {
-        CompoundTag data = tag.getCompound(behavior.customDataKey);
-        if (data == null) data = tag;
+        CompoundTag data = tag.getCompound(DATA_KEY);
+        if (data == null) return;
 
-        int dataVersion = data.getInt("data_version", VersionHelper.WORLD_VERSION);
+        int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
         BlockEntityNbt.loadItems(data, "ingredients", dataVersion, ingredients);
         BlockEntityNbt.loadItems(data, "results", dataVersion, results);
-
-        if (data.containsKey("result")) {
-            Object nmsItem = ItemStackUtils.parseMinecraftItem(data.getCompound("result"), dataVersion);
-            if (nmsItem != null) {
-                Item oldRes = ItemStackUtils.wrap(nmsItem);
-                if (!oldRes.isEmpty()) results.add(oldRes);
-            }
-        }
 
         seed = data.getLong("seed", System.currentTimeMillis());
         hasOil = data.getBoolean("has_oil", false);
         stirFryCount = data.getInt("stir_fry_count", 0);
-        stage = CookingStage.fromOrdinal(data.getInt("cooking_status", 0));
+        stage = PotStage.fromOrdinal(data.getInt("cooking_status", 0));
         currentTick = data.getInt("current_tick", 0);
         cookedIngredientCount = data.getInt("cooked_ing", ingredients.size());
         cookedDishCount = data.getInt("cooked_dish", 0);
         try {
-            heated = (stage == CookingStage.DONE || stage == CookingStage.BURNT) && hasHeatBelow();
+            heated = (stage == PotStage.DONE || stage == PotStage.BURNT) && hasHeatBelow();
         } catch (Exception ignored) {
             heated = false;
         }

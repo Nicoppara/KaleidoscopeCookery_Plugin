@@ -27,6 +27,9 @@ import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.SignalGetterProxy;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
+import net.kaleidoscope.cookery.util.InteractGuard;
+import net.kaleidoscope.cookery.util.InventoryUtils;
+import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 
 public final class ShawarmaSpitBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<ShawarmaSpitBehavior> FACTORY = new Factory();
@@ -35,6 +38,7 @@ public final class ShawarmaSpitBehavior extends BukkitBlockBehavior implements E
     private final Property<DoubleBlockHalf> halfProperty;
     private final Property<Direction> facingProperty;
     public final int grillTime;
+    public int animChunkRadius = TrackedPlayers.DEFAULT_ANIM_CHUNK_RADIUS;
 
     public ShawarmaSpitBehavior(BlockDefinition blockDefinition,
                                 Property<Boolean> poweredProperty,
@@ -55,6 +59,9 @@ public final class ShawarmaSpitBehavior extends BukkitBlockBehavior implements E
             return InteractionResult.PASS;
         }
         World world = context.getLevel();
+        if (!InteractGuard.canInteract(player, world, context.getClickedPos())) {
+            return InteractionResult.PASS;
+        }
         // 功能控制器只在下半 点上半时定位到下半的方块实体
         var lowerPos = state.get(this.halfProperty) == DoubleBlockHalf.UPPER
                 ? context.getClickedPos().below() : context.getClickedPos();
@@ -67,11 +74,15 @@ public final class ShawarmaSpitBehavior extends BukkitBlockBehavior implements E
             return InteractionResult.PASS;
         }
 
-        InteractionHand hand = context.getHand();
+        // 烤架操作不涉及工具 只认主手 副手触发直接放行
+        if (context.getHand() == InteractionHand.OFF_HAND) {
+            return InteractionResult.PASS;
+        }
+        InteractionHand hand = InteractionHand.MAIN_HAND;
         Item itemInHand = player.getItemInHand(hand);
         int layer = state.get(this.halfProperty) == DoubleBlockHalf.UPPER ? 1 : 0;
 
-        // 手持食材则放入，空手则取出
+        // 手持食材则放入 空手则取出
         if (!itemInHand.isEmpty()) {
             return handlePlaceFood(controller, player, hand, itemInHand, layer);
         }
@@ -90,9 +101,7 @@ public final class ShawarmaSpitBehavior extends BukkitBlockBehavior implements E
             placed++;
         }
         if (placed > 0) {
-            if (!player.canInstabuild()) {
-                itemInHand.shrink(placed);
-            }
+            InventoryUtils.shrinkHeld(player, itemInHand, placed);
             player.swingHand(hand);
         }
         return InteractionResult.SUCCESS_AND_CANCEL;
@@ -175,13 +184,15 @@ public final class ShawarmaSpitBehavior extends BukkitBlockBehavior implements E
     private static class Factory implements BlockBehaviorFactory<ShawarmaSpitBehavior> {
         @Override
         public ShawarmaSpitBehavior create(BlockDefinition block, ConfigSection section) {
-            return new ShawarmaSpitBehavior(
+            ShawarmaSpitBehavior b = new ShawarmaSpitBehavior(
                     block,
                     BlockBehaviorFactory.getProperty(section.path(), block, "powered", Boolean.class),
                     BlockBehaviorFactory.getProperty(section.path(), block, "half", DoubleBlockHalf.class),
                     BlockBehaviorFactory.getProperty(section.path(), block, "facing", Direction.class),
                     BehaviorConfig.getInt(section, 300, "grill_time", "grill-time")
             );
+            b.animChunkRadius = BehaviorConfig.getInt(section, b.animChunkRadius, "animation_view_distance", "animation-view-distance");
+            return b;
         }
     }
 }

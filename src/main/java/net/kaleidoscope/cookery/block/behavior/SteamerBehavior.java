@@ -1,12 +1,9 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.api.event.SteamerBreakFullEvent;
 import net.kaleidoscope.cookery.block.entity.SteamerController;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
-import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitFallableBlock;
-import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.nms.FastNMS;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.DirectionUtils;
@@ -27,7 +24,6 @@ import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.item.ItemDefinition;
 import net.momirealms.craftengine.core.item.behavior.BlockItem;
-import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.sound.SoundSource;
@@ -50,18 +46,18 @@ import net.momirealms.craftengine.proxy.minecraft.core.Vec3iProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelAccessorProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.LevelReaderProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.level.dimension.DimensionTypeProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.BlocksProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.FallingBlockProxy;
-import net.momirealms.antigrieflib.Flag;
 import org.bukkit.Location;
-import org.bukkit.entity.FallingBlock;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import net.kaleidoscope.cookery.util.EventUtils;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
+import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
+import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -70,18 +66,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
 import static net.momirealms.craftengine.core.block.UpdateFlags.UPDATE_ALL;
 
 public final class SteamerBehavior extends BukkitBlockBehavior implements EntityBlock, BukkitFallableBlock {
     public static final BlockBehaviorFactory<SteamerBehavior> FACTORY = new Factory();
 
-    // 掉落暂存：键为 FallingBlock 实体，值为下落前的蒸笼数据快照
+    // 掉落暂存 键为 FallingBlock 实体 值为下落前的蒸笼数据快照
     public static final Map<Object, PendingData> pendingData = new ConcurrentHashMap<>();
 
     private static final Key PLACE_SOUND = Key.of("minecraft:block.wood.place");
     private static final Key LID_SOUND = Key.of("minecraft:block.barrel.close");
-    private static final String STOVE_BLOCK_ID = "kaleidoscopecookery:stove";
+    public static final Key STOVE_BLOCK_KEY = Key.of("kaleidoscopecookery:stove");
 
     public int campfireStackHeight = 8;
     public int stoveStackHeight = 16;
@@ -113,10 +110,16 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onEntityRemove(EntityRemoveFromWorldEvent event) {
-        if (event.getEntity() instanceof FallingBlock) {
-            pendingData.remove(event.getEntity());
+    // 由 SteamerFallingBlockListener 在领地插件取消落地事件、且落点不受支撑时调用 
+    // 此时 CE 不会再触发 onLand / onBrokenAfterFall 需手动掉落以免蒸笼及内容物丢失 
+    public static void dropPendingSteamer(Object level, Object blockPos, Object fallingBlockEntity) {
+        PendingData data = pendingData.remove(fallingBlockEntity);
+        if (data == null) {
+            return;
+        }
+        SteamerBehavior behavior = data.steamerState.behavior().getFirst(SteamerBehavior.class);
+        if (behavior != null) {
+            behavior.dropSteamer(level, blockPos, data);
         }
     }
 
@@ -138,29 +141,31 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
             return InteractionResult.PASS;
         }
 
-        // 领地权限校验
         BlockPos clickedPos = context.getClickedPos();
-        Location agLoc = new Location((org.bukkit.World) level.platformWorld(), clickedPos.x(), clickedPos.y(), clickedPos.z());
-        if (!KaleidoscopeCookeryPlugin.antiGrief().test((org.bukkit.entity.Player) player.platformPlayer(), Flag.INTERACT, agLoc)) {
+        if (!InteractGuard.canInteract(player, level, clickedPos)) {
             return InteractionResult.PASS;
         }
 
-        InteractionHand hand = context.getHand();
+        // 蒸笼操作不涉及工具 只认主手 副手触发直接放行
+        if (context.getHand() == InteractionHand.OFF_HAND) {
+            return InteractionResult.PASS;
+        }
+        InteractionHand hand = InteractionHand.MAIN_HAND;
         Item itemInHand = player.getItemInHand(hand);
 
-        // 潜行 + 空手：开关盖子
+        // 潜行 + 空手 开关盖子
         if (itemInHand.isEmpty() && player.isSecondaryUseActive()) {
             return handleLid(context, level, world, player, hand);
         }
-        // 手持蒸笼方块：叠笼
+        // 手持蒸笼方块 叠笼
         if (!itemInHand.isEmpty() && isThisSteamerItem(itemInHand)) {
             return handleStackSteamer(context, state, level, player, hand, itemInHand);
         }
-        // 手持其他物品：放料
+        // 手持其他物品 放料
         if (!itemInHand.isEmpty()) {
             return handlePlaceFood(context, level, world, player, hand, itemInHand);
         }
-        // 空手：取料
+        // 空手 取料
         return handleTakeFood(controller, player, hand);
     }
 
@@ -180,23 +185,30 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         // 向上找到第一个可放置的层
         BlockPos placePos = context.getClickedPos();
         ImmutableBlockState walkState = state;
+        int guard = 0;
         while (walkState != null
                 && walkState.owner().value() == super.blockDefinition
                 && !walkState.get(hasLidProperty)
-                && walkState.get(typeProperty) == SlabType.DOUBLE) {
+                && walkState.get(typeProperty) == SlabType.DOUBLE
+                && guard++ < 256) {
             placePos = placePos.above();
             walkState = level.getBlock(placePos).customBlockState();
         }
 
         BlockHitResult hitResult = new BlockHitResult(context.getClickedLocation(), Direction.UP, placePos, false);
         BlockPlaceContext placeContext = new BlockPlaceContext(level, player, hand, itemInHand, hitResult);
+        // 叠笼实际放置点是向上 walk 出的新位置 与点击位可能跨领地 放动作前再校验目标位置
+        if (!InteractGuard.canInteract(player, level, placePos)) {
+            return InteractionResult.SUCCESS_AND_CANCEL;
+        }
+
         ImmutableBlockState targetState = level.getBlock(placePos).customBlockState();
 
         boolean canStackHere = targetState == null
                 || level.getBlock(placePos).canBeReplaced(placeContext)
                 || (targetState.owner().value() == super.blockDefinition
-                    && targetState.get(typeProperty) == SlabType.BOTTOM
-                    && !targetState.get(hasLidProperty));
+                && targetState.get(typeProperty) == SlabType.BOTTOM
+                && !targetState.get(hasLidProperty));
         if (canStackHere) {
             return placeSteamer(placeContext);
         }
@@ -206,20 +218,18 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     private InteractionResult handlePlaceFood(UseOnContext context, World level, CEWorld world, Player player, InteractionHand hand, Item itemInHand) {
         int placed = placeFoodAcrossStack(level, world, context.getClickedPos(), itemInHand, player);
         if (placed > 0) {
-            if (!player.canInstabuild()) {
-                itemInHand.shrink(placed);
-            }
+            InventoryUtils.shrinkHeld(player, itemInHand, placed);
             player.swingHand(hand);
             playSound(level, Vec3d.atCenterOf(context.getClickedPos()), PLACE_SOUND);
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
-        // placed == 0 为非食材，放行；-1 为蒸笼已满
+        // placed == 0 为非食材 放行；-1 为蒸笼已满
         return placed == 0 ? InteractionResult.PASS : InteractionResult.SUCCESS_AND_CANCEL;
     }
 
     private InteractionResult handleTakeFood(SteamerController controller, Player player, InteractionHand hand) {
         Item extracted = controller.takeFood(player);
-        if (extracted != null && !extracted.isEmpty()) {
+        if (!extracted.isEmpty()) {
             InventoryUtils.giveOrHold(player, hand, extracted);
             player.swingHand(hand);
             return InteractionResult.SUCCESS_AND_CANCEL;
@@ -320,7 +330,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         Object belowPos = LocationUtils.below(LocationUtils.toBlockPos(stackBottom(level, anyPos)));
         Object belowState = BlockGetterProxy.INSTANCE.getBlockState(nmsLevel, belowPos);
         ImmutableBlockState belowCustom = BlockStateUtils.getOptionalCustomBlockState(belowState).orElse(null);
-        if (belowCustom != null && belowCustom.owner().value().id().toString().equals(STOVE_BLOCK_ID)) {
+        if (belowCustom != null && belowCustom.owner().value().id().equals(STOVE_BLOCK_KEY)) {
             return stoveStackHeight;
         }
         if (HeatSourceUtils.isHeatSource(nmsLevel, belowPos)) {
@@ -369,9 +379,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         BlockPos pos = context.getClickedPos();
         LevelWriterProxy.INSTANCE.setBlock(context.getLevel().minecraftWorld(), LocationUtils.toBlockPos(pos), newState.customBlockState().minecraftState(), UPDATE_ALL);
 
-        if (!context.getPlayer().canInstabuild()) {
-            context.getItem().shrink(1);
-        }
+        InventoryUtils.shrinkHeld(context.getPlayer(), context.getItem(), 1);
         context.getPlayer().swingHand(context.getHand());
         playSound(context.getLevel(), Vec3d.atCenterOf(pos), PLACE_SOUND);
 
@@ -399,7 +407,13 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         }
         ImmutableBlockState customState = optionalCustomState.get();
 
-        Object belowPos = LocationUtils.toBlockPos(Vec3iProxy.INSTANCE.getX(blockPos), Vec3iProxy.INSTANCE.getY(blockPos) - 1, Vec3iProxy.INSTANCE.getZ(blockPos));
+        // 世界底部以下不触发下落
+        int minY = DimensionTypeProxy.INSTANCE.getMinY(LevelReaderProxy.INSTANCE.dimensionType(level));
+        if (Vec3iProxy.INSTANCE.getY(blockPos) < minY) {
+            return;
+        }
+
+        Object belowPos = LocationUtils.below(blockPos);
         Object belowState = BlockGetterProxy.INSTANCE.getBlockState(level, belowPos);
 
         if (!FallingBlockProxy.INSTANCE.isFree(belowState)) {
@@ -413,7 +427,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
             return;
         }
 
-        // 快照 NBT 并清空，转交给下落实体
+        // 快照 NBT 并切断原方块实体的掉落 转交给下落实体
         BlockPos pos = LocationUtils.fromBlockPos(blockPos);
         CompoundTag tag = new CompoundTag();
         BlockEntity blockEntity = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(level).getUID()).getBlockEntityAtIfLoaded(pos);
@@ -427,7 +441,12 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         }
 
         Object fallingBlockEntity = FastNMS.INSTANCE.createInjectedFallingBlockEntity(level, blockPos, blockState);
-        pendingData.put(fallingBlockEntity, new PendingData(tag, customState, this.controllerId));
+        PendingData pending = new PendingData(tag, customState, this.controllerId);
+        if (fallingBlockEntity == null) {
+            dropSteamer(level, blockPos, pending);
+            return;
+        }
+        pendingData.put(fallingBlockEntity, pending);
     }
 
     @Override
@@ -443,7 +462,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         BlockPos landPos = LocationUtils.fromBlockPos(blockPos);
         CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(level).getUID());
 
-        // 标记落地方块为下落中，避免 onRemove 误掉落
+        // 标记落地方块为下落中 避免 onRemove 误掉落
         BlockEntity landingEntity = ceWorld.getBlockEntityAtIfLoaded(landPos);
         if (landingEntity != null) {
             SteamerController landingController = landingEntity.controller.get(SteamerController.class, this.controllerId);
@@ -452,14 +471,14 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
             }
         }
 
-        Object belowPos = LocationUtils.toBlockPos(Vec3iProxy.INSTANCE.getX(blockPos), Vec3iProxy.INSTANCE.getY(blockPos) - 1, Vec3iProxy.INSTANCE.getZ(blockPos));
+        Object belowPos = LocationUtils.below(blockPos);
         if (!isLandingSupported(level, belowPos)) {
-            LevelWriterProxy.INSTANCE.setBlock(level, blockPos, BlocksProxy.AIR$defaultState, 2);
+            LevelWriterProxy.INSTANCE.setBlock(level, blockPos, BlocksProxy.AIR$defaultState, UPDATE_ALL);
             dropSteamer(level, blockPos, data);
             return;
         }
 
-        LevelWriterProxy.INSTANCE.setBlock(level, blockPos, data.steamerState.customBlockState().minecraftState(), 2);
+        LevelWriterProxy.INSTANCE.setBlock(level, blockPos, data.steamerState.customBlockState().minecraftState(), UPDATE_ALL);
         BlockEntity blockEntity = ceWorld.getBlockEntityAtIfLoaded(landPos);
         if (blockEntity != null) {
             SteamerController controller = blockEntity.controller.get(SteamerController.class, data.controllerId);
@@ -494,7 +513,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         if (belowCustom.owner().value() == super.blockDefinition) {
             return true;
         }
-        return belowCustom.owner().value().id().toString().equals(STOVE_BLOCK_ID);
+        return belowCustom.owner().value().id().equals(STOVE_BLOCK_KEY);
     }
 
     private void dropSteamer(Object level, Object blockPos, PendingData data) {
@@ -503,7 +522,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
             BlockPos pos = LocationUtils.fromBlockPos(blockPos);
             Vec3d dropPos = Vec3d.atCenterOf(pos);
 
-            CompoundTag sd = data.tag.getCompound("steamer_data");
+            CompoundTag sd = data.tag.getCompound(SteamerController.DATA_KEY);
             if (sd != null) {
                 ListTag itemsTag = sd.getList("items");
                 if (itemsTag != null) {
@@ -519,12 +538,12 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
 
             int amount = (data.steamerState.get(this.typeProperty) == SlabType.DOUBLE) ? 2 : 1;
             Key steamerKey = data.steamerState.owner().value().id();
-            Item steamerItem = BukkitItemManager.instance().createWrappedItem(steamerKey, null);
-            if (steamerItem != null) {
+            Item steamerItem = InventoryUtils.createOrEmpty(steamerKey);
+            if (!ItemUtils.isEmpty(steamerItem)) {
                 ceWorld.world().dropItemNaturally(dropPos, steamerItem.copyWithCount(amount));
             }
         } catch (Exception e) {
-            CraftEngine.instance().logger().error("无法掉落蒸笼，出错，请报告作者", e);
+            KaleidoscopeCookeryPlugin.instance().getLogger().log(Level.SEVERE, "无法掉落蒸笼，出错，请报告作者", e);
         }
     }
 
@@ -539,13 +558,13 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         }
 
         Object level = context.getLevel().minecraftWorld();
-        Object belowPos = LocationUtils.below(LocationUtils.toBlockPos(clickedPos));
 
         ImmutableBlockState belowCustomState = context.getLevel().getBlock(clickedPos.below()).customBlockState();
         if (belowCustomState != null && belowCustomState.owner().value() == super.blockDefinition) {
             return state.with(this.typeProperty, SlabType.BOTTOM).with(this.facingProperty, context.getHorizontalDirection()).with(this.hasBaseProperty, shouldHasBase(level, clickedPos));
         }
 
+        Object belowPos = LocationUtils.below(LocationUtils.toBlockPos(clickedPos));
         if (!HeatSourceUtils.isHeatSource(level, belowPos)) {
             if (context.getPlayer() != null) {
                 context.getPlayer().sendActionBar(Component.text(msgNeedStove));
@@ -597,12 +616,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
             return args[2];
         }
 
-        // 创造模式破坏不掉落
-        if (isCreativePlayer(nmsPlayer)) {
-            c.markCreativeBreak();
-        }
-
-        // 蒸笼装满成品被破坏时触发事件，取消则跳过成品特殊掉落
+        // 蒸笼装满成品被破坏时触发事件 取消则跳过成品特殊掉落
         if (c.isFullOfFinishedProducts()) {
             org.bukkit.entity.Player bukkitPlayer = bukkitPlayer(nmsPlayer);
             if (bukkitPlayer != null) {
@@ -618,7 +632,6 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         return args[2];
     }
 
-    // 缓存 ServerPlayer#getBukkitEntity 反射方法
     private static volatile Method GET_BUKKIT_ENTITY;
 
     private static org.bukkit.entity.Player bukkitPlayer(Object nmsPlayer) {
@@ -636,11 +649,6 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private boolean isCreativePlayer(Object nmsPlayer) {
-        org.bukkit.entity.Player p = bukkitPlayer(nmsPlayer);
-        return p != null && p.getGameMode() == org.bukkit.GameMode.CREATIVE;
     }
 
     @Override
@@ -664,7 +672,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         Object belowNmsPos = LocationUtils.below(LocationUtils.toBlockPos(pos));
         Object belowState = BlockGetterProxy.INSTANCE.getBlockState(level, belowNmsPos);
         ImmutableBlockState belowCustomState = BlockStateUtils.getOptionalCustomBlockState(belowState).orElse(null);
-        if (belowCustomState != null && belowCustomState.owner().value().id().toString().equals(STOVE_BLOCK_ID)) {
+        if (belowCustomState != null && belowCustomState.owner().value().id().equals(STOVE_BLOCK_KEY)) {
             return false; // 炉灶不带底座
         }
         return HeatSourceUtils.isHeatSource(level, belowNmsPos);

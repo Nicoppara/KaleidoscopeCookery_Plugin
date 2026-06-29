@@ -12,18 +12,27 @@ import net.momirealms.sparrow.reflection.SReflection;
 
 import java.lang.reflect.Field;
 
-// 热源判定：检查某方块是否为点燃的热源（原版 LIT 属性、岩浆/火/营火等，及自定义方块的 lit 属性）
+// 热源判定 检查某方块是否为点燃的热源 原版 LIT 属性 岩浆 火 营火等 及自定义方块的 lit 属性
 public final class HeatSourceUtils {
+    private HeatSourceUtils() {}
+
     private static final Object LIT_PROPERTY;
 
-    // TODO: 反射获取原版 LIT 属性，类名/字段名硬编码，正式版需要重写
+    // 原版热源方块 id 缓存为 Key 直接比对 避免每次热源判定都 toString 分配字符串
+    private static final Key MAGMA_BLOCK = Key.of("minecraft:magma_block");
+    private static final Key FIRE = Key.of("minecraft:fire");
+    private static final Key SOUL_FIRE = Key.of("minecraft:soul_fire");
+    private static final Key LAVA = Key.of("minecraft:lava");
+    private static final Key CAMPFIRE = Key.of("minecraft:campfire");
+    private static final Key SOUL_CAMPFIRE = Key.of("minecraft:soul_campfire");
+
     static {
         try {
             Class<?> blockStatePropertiesClass = Class.forName("net.minecraft.world.level.block.state.properties.BlockStateProperties");
             Field field = ReflectionUtils.getDeclaredField(blockStatePropertiesClass, "LIT");
             LIT_PROPERTY = field.get(null);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to get LIT property", e);
+            throw new RuntimeException("获取 LIT 属性失败", e);
         }
     }
 
@@ -50,10 +59,8 @@ public final class HeatSourceUtils {
 
         // 检查原版热源方块
         Key blockId = BlockStateUtils.getBlockOwnerIdFromState(blockState);
-        String blockIdString = blockId.toString();
-
-        if (isHeatSourceBlockId(blockIdString)) {
-            if (blockIdString.equals("minecraft:campfire") || blockIdString.equals("minecraft:soul_campfire")) {
+        if (isHeatSourceBlockId(blockId)) {
+            if (blockId.equals(CAMPFIRE) || blockId.equals(SOUL_CAMPFIRE)) {
                 if (StateHolderProxy.INSTANCE.hasProperty(blockState, LIT_PROPERTY)) {
                     Object litValue = StateHolderProxy.INSTANCE.getValue(blockState, LIT_PROPERTY);
                     return litValue instanceof Boolean && (Boolean) litValue;
@@ -66,13 +73,13 @@ public final class HeatSourceUtils {
         return isCustomHeatSource(blockState);
     }
 
-    private static boolean isHeatSourceBlockId(String blockId) {
-        return blockId.equals("minecraft:magma_block") ||
-                blockId.equals("minecraft:fire") ||
-                blockId.equals("minecraft:soul_fire") ||
-                blockId.equals("minecraft:lava") ||
-                blockId.equals("minecraft:campfire") ||
-                blockId.equals("minecraft:soul_campfire");
+    private static boolean isHeatSourceBlockId(Key blockId) {
+        return blockId.equals(MAGMA_BLOCK) ||
+                blockId.equals(FIRE) ||
+                blockId.equals(SOUL_FIRE) ||
+                blockId.equals(LAVA) ||
+                blockId.equals(CAMPFIRE) ||
+                blockId.equals(SOUL_CAMPFIRE);
     }
 
     private static boolean isCustomHeatSource(Object blockState) {

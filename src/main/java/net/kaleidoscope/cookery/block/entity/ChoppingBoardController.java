@@ -1,6 +1,5 @@
 package net.kaleidoscope.cookery.block.entity;
 import net.kaleidoscope.cookery.block.behavior.ChoppingBoardBehavior;
-import net.kaleidoscope.cookery.block.entity.render.ChoppingBoardElement;
 
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -20,15 +19,15 @@ import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.food.ApplianceFoodRegistry;
-import net.kaleidoscope.cookery.recipe.food.ChoppingBoardRecipe;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
+import net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-// 砧板方块实体控制器
 public class ChoppingBoardController extends BlockEntityController {
+    private static final String DATA_KEY = "kaleidoscopecookery:chopping_board";
 
     private final ChoppingBoardBehavior behavior;
     private final ChoppingBoardElement element;
@@ -97,7 +96,7 @@ public class ChoppingBoardController extends BlockEntityController {
         return currentStage;
     }
 
-    // 当前阶段的展示模型路径，无料时返回 null
+    // 当前阶段的展示模型路径 无料时返回 null
     public String currentStageModel() {
         if (isEmpty()) {
             return null;
@@ -147,9 +146,10 @@ public class ChoppingBoardController extends BlockEntityController {
             return CutResult.ADVANCED;
         }
 
-        Item result = FoodRecipeRegistry.instance().pickChoppingResult(recipe);
-        if (result != null && !result.isEmpty()) {
-            DropUtils.dropAtCenter(super.blockEntity, result);
+        for (Item result : FoodRecipeRegistry.instance().rollChoppingResults(recipe)) {
+            if (!result.isEmpty()) {
+                DropUtils.dropAtCenter(super.blockEntity, result);
+            }
         }
         clearBoard();
         return CutResult.FINISHED;
@@ -157,7 +157,7 @@ public class ChoppingBoardController extends BlockEntityController {
 
     public Item takeBack() {
         if (isEmpty()) {
-            return null;
+            return Item.empty();
         }
         Item ret = placedItem;
         clearBoard();
@@ -212,12 +212,12 @@ public class ChoppingBoardController extends BlockEntityController {
         if (!placedItem.isEmpty()) {
             data.put("item", ItemStackUtils.saveMinecraftItemStackAsTag(placedItem.minecraftItem()));
         }
-        tag.put("chopping_board_data", data);
+        tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
-        CompoundTag data = tag.getCompound("chopping_board_data");
+        CompoundTag data = tag.getCompound(DATA_KEY);
         if (data == null) {
             return;
         }

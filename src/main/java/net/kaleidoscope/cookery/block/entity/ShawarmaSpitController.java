@@ -1,6 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
+
 import net.kaleidoscope.cookery.block.behavior.ShawarmaSpitBehavior;
-import net.kaleidoscope.cookery.block.entity.render.ShawarmaSpitElement;
 
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -27,18 +27,19 @@ import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.EventUtils;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.food.ApplianceFoodRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 
 import java.util.Arrays;
 import java.util.function.Consumer;
 
-// 烤肉串方块实体 控制器只挂在下半，内部按两层独立管理食材（互不串层）
-// 红石通电且全空或仍有生料时整串旋转并烹饪，全是成品则停转
 public class ShawarmaSpitController extends BlockEntityController {
-    public static final int LAYERS = 2;   // 0=下层, 1=上层
-    public static final int SLOTS = 8;    // 每层槽数
+    // 0 下层 1 上层
+    public static final int LAYERS = 2;
+    // 每层槽数
+    public static final int SLOTS = 8;
+    private static final String DATA_KEY = "kaleidoscopecookery:shawarma_spit";
 
     private final ShawarmaSpitBehavior behavior;
     private final boolean lower;
@@ -178,7 +179,7 @@ public class ShawarmaSpitController extends BlockEntityController {
         element.removeSlot(layer, s);
     }
 
-    // 空手右键取出：有成品则一键取走该层所有成品，否则取走 1 个生料
+    // 空手右键取出 有成品则一键取走该层所有成品 否则取走 1 个生料
     public boolean takeFromLayer(int layer, Player player, InteractionHand hand) {
         boolean hasCooked = false;
         for (int s = 0; s < SLOTS; s++) {
@@ -200,7 +201,7 @@ public class ShawarmaSpitController extends BlockEntityController {
         return took;
     }
 
-    // 取走该层全部成品，逐个触发 ShawarmaExtractEvent
+    // 取走该层全部成品 逐个触发 ShawarmaExtractEvent
     private boolean takeCookedProducts(int layer, Player player) {
         boolean took = false;
         for (int s = 0; s < SLOTS; s++) {
@@ -301,7 +302,8 @@ public class ShawarmaSpitController extends BlockEntityController {
         if (!lower) {
             return;
         }
-        tag.putInt("data_version", VersionHelper.WORLD_VERSION);
+        CompoundTag data = new CompoundTag();
+        data.putInt("data_version", VersionHelper.WORLD_VERSION);
         ListTag itemsTag = new ListTag();
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
@@ -317,8 +319,9 @@ public class ShawarmaSpitController extends BlockEntityController {
                 itemsTag.add(entry);
             }
         }
-        tag.put("items", itemsTag);
-        tag.putFloat("current_rotation", currentRotation);
+        data.put("items", itemsTag);
+        data.putFloat("current_rotation", currentRotation);
+        tag.put(DATA_KEY, data);
     }
 
     @Override
@@ -326,14 +329,17 @@ public class ShawarmaSpitController extends BlockEntityController {
         if (!lower) {
             return;
         }
-        int dataVersion = tag.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
         for (int l = 0; l < LAYERS; l++) {
             Arrays.fill(items[l], Item.empty());
             Arrays.fill(cookingProgress[l], 0);
             Arrays.fill(cookingTime[l], 0);
         }
 
-        ListTag itemsTag = tag.getList("items");
+        CompoundTag data = tag.getCompound(DATA_KEY);
+        if (data == null) return;
+        int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
+
+        ListTag itemsTag = data.getList("items");
         if (itemsTag != null) {
             for (Tag t : itemsTag) {
                 if (!(t instanceof CompoundTag entry)) {
@@ -352,7 +358,7 @@ public class ShawarmaSpitController extends BlockEntityController {
                 }
             }
         }
-        currentRotation = tag.getFloat("current_rotation", 0f);
+        currentRotation = data.getFloat("current_rotation", 0f);
 
         element.refreshAllItems();
     }

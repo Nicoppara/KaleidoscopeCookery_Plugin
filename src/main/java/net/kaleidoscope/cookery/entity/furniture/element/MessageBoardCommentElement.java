@@ -21,7 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-// 留言文本渲染元素：用一个 TextDisplay 悬浮展示留言，按最长行宽度做居中偏移补偿
+// 留言文本渲染元素 用一个 TextDisplay 悬浮展示留言 按最长行宽度做居中偏移补偿
 public class MessageBoardCommentElement {
     private double x, y, z;
     private final String text;
@@ -90,7 +90,7 @@ public class MessageBoardCommentElement {
         this.dataPacket = ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(entityId, dataValues);
     }
 
-    // 字符单位数：CJK 计 2，ASCII 计 1
+    // 字符单位数 CJK 计 2 ASCII 计 1
     private int calculateCharUnits(String text) {
         int units = 0;
         for (int i = 0; i < text.length(); i++) {
@@ -104,7 +104,7 @@ public class MessageBoardCommentElement {
         return units;
     }
 
-    // 文本宽度估算（只用于最长行）
+    // 文本宽度估算
     private float calculateTextWidth(String text) {
         float width = 0;
         for (int i = 0; i < text.length(); i++) {

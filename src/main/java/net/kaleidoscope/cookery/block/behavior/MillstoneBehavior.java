@@ -9,14 +9,15 @@ import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureContro
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.util.Key;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
+import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.item.ItemKeys;
 
 public final class MillstoneBehavior extends FurnitureBehaviorTemplate {
     public static final FurnitureBehaviorFactory<MillstoneBehavior> FACTORY = new Factory();
 
-    public int playerGrindTime = 600;
-    public int boostedGrindTime = 300;
-    public int animalGrindTime = 300;
+    public int animChunkRadius = TrackedPlayers.DEFAULT_ANIM_CHUNK_RADIUS;
+    // 默认每料研磨所需圈数 精准配方可各自用 rotations 覆盖 真实耗时由拉磨者转速(秒/圈)决定
+    public int grindRotations = 4;
     public Key stickItem = ItemKeys.NEW_MILLSTONE_STICK;
     public Key stick2Item = ItemKeys.NEW_MILLSTONE_STICK2;
     public Key stoneItem = ItemKeys.NEW_MILLSTONE_STONE;
@@ -40,12 +41,11 @@ public final class MillstoneBehavior extends FurnitureBehaviorTemplate {
         @Override
         public MillstoneBehavior create(FurnitureDefinition furniture, ConfigSection section) {
             MillstoneBehavior b = new MillstoneBehavior(furniture);
-            b.playerGrindTime = BehaviorConfig.getInt(section, b.playerGrindTime, "player_grind_time", "player-grind-time");
-            b.boostedGrindTime = BehaviorConfig.getInt(section, b.boostedGrindTime, "boosted_grind_time", "boosted-grind-time");
-            b.animalGrindTime = BehaviorConfig.getInt(section, b.animalGrindTime, "animal_grind_time", "animal-grind-time");
-            b.stickItem = Key.of(BehaviorConfig.getString(section, b.stickItem.toString(), "stick_item", "stick-item"));
-            b.stick2Item = Key.of(BehaviorConfig.getString(section, b.stick2Item.toString(), "stick2_item", "stick2-item"));
-            b.stoneItem = Key.of(BehaviorConfig.getString(section, b.stoneItem.toString(), "stone_item", "stone-item"));
+            b.animChunkRadius = BehaviorConfig.getInt(section, b.animChunkRadius, "animation_view_distance", "animation-view-distance");
+            b.grindRotations = BehaviorConfig.getInt(section, b.grindRotations, "grind_rotations", "grind-rotations");
+            b.stickItem = Key.of(BehaviorConfig.getString(section, b.stickItem.asString(), "stick_item", "stick-item"));
+            b.stick2Item = Key.of(BehaviorConfig.getString(section, b.stick2Item.asString(), "stick2_item", "stick2-item"));
+            b.stoneItem = Key.of(BehaviorConfig.getString(section, b.stoneItem.asString(), "stone_item", "stone-item"));
             b.msgAlreadyPushing = BehaviorConfig.getString(section, b.msgAlreadyPushing, "msg_already_pushing", "msg-already-pushing");
             b.msgNeedGroundBelow = BehaviorConfig.getString(section, b.msgNeedGroundBelow, "msg_need_ground_below", "msg-need-ground-below");
             b.msgUneven = BehaviorConfig.getString(section, b.msgUneven, "msg_uneven", "msg-uneven");

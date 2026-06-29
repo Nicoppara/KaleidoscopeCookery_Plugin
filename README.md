@@ -1,17 +1,17 @@
 # KaleidoscopeCookeryPlugin
 
-基于 [CraftEngine](https://github.com/Xiao-MoMi/craft-engine) 的中式烹饪玩法插件：炒锅、高汤锅、蒸笼、搪瓷盆、砧板、石磨、沙威玛烤架、厨具架、吧台凳、留言板等家具与配套配方系统。
+基于 [CraftEngine](https://github.com/Xiao-MoMi/craft-engine) 的中式烹饪玩法插件：炒锅、高汤锅、蒸笼、搪瓷盆、砧板、石磨、沙威玛烤架、厨具架、垃圾桶等家具与配套配方系统。
 
 - 包名：`net.kaleidoscope.cookery`
 - 主类：`net.kaleidoscope.cookery.KaleidoscopeCookeryPlugin`
 - 物品命名空间：主物品 `kaleidoscopecookery:`，纯展示模型 `show:`
 - 行为类型命名空间：`kaleidoscopecookery:`
 
-> 修改物品 / 行为 Key 命名空间时，CraftEngine 端对应的资源与配置（yml）必须同步修改，否则运行时找不到物品或行为。
+> 修改物品 / 行为 Key 命名空间时，CE 端对应的资源与配置（yml）必须同步修改，否则运行时找不到物品或行为。
 
 ## 依赖与构建
 
-- 运行环境：Paper，需要安装 CraftEngine（`plugin.yml` 中声明为前置且 `load: BEFORE`）。
+- 运行环境：Paper，需要安装 CE（`plugin.yml` 中声明为前置且 `load: BEFORE`）。
 - 领地保护：内置打包 [AntiGriefLib](https://github.com/Xiao-MoMi/AntiGriefLib)（shadow 重定位到 `net.kaleidoscope.cookery.libs.antigrieflib`），自动复用服务器上的领地 / 保护插件做交互与破坏判定。
 - 构建产物：`./gradlew shadowJar` → `build/libs/KaleidoscopeCookeryPlugin-<version>-all.jar`。
 
@@ -20,9 +20,14 @@
 所有家具的右键交互入口都会先经过 AntiGriefLib 判定，无权限玩家无法在他人领地内使用。
 拥有权限节点 `kaleidoscopecookery.antigrief.bypass` 的玩家可绕过该判定。
 
+### 交互约定
+
+- 主副手：炒菜、切菜、盖锅盖、敲瓷盆等一切工具操作优先检测副手，副手没有再用主手；取放食材与成品只认主手。副手触发工具时不会再触发主手事件。
+- 创造模式：交互不消耗手中物品；破坏家具不会掉落家具本身，但 `onRemove` 中储存的内容物仍会掉落出来。
+
 ## API / 事件
 
-插件在 `net.kaleidoscope.cookery.api.event` 下提供 CraftEngine 风格的 Bukkit 事件，可被其他插件监听（玩法触发器）。事件通过 `net.kaleidoscope.cookery.util.EventUtils` 触发，可取消的事件被取消后会跳过对应行为，未取消时行为与原版一致。
+插件在 `net.kaleidoscope.cookery.api.event` 下提供 CE 风格的 Bukkit 事件，可被其他插件监听（玩法触发器）。事件通过 `net.kaleidoscope.cookery.util.EventUtils` 触发，可取消的事件被取消后会跳过对应行为，未取消时行为与原版一致。
 
 | 事件 | 触发时机 | 可取消 |
 |------|----------|--------|
@@ -52,7 +57,6 @@ public void onExtract(PotExtractDishEvent event) {
 ```yaml
 behaviors:
   - type: kaleidoscopecookery:cooking_pot
-    data_key: "kaleidoscopecookery:cooking_pot"
     stir_fry_count: 6            # 出锅所需翻炒次数
     cook_done_time: 200          # 出锅后多少 tick 进入烧焦阶段（-1 = 永不烧焦）
     burnt_to_charcoal_time: 400  # 烧焦后多少 tick 变成木炭
@@ -161,14 +165,12 @@ behaviors:
 
 ### 石磨 `kaleidoscopecookery:millstone`
 
-玩家推磨或生物拉磨研磨食材；进度按 `当前模式时间` 推导。
+玩家推磨或拴绳牵生物拉磨研磨食材。**研磨按圈数产出**：转满所需圈数产出一批，真实耗时由拉磨者的转速（秒/圈）决定——转得慢就产得慢。转速按各生物的拉一圈秒数，见下方 `millstone_animals`；玩家与村民被打时会临时加速到骡子的速度。每种食材的所需圈数默认取 `grind_rotations`，精准配方可用 `rotations` 各自覆盖。
 
 ```yaml
 behaviors:
   - type: kaleidoscopecookery:millstone
-    player_grind_time: 600       # 玩家普通推磨磨完一批所需 tick
-    boosted_grind_time: 300      # 玩家受击加速后磨完一批所需 tick
-    animal_grind_time: 300       # 生物拉磨磨完一批所需 tick
+    grind_rotations: 4           # 每料产出所需圈数 默认 精准配方可用 rotations 覆盖
     stick_item: "show:new_millstone_stick"     # 中心自转棍展示模型
     stick2_item: "show:new_millstone_stick2"   # 公转支架展示模型
     stone_item: "show:new_millstone_stone"     # 横向滚动磨石展示模型
@@ -180,11 +182,61 @@ behaviors:
     msg_stop_animal_hint: "§e手持剪刀 Shift+右键 石磨可停止生物拉磨"
 ```
 
+#### 拉磨生物 `millstone_animals`
+
+配置每种生物拉磨一圈的秒数 是否允许拉磨 以及原版不可拴的生物是否强制拴绳。作为独立的配置节解析 随 CE 重载生效。不写则使用下方内置默认值。
+
+```yaml
+millstone_animals:
+  cow:
+    seconds: 40                 # 拉一圈所需秒数 数值越小越快
+    allowed: true               # 是否允许该生物拉磨
+    force_leash: false          # 原版不能被拴的生物 设 true 后手持拴绳右键可强制拴上
+    interaction_disabled: true  # 拉磨时是否禁用对它的右键 驴骡开箱加料始终放行
+    orbit_radius: 2.5           # 绕磨半径 即起始与行走位置离磨心的距离
+  villager:
+    seconds: 7.5
+    allowed: true
+    force_leash: true
+```
+
+内置默认（单位 秒每圈）：骡 6 村民 7.5 驴 10 马 / 骷髅马 25 羊驼 / 行商羊驼 30 牛 / 哞菇 40 绵羊 / 山羊 50。
+
+想接入 MythicMobs 等插件的自定义生物 或在代码里覆盖速度、起始位置、是否禁右键等 注册一个 Provider 即可。公开 API 类在 `net.kaleidoscope.cookery.api.MillstoneAnimals`。三参构造沿用默认（禁右键、半径 2.5），全参构造可覆盖更多：
+
+```java
+import net.kaleidoscope.cookery.api.MillstoneAnimals;
+
+// Profile(秒每圈, 是否允许, 是否强制拴绳, 是否禁右键, 绕磨半径)
+MillstoneAnimals.instance().addProvider(entity ->
+        isMyCustomMob(entity) ? new MillstoneAnimals.Profile(20, true, true, false, 3.0) : null);
+```
+
+石磨支持的生物的刷怪蛋右键石磨即可直接生成并开始拉磨。
+
+### 垃圾桶 `kaleidoscopecookery:trashcan`
+
+家具行为。支持投放、取出与进入桶内躲藏。
+
+- 手持物品右键投放，最多存 3 件，满了挤掉最旧的一件。
+- 空手右键取出（倒序返还）。
+- 跳起落到桶顶、落差大于 1 自动进入桶内：切旁观并把视角固定到桶口的相机实体，戴雕刻南瓜头由客户端渲染遮罩，潜行退出。
+- 投放、取出、进入分别播放桶盖开合、进入摆动与占用待机（开盖加眼睛冒出）动画；有玩家在里面时禁止投放取出，桶内掉落物对所有人隐藏（仍保存）。
+
+需在家具定义里挂上该行为，渲染才会接管桶身、桶盖、眼睛与掉落物：
+
+```yaml
+behaviors:
+  - type: kaleidoscopecookery:trashcan
+```
+
+> 进入桶内的遮罩复用原版南瓜头覆盖层：把资源包的 `assets/minecraft/textures/misc/pumpkinblur.png` 替换成垃圾桶遮罩（透明缝隙版），戴南瓜时看到的就是它。这是全局的，戴真南瓜也会变这个图。
+
 ### 其它行为
 
 无额外配置项，直接挂载即可：
 
-- 厨具架 `kaleidoscopecookery:kitchenware_racks`（`data_key` 默认 `kaleidoscopecookery:kitchenware_racks`）
+- 厨具架 `kaleidoscopecookery:kitchenware_racks`
 - 吧台凳 `kaleidoscopecookery:bar_stool`
 - 配方展示家具 `kaleidoscopecookery:recipe_furniture`
 - 留言板（家具）`kaleidoscopecookery:message_board`
@@ -242,25 +294,58 @@ stock_flex_foods:
 
 ### 精准配方
 
+单输入对单输出。`result` 可写成标量（1 比 1，100% 产出），也可写成 `"物品 权重"` 列表，按权重随机产出一个。`cook` 必填（millstone / shawarma / steamer）。
+
 ```yaml
 accurate_foods:
   kaleidoscopecookery:shawarma_cooked_beef:   # 配方名（任意）
     require: kaleidoscopecookery:beef          # 原料（输入）
-    result: kaleidoscopecookery:cooked_beef    # 成品（输出）
+    result: kaleidoscopecookery:cooked_beef    # 成品（输出 标量 = 100%）
     cook: shawarma
     lore:
       - "沙威玛烤架烤出来的肉，有股木香"
+```
+
+石磨配方可在 `require` 下加 `rotations` 指定产出所需圈数（不写则用 behavior 的 `grind_rotations` 默认）。`rotations` **仅石磨可用**，写在非石磨配方上会在后台报错并跳过该配方。`result` 用权重列表时按权重随机出一个：
+
+```yaml
+accurate_foods:
+  kaleidoscopecookery:millstone_iron_ore:
+    require: minecraft:iron_ore
+    rotations: 6                  # 转满 6 圈产出 仅石磨可用
+    result:
+      - minecraft:iron_ingot 45   # 权重 45
+      - minecraft:gold_ingot 45   # 权重 45
+    cook: millstone
 ```
 
 ### 砧板配方
 
 ```yaml
 chopping_board_raws:
-  kaleidoscopecookery:cod:        # 配方名（任意）
-    require: minecraft:cod        # 原料（输入），仅 require 中存在的物品可放上砧板
-    stage: 5                      # 阶段数；放下 = 阶段 1（模型 .../0），每切一刀 +1，切满产出
-    values: cb:block/.../cod      # 模型 id 前缀；按 stage 自动派生 0 ~ stage-1
-    result:                       # "物品 数量 权重"，可重复；缺数量默认 1，缺权重默认 100
+  kaleidoscopecookery:cod:        # 配方名 任意
+    require: minecraft:cod        # 原料 输入 仅 require 中存在的物品可放上砧板
+    stage: 5                      # 阶段数 放下 = 阶段 1 模型 .../0 每切一刀 +1 切满产出
+    values: cb:block/.../cod      # 模型 id 前缀 按 stage 自动派生 0 ~ stage-1
+    mode: single                  # 产出模式 single 单产物 single_extra 单产物加附带 multi_random 多产物随机
+    result: minecraft:cooked_cod 1   # single 与 single_extra 只能一个产物 物品 数量 不需要权重
+```
+
+产出模式说明：
+
+- `single`（默认）：`result` 固定产出一个产物，写成标量或单元素列表都可以，不需要权重；配置多个会报错并跳过该配方。
+- `single_extra`：`result` 同样只配一个主产物，再让 `extra` 列表每一项各自把权重当作百分比独立判定是否附带掉落。
+- `multi_random`：`result` 可配多个，每一项把权重当作百分比独立判定，全部未命中时再按权重保底产出一个。
+
+```yaml
+chopping_board_raws:
+  kaleidoscopecookery:fish_with_bone:
+    require: minecraft:cod
+    stage: 3
+    values: cb:block/.../cod
+    mode: single_extra
+    result:                       # 主产物 必出一个
       - minecraft:cooked_cod 1 100
-      - minecraft:cooked_salmon 1 50
+    extra:                        # 附带产物 权重 = 百分比 各自独立判定
+      - minecraft:bone 1 30       # 30% 概率附带 1 根骨头
 ```

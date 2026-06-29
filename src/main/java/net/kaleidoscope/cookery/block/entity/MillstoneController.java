@@ -1,8 +1,8 @@
 package net.kaleidoscope.cookery.block.entity;
-import net.kaleidoscope.cookery.block.behavior.MillstoneBehavior;
-import net.kaleidoscope.cookery.block.entity.render.MillstoneElement;
 
-import net.momirealms.antigrieflib.Flag;
+import net.kaleidoscope.cookery.api.MillstoneAnimals;
+import net.kaleidoscope.cookery.block.behavior.MillstoneBehavior;
+
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -17,7 +17,9 @@ import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.sound.SoundSource;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.util.UUIDUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.core.world.context.InteractEntityContext;
@@ -26,13 +28,15 @@ import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.ListTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.kaleidoscope.cookery.api.event.MillstoneGrindCompleteEvent;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.util.EventUtils;
+import net.kaleidoscope.cookery.util.Hands;
+import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
+import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.food.ApplianceFoodRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -40,8 +44,12 @@ import org.bukkit.block.Block;
 import org.bukkit.inventory.ItemStack;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 
 public class MillstoneController extends FurnitureController {
@@ -49,7 +57,7 @@ public class MillstoneController extends FurnitureController {
     public static final ConcurrentHashMap<UUID, MillstoneController> ACTIVE_PUSHERS = new ConcurrentHashMap<>();
     public static final ConcurrentHashMap<UUID, MillstoneController> ACTIVE_ANIMAL_PULLERS = new ConcurrentHashMap<>();
 
-    // 罢工标记写在动物自己的 PDC 上，关闭 AI 并禁骑乘/道具交互，直到重新拴绳绑定+正常停止才恢复
+    // 罢工标记写在动物自己的 PDC 上 关闭 AI 并禁骑乘/道具交互 直到重新拴绳绑定+正常停止才恢复
     private static final org.bukkit.NamespacedKey STRUCK_KEY = org.bukkit.NamespacedKey.fromString("kaleidoscopecookery:millstone_struck");
 
     public static boolean isStruck(org.bukkit.entity.Entity e) {
@@ -77,22 +85,25 @@ public class MillstoneController extends FurnitureController {
         }
     }
 
-    private static final float NORMAL_ANGLE_PER_TICK  = 0.9f;
-    private static final float BOOSTED_ANGLE_PER_TICK = 1.2f;
-    private static final float NORMAL_VISUAL_STEP     = 18.0f;
-    private static final float BOOSTED_VISUAL_STEP    = 24.0f;
+    // 当前拉磨者的拉一圈秒数 玩家默认 7.5 生物按各自档案 被打时临时用骡子的速度
+    private float currentSeconds = (float) MillstoneAnimals.PLAYER_SECONDS;
+    // 当前拉磨者的绕磨半径 起始与行走位置离磨心的距离
+    private float currentRadius = (float) MillstoneAnimals.DEFAULT_ORBIT_RADIUS;
 
-    private UUID    pendingAnimalUUID = null;
-    private boolean savedAnimalWasAI  = true;
+    // 视觉旋转每隔几 tick 更新一次
+    private static final int VISUAL_UPDATE_INTERVAL = 5;
+
+    private UUID pendingAnimalUUID = null;
+    private boolean savedAnimalWasAI = true;
 
     private final MillstoneBehavior behavior;
     private final MillstoneElement element;
 
-    private boolean animating    = false;
-    private int     rawTick      = 0;
-    private float   orbitAngle   = 0f;
-    private float   currentAngle = 0f;
-    private boolean boosted      = false;
+    private boolean animating = false;
+    private int rawTick = 0;
+    private float orbitAngle = 0f;
+    private float currentAngle = 0f;
+    private boolean boosted = false;
 
     private Player pullingPlayer = null;
 
@@ -100,15 +111,18 @@ public class MillstoneController extends FurnitureController {
     private boolean animalWasAI = true;
     private org.bukkit.entity.Player leadOwner = null;
 
+    private static final String DATA_KEY = "kaleidoscopecookery:millstone";
+
     public static final int GRIND_SLOTS = 8;
     private final Item[] grindItems = new Item[GRIND_SLOTS];
+    // grindProgress 已转圈数 requiredRotations 该料产出所需圈数
     private final int[] grindProgress = new int[GRIND_SLOTS];
-    private final int[] grindTime = new int[GRIND_SLOTS];
+    private final int[] requiredRotations = new int[GRIND_SLOTS];
 
     public MillstoneController(Furniture furniture, MillstoneBehavior behavior) {
         super(furniture);
         this.behavior = behavior;
-        java.util.Arrays.fill(this.grindItems, Item.empty());
+        Arrays.fill(this.grindItems, Item.empty());
         this.element = new MillstoneElement(this, furniture.position());
     }
 
@@ -143,7 +157,7 @@ public class MillstoneController extends FurnitureController {
         }
         grindItems[i] = item.copyWithCount(1);
         grindProgress[i] = 0;
-        grindTime[i] = behavior.playerGrindTime;
+        requiredRotations[i] = FoodRecipeRegistry.instance().findGrindRotations(item.id(), behavior.grindRotations);
         element.spawnGrindSlot(i, grindItems[i]);
         furniture().setUnsaved();
         return true;
@@ -152,7 +166,7 @@ public class MillstoneController extends FurnitureController {
     private void clearGrindSlot(int i) {
         grindItems[i] = Item.empty();
         grindProgress[i] = 0;
-        grindTime[i] = 0;
+        requiredRotations[i] = 0;
         element.removeGrindSlot(i);
     }
 
@@ -179,19 +193,15 @@ public class MillstoneController extends FurnitureController {
         return true;
     }
 
-    // 研磨 只在被推时由 tick 调用 磨好的成品朝石磨朝向喷出
-    private void grindStep() {
-        int activeTime = pullingAnimal != null ? behavior.animalGrindTime
-                : (boosted ? behavior.boostedGrindTime : behavior.playerGrindTime);
-        int step = Math.max(1, behavior.playerGrindTime / Math.max(1, activeTime));
-
-        java.util.List<Item> products = new java.util.ArrayList<>();
+    // 每转满一圈推进研磨 转够该料所需圈数就产出 真实耗时由转速(秒/圈)决定 转得慢产得慢
+    private void advanceGrind() {
+        List<Item> products = new ArrayList<>();
         for (int i = 0; i < GRIND_SLOTS; i++) {
-            if (grindTime[i] <= 0) {
+            if (grindItems[i].isEmpty()) {
                 continue;
             }
-            grindProgress[i] += step;
-            if (grindProgress[i] >= grindTime[i]) {
+            grindProgress[i]++;
+            if (grindProgress[i] >= requiredRotations[i]) {
                 products.add(getGrindResult(grindItems[i]));
                 clearGrindSlot(i);
             }
@@ -237,7 +247,7 @@ public class MillstoneController extends FurnitureController {
         furniture().setUnsaved();
     }
 
-    // 拴绳从产物口弹出（罢工时）
+    // 拴绳从产物口弹出
     private void ejectLead() {
         org.bukkit.World world = getBukkitWorld();
         double[] dir = facingDir();
@@ -249,11 +259,11 @@ public class MillstoneController extends FurnitureController {
         dropped.setVelocity(new org.bukkit.util.Vector(dir[0] * 0.25, 0.12, dir[1] * 0.25));
     }
 
-    // 磨完一批：触发事件，未被取消则逐个朝石磨朝向喷出
-    private void ejectProducts(java.util.List<Item> products) {
-        java.util.List<org.bukkit.inventory.ItemStack> stacks = new java.util.ArrayList<>();
+    // 磨完一批 触发事件 未被取消则逐个朝石磨朝向喷出
+    private void ejectProducts(List<Item> products) {
+        List<ItemStack> stacks = new ArrayList<>();
         for (Item product : products) {
-            if (product == null || product.isEmpty()) {
+            if (product.isEmpty()) {
                 continue;
             }
             stacks.add(ItemStackUtils.getBukkitStack(product.minecraftItem()));
@@ -313,13 +323,22 @@ public class MillstoneController extends FurnitureController {
         } catch (Exception ignored) {}
     }
 
+    private static final Key[] MILLSTONE_SOUNDS = {
+            Key.of("kaleidoscopecookery:millstone_0"),
+            Key.of("kaleidoscopecookery:millstone_1"),
+            Key.of("kaleidoscopecookery:millstone_2"),
+            Key.of("kaleidoscopecookery:millstone_3"),
+            Key.of("kaleidoscopecookery:millstone_4"),
+            Key.of("kaleidoscopecookery:millstone_5"),
+    };
+
     private void playMillstoneSound(float volume, float pitch) {
-        furniture().position().world().playSound(furniture().position(),
-                Key.of("kaleidoscopecookery:millstone_" + (int) (Math.random() * 6)), volume, pitch, SoundSource.BLOCK);
+        Key sound = MILLSTONE_SOUNDS[ThreadLocalRandom.current().nextInt(MILLSTONE_SOUNDS.length)];
+        furniture().position().world().playSound(furniture().position(), sound, volume, pitch, SoundSource.BLOCK);
     }
 
     private void playGrindSound() {
-        playMillstoneSound(0.5f, 0.9f + (float) Math.random() * 0.2f);
+        playMillstoneSound(0.5f, 0.9f + ThreadLocalRandom.current().nextFloat() * 0.2f);
     }
 
     // 驴/骡自动化
@@ -337,7 +356,7 @@ public class MillstoneController extends FurnitureController {
                 continue;
             }
             Item ce = BukkitItemManager.instance().wrap(stack);
-            if (ce == null || ce.isEmpty() || !canGrind(ce)) {
+            if (ItemUtils.isEmpty(ce) || !canGrind(ce)) {
                 continue;
             }
             while (firstEmptyGrindSlot() >= 0 && stack.getAmount() > 0) {
@@ -424,20 +443,17 @@ public class MillstoneController extends FurnitureController {
             }
             if (leadOwner != null) {
                 if (leadRecipient != null) {
-                    Item lead = BukkitItemManager.instance().createWrappedItem(Key.of("minecraft:lead"), null);
-                    if (lead != null) {
-                        InventoryUtils.give(leadRecipient, lead);
-                    }
+                    InventoryUtils.give(leadRecipient, InventoryUtils.createOrEmpty(ItemKeys.LEAD));
                 } else {
                     ejectLead();
                 }
             }
             pullingAnimal = null;
-            leadOwner     = null;
+            leadOwner = null;
         }
         this.animating = false;
-        this.rawTick   = 0;
-        this.boosted   = false;
+        this.rawTick = 0;
+        this.boosted = false;
         furniture().setUnsaved();
     }
 
@@ -445,8 +461,6 @@ public class MillstoneController extends FurnitureController {
         if (!animating) {
             return;
         }
-
-        grindStep();
 
         if (pullingAnimal != null && rawTick % 100 == 0 && Math.random() < 0.005) {
             strikeAnimal();
@@ -466,12 +480,13 @@ public class MillstoneController extends FurnitureController {
             }
         }
 
-        float anglePerTick = boosted ? BOOSTED_ANGLE_PER_TICK : NORMAL_ANGLE_PER_TICK;
-        float visualStep   = boosted ? BOOSTED_VISUAL_STEP    : NORMAL_VISUAL_STEP;
+        float seconds      = boosted ? (float) MillstoneAnimals.BOOST_SECONDS : currentSeconds;
+        float anglePerTick = MillstoneAnimals.anglePerTick(seconds);
 
-        if (rawTick % 20 == 0) {
-            currentAngle += visualStep;
-            element.updateRotation(currentAngle, 20);
+        // 视觉角度连续累加不归零 配合较短的更新间隔 保证过起点和高速自转时都不会倒转
+        if (rawTick % VISUAL_UPDATE_INTERVAL == 0) {
+            currentAngle += anglePerTick * VISUAL_UPDATE_INTERVAL;
+            element.updateRotation(currentAngle, VISUAL_UPDATE_INTERVAL);
         }
 
         orbitAngle += anglePerTick;
@@ -488,10 +503,10 @@ public class MillstoneController extends FurnitureController {
 
         rawTick++;
 
+        // 转满一圈 推进研磨 只把轨道角归一 视觉角和 rawTick 继续累加 不归零以免出现倒转
         if (orbitAngle >= 360f) {
-            orbitAngle   -= 360f;
-            currentAngle  = 0f;
-            rawTick       = 0;
+            orbitAngle -= 360f;
+            advanceGrind();
             furniture().setUnsaved();
         }
     }
@@ -499,14 +514,14 @@ public class MillstoneController extends FurnitureController {
     // 拉磨者沿轨道的目标点
     private Vector3f orbitOffset() {
         float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-        float animRad      = (float) Math.toRadians(orbitAngle);
-        float radius       = 2.5f;
+        float animRad = (float) Math.toRadians(orbitAngle);
+        float radius = currentRadius;
         Vector3f targetOffset = new Vector3f(-radius, 0f, -0.5f);
         targetOffset.rotateY(furnitureRad + animRad);
         return targetOffset;
     }
 
-    // 玩家推磨移动；返回 false 表示已停止（调用方应中止本 tick）
+    // 玩家推磨移动；返回 false 表示已停止
     private boolean movePusher() {
         org.bukkit.entity.Player bukkitPlayer = org.bukkit.Bukkit.getPlayer(pullingPlayer.uuid());
         if (bukkitPlayer == null) {
@@ -558,7 +573,7 @@ public class MillstoneController extends FurnitureController {
         return true;
     }
 
-    // 生物拉磨移动；返回 false 表示已停止（调用方应中止本 tick）
+    // 生物拉磨移动；返回 false 表示已停止
     private boolean moveAnimal() {
         if (!pullingAnimal.isValid() || pullingAnimal.isDead()) {
             stopSpinning();
@@ -609,8 +624,8 @@ public class MillstoneController extends FurnitureController {
         }
 
         float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-        float startRad     = (float) Math.toRadians(orbitAngle);
-        float radius       = 2.5f;
+        float startRad = (float) Math.toRadians(orbitAngle);
+        float radius = (float) MillstoneAnimals.DEFAULT_ORBIT_RADIUS;
 
         Vector3f startOffset = new Vector3f(-radius, 0f, -0.5f);
         startOffset.rotateY(furnitureRad + startRad);
@@ -628,11 +643,13 @@ public class MillstoneController extends FurnitureController {
             return false;
         }
 
-        this.animating     = true;
-        this.rawTick       = 0;
-        this.boosted       = false;
+        this.animating = true;
+        this.rawTick = 0;
+        this.boosted = false;
+        this.currentSeconds = (float) MillstoneAnimals.PLAYER_SECONDS;
+        this.currentRadius = (float) MillstoneAnimals.DEFAULT_ORBIT_RADIUS;
         this.pullingPlayer = player;
-        this.orbitAngle    = this.currentAngle;
+        this.orbitAngle = this.currentAngle;
 
         register(player.uuid(), this);
 
@@ -659,16 +676,19 @@ public class MillstoneController extends FurnitureController {
         return true;
     }
 
-    // owner 为触发绑定的玩家，停止时退还拴绳；怪物蛋触发时传 null
+    // owner 为触发绑定的玩家 停止时退还拴绳 怪物蛋触发时传 null
     public void spinWithAnimal(org.bukkit.entity.LivingEntity animal, org.bukkit.entity.Player owner, boolean doInitialTeleport) {
         if (animating) return;
-        this.animating     = true;
-        this.boosted       = true;
-        this.rawTick       = 0;
+        MillstoneAnimals.Profile profile = MillstoneAnimals.instance().resolve(animal);
+        this.currentSeconds = (float) (profile != null ? profile.secondsPerRevolution() : MillstoneAnimals.PLAYER_SECONDS);
+        this.currentRadius = (float) (profile != null ? profile.orbitRadius() : MillstoneAnimals.DEFAULT_ORBIT_RADIUS);
+        this.animating = true;
+        this.boosted = false;
+        this.rawTick = 0;
         this.pullingPlayer = null;
         this.pullingAnimal = animal;
-        this.leadOwner     = owner;
-        this.orbitAngle    = this.currentAngle;
+        this.leadOwner = owner;
+        this.orbitAngle = this.currentAngle;
 
         this.animalWasAI = isStruck(animal) || animal.hasAI();
         animal.setAI(false);
@@ -678,8 +698,8 @@ public class MillstoneController extends FurnitureController {
 
         if (doInitialTeleport) {
             float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-            float startRad     = (float) Math.toRadians(orbitAngle);
-            float radius       = 2.5f;
+            float startRad = (float) Math.toRadians(orbitAngle);
+            float radius = currentRadius;
 
             Vector3f startOffset = new Vector3f(-radius, 0f, -0.5f);
             startOffset.rotateY(furnitureRad + startRad);
@@ -697,7 +717,8 @@ public class MillstoneController extends FurnitureController {
         furniture().setUnsaved();
     }
 
-    public void onPlayerDamaged() {
+    // 拉磨者被打 加速到骡子的速度
+    public void onPullerDamaged() {
         if (!animating) return;
         this.boosted = true;
     }
@@ -722,36 +743,33 @@ public class MillstoneController extends FurnitureController {
     @Override
     public InteractionResult useOnFurniture(FurnitureHitBox hitBox, InteractEntityContext context) {
         Player player = context.getPlayer();
-        if (player == null) {
+        if (!InteractGuard.canInteract(player, furniture().position())) {
             return InteractionResult.PASS;
         }
 
-        WorldPosition pos = furniture().position();
-        Location agLoc = new Location((World) pos.world().platformWorld(), pos.x, pos.y, pos.z);
-        if (!KaleidoscopeCookeryPlugin.antiGrief().test((org.bukkit.entity.Player) player.platformPlayer(), Flag.INTERACT, agLoc)) {
-            return InteractionResult.PASS;
-        }
-
-        // 潜行+右键：剪刀停生物 / 空手开始或停止玩家推磨
-        if (player.isSneaking()) {
-            return handleSneak(player);
-        }
-
-        Item itemInHand = context.getItem();
         org.bukkit.entity.Player bukkitPlayer = (org.bukkit.entity.Player) player.platformPlayer();
 
-        if (!itemInHand.isEmpty()) {
-            ItemStack stack = ItemStackUtils.getBukkitStack(itemInHand);
-            Material mat = stack.getType();
+        InteractionHand toolHand = Hands.toolHand(player, MillstoneController::isMillstoneTool);
+        Item toolItem = player.getItemInHand(toolHand);
+        ItemStack toolStack = toolItem.isEmpty() ? null : ItemStackUtils.getBukkitStack(toolItem);
+        Material toolMat = toolStack == null ? Material.AIR : toolStack.getType();
 
-            if (mat == Material.LEAD) {
-                return handleLeash(player, bukkitPlayer);
-            }
-            if (mat == Material.COW_SPAWN_EGG || mat == Material.DONKEY_SPAWN_EGG) {
-                return handleSpawnEgg(player, bukkitPlayer, mat, stack);
-            }
-            if (canGrind(itemInHand)) {
-                return handleAddGrind(player, bukkitPlayer, itemInHand, stack);
+        if (player.isSneaking()) {
+            return handleSneak(player, toolMat == Material.SHEARS);
+        }
+        if (toolMat == Material.LEAD) {
+            InteractionResult r = handleLeash(player, bukkitPlayer);
+            if (r != InteractionResult.PASS) return r;
+        }
+        if (toolMat.name().endsWith("_SPAWN_EGG")) {
+            InteractionResult r = handleSpawnEgg(player, toolMat, toolItem);
+            if (r != InteractionResult.PASS) return r;
+        }
+
+        Item mainItem = player.getItemInHand(InteractionHand.MAIN_HAND);
+        if (!mainItem.isEmpty()) {
+            if (canGrind(mainItem)) {
+                return handleAddGrind(player, mainItem);
             }
             return InteractionResult.PASS;
         }
@@ -763,10 +781,13 @@ public class MillstoneController extends FurnitureController {
         return InteractionResult.PASS;
     }
 
-    private InteractionResult handleSneak(Player player) {
-        Item sneakHand = player.getItemInHand(InteractionHand.MAIN_HAND);
-        boolean hasShears = !sneakHand.isEmpty()
-                && ItemStackUtils.getBukkitStack(sneakHand).getType() == Material.SHEARS;
+    // 石磨的工具物品 剪刀停生物 拴绳牵生物 刷怪蛋生成
+    private static boolean isMillstoneTool(Item item) {
+        Material m = ItemStackUtils.getBukkitStack(item).getType();
+        return m == Material.SHEARS || m == Material.LEAD || m.name().endsWith("_SPAWN_EGG");
+    }
+
+    private InteractionResult handleSneak(Player player, boolean hasShears) {
         if (hasShears) {
             if (isAnimating() && pullingAnimal != null) {
                 stopSpinning(player);
@@ -790,7 +811,7 @@ public class MillstoneController extends FurnitureController {
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    // 拴绳右键：把玩家拴着的牛/驴/骡接到石磨上拉磨
+    // 拴绳右键 把玩家拴着的牛/驴/骡接到石磨上拉磨
     private InteractionResult handleLeash(Player player, org.bukkit.entity.Player bukkitPlayer) {
         if (isAnimating()) {
             return InteractionResult.SUCCESS_AND_CANCEL;
@@ -802,13 +823,14 @@ public class MillstoneController extends FurnitureController {
 
         org.bukkit.entity.LivingEntity target = null;
         for (org.bukkit.entity.Entity nearby : world.getNearbyEntities(furnitureLoc, 20, 20, 20)) {
-            if (!(nearby instanceof org.bukkit.entity.Cow)
-                    && !(nearby instanceof org.bukkit.entity.Donkey)
-                    && !(nearby instanceof org.bukkit.entity.Mule)) {
+            if (!(nearby instanceof org.bukkit.entity.LivingEntity living)) {
                 continue;
             }
-            org.bukkit.entity.LivingEntity living = (org.bukkit.entity.LivingEntity) nearby;
-            if (!living.isLeashed()) {
+            if (!MillstoneAnimals.instance().canPull(living) || !living.isLeashed()) {
+                continue;
+            }
+            // 已在拉别的磨就跳过 防止一只生物被牵去同时拉多个
+            if (ACTIVE_ANIMAL_PULLERS.containsKey(living.getUniqueId())) {
                 continue;
             }
             try {
@@ -827,8 +849,7 @@ public class MillstoneController extends FurnitureController {
         org.bukkit.Location dropLoc = target.getLocation().clone();
         target.setLeashHolder(null);
 
-        org.bukkit.Bukkit.getScheduler().runTask(
-                KaleidoscopeCookeryPlugin.getPlugin(KaleidoscopeCookeryPlugin.class),
+        BukkitCraftEngine.instance().scheduler().platform().run(
                 () -> {
                     for (org.bukkit.entity.Entity e : dropLoc.getWorld().getNearbyEntities(dropLoc, 1, 1, 1)) {
                         if (e instanceof org.bukkit.entity.Item dropped
@@ -837,7 +858,8 @@ public class MillstoneController extends FurnitureController {
                             break;
                         }
                     }
-                }
+                },
+                dropLoc
         );
 
         spinWithAnimal(target, bukkitPlayer, true);
@@ -845,16 +867,25 @@ public class MillstoneController extends FurnitureController {
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    // 刷怪蛋右键：在轨道点生成牛/驴并立即拉磨
-    private InteractionResult handleSpawnEgg(Player player, org.bukkit.entity.Player bukkitPlayer, Material mat, ItemStack stack) {
+    // 刷怪蛋右键 在轨道点生成支持的生物并立即拉磨 非支持生物放行
+    private InteractionResult handleSpawnEgg(Player player, Material mat, Item eggItem) {
         if (isAnimating()) {
             return InteractionResult.SUCCESS_AND_CANCEL;
+        }
+
+        org.bukkit.entity.EntityType type = spawnEggType(mat);
+        if (type == null) {
+            return InteractionResult.PASS;
+        }
+        MillstoneAnimals.Profile profile = MillstoneAnimals.instance().profileForType(type);
+        if (profile == null || !profile.allowed()) {
+            return InteractionResult.PASS;
         }
 
         org.bukkit.World world = getBukkitWorld();
         float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
         float startRad     = (float) Math.toRadians(currentAngle);
-        float radius = 2.5f;
+        float radius = (float) profile.orbitRadius();
 
         Vector3f spawnOffset = new Vector3f(-radius, 0f, -0.5f);
         spawnOffset.rotateY(furnitureRad + startRad);
@@ -864,40 +895,45 @@ public class MillstoneController extends FurnitureController {
                 furniture().position().y,
                 furniture().position().z + spawnOffset.z);
 
-        Class<? extends org.bukkit.entity.LivingEntity> animalClass =
-                mat == Material.COW_SPAWN_EGG
-                        ? org.bukkit.entity.Cow.class
-                        : org.bukkit.entity.Donkey.class;
-
-        org.bukkit.entity.LivingEntity animal = world.spawn(spawnLoc, animalClass);
+        if (!(world.spawnEntity(spawnLoc, type) instanceof org.bukkit.entity.LivingEntity animal)) {
+            return InteractionResult.PASS;
+        }
         spinWithAnimal(animal, null, false);
         player.sendActionBar(Component.text(behavior.msgStopAnimalHint));
-
-        if (bukkitPlayer.getGameMode() != org.bukkit.GameMode.CREATIVE) {
-            stack.setAmount(stack.getAmount() - 1);
-        }
+        InventoryUtils.shrinkHeld(player, eggItem, 1);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    // 可研磨的物品右键：尽量塞满研磨槽
-    private InteractionResult handleAddGrind(Player player, org.bukkit.entity.Player bukkitPlayer, Item itemInHand, ItemStack stack) {
+    // 刷怪蛋 Material 解析为生物类型 形如 X_SPAWN_EGG 取 X 解析失败返回 null
+    private static org.bukkit.entity.EntityType spawnEggType(Material mat) {
+        String name = mat.name();
+        if (!name.endsWith("_SPAWN_EGG")) {
+            return null;
+        }
+        try {
+            return org.bukkit.entity.EntityType.valueOf(name.substring(0, name.length() - "_SPAWN_EGG".length()));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    // 可研磨的物品右键 尽量塞满研磨槽 一次性加入按实际放入数量扣主手 创造不消耗
+    private InteractionResult handleAddGrind(Player player, Item itemInHand) {
         int held = itemInHand.count();
         int placed = 0;
         while (placed < held && tryAddGrind(itemInHand)) {
             placed++;
         }
         if (placed > 0) {
-            if (bukkitPlayer.getGameMode() != org.bukkit.GameMode.CREATIVE) {
-                stack.setAmount(stack.getAmount() - placed);
-            }
+            InventoryUtils.shrinkHeld(player, itemInHand, placed);
             player.swingHand(InteractionHand.MAIN_HAND);
+            return InteractionResult.SUCCESS_AND_CANCEL;
         }
-        return InteractionResult.SUCCESS_AND_CANCEL;
+        return InteractionResult.PASS;
     }
 
     @Override
     public void preRemove(Player player) {
-        // TODO: 领地权限校验（preRemove 是移除后回调而非拦截点，BREAK 校验需在 CE 拦截层处理）
         stopSpinning();
         org.bukkit.World world = getBukkitWorld();
         org.bukkit.Location dropLoc = new org.bukkit.Location(world,
@@ -919,11 +955,10 @@ public class MillstoneController extends FurnitureController {
         }
 
         if (this.animating && this.pendingAnimalUUID != null) {
-            org.bukkit.Bukkit.getScheduler().runTaskLater(
-                    KaleidoscopeCookeryPlugin.getPlugin(KaleidoscopeCookeryPlugin.class),
-                    this::restoreAnimal,
-                    1L
-            );
+            WorldPosition fp = furniture().position();
+            org.bukkit.Location furnitureLoc = new org.bukkit.Location(
+                    (World) fp.world().platformWorld(), fp.x, fp.y, fp.z);
+            BukkitCraftEngine.instance().scheduler().platform().runLater(this::restoreAnimal, 1L, furnitureLoc);
         }
     }
 
@@ -936,6 +971,11 @@ public class MillstoneController extends FurnitureController {
         if (entity instanceof org.bukkit.entity.LivingEntity living && living.isValid()) {
             this.pullingAnimal = living;
             this.animalWasAI = this.savedAnimalWasAI;
+            MillstoneAnimals.Profile profile = MillstoneAnimals.instance().resolve(living);
+            if (profile != null) {
+                this.currentSeconds = (float) profile.secondsPerRevolution();
+                this.currentRadius = (float) profile.orbitRadius();
+            }
             living.setAI(false);
             living.setGravity(false);
             ACTIVE_ANIMAL_PULLERS.put(living.getUniqueId(), this);
@@ -944,8 +984,8 @@ public class MillstoneController extends FurnitureController {
             this.element.updateRotation(this.currentAngle, 0);
 
             float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-            float animRad      = (float) Math.toRadians(orbitAngle);
-            float radius       = 2.5f;
+            float animRad = (float) Math.toRadians(orbitAngle);
+            float radius = currentRadius;
             Vector3f targetOffset = new Vector3f(-radius, 0f, -0.5f);
             targetOffset.rotateY(furnitureRad + animRad);
             org.bukkit.Location loc = living.getLocation();
@@ -988,17 +1028,19 @@ public class MillstoneController extends FurnitureController {
 
     @Override
     public void saveCustomData(CompoundTag tag) {
-        tag.putBoolean("animating",   this.animating);
-        tag.putFloat("orbit_angle",   this.orbitAngle);
-        tag.putFloat("current_angle", this.currentAngle);
-        tag.putBoolean("boosted",     this.boosted);
-        tag.putInt("raw_tick", this.rawTick);
+        CompoundTag data = new CompoundTag();
+        data.putBoolean("animating", this.animating);
+        data.putFloat("orbit_angle", this.orbitAngle);
+        data.putFloat("current_angle", this.currentAngle % 360f);
+        data.putBoolean("boosted", this.boosted);
+        data.putFloat("anim_seconds", this.currentSeconds);
+        data.putInt("raw_tick", this.rawTick);
 
         if (pullingAnimal != null && pullingAnimal.isValid()) {
-            tag.putString("animal_uuid",    pullingAnimal.getUniqueId().toString());
-            tag.putString("animal_type",    pullingAnimal instanceof org.bukkit.entity.Cow ? "cow"
+            data.putIntArray("animal_uuid", UUIDUtils.uuidToIntArray(pullingAnimal.getUniqueId()));
+            data.putString("animal_type", pullingAnimal instanceof org.bukkit.entity.Cow ? "cow"
                     : (pullingAnimal instanceof org.bukkit.entity.Mule ? "mule" : "donkey"));
-            tag.putBoolean("animal_was_ai", this.animalWasAI);
+            data.putBoolean("animal_was_ai", this.animalWasAI);
         }
 
         ListTag grindTag = new ListTag();
@@ -1010,33 +1052,39 @@ public class MillstoneController extends FurnitureController {
             e.putInt("slot", i);
             e.put("item", ItemStackUtils.saveMinecraftItemStackAsTag(grindItems[i].minecraftItem()));
             e.putInt("progress", grindProgress[i]);
-            e.putInt("time", grindTime[i]);
+            e.putInt("rotations", requiredRotations[i]);
             grindTag.add(e);
         }
-        tag.put("grind_items", grindTag);
-        tag.putInt("grind_data_version", VersionHelper.WORLD_VERSION);
+        data.put("grind_items", grindTag);
+        data.putInt("grind_data_version", VersionHelper.WORLD_VERSION);
+        tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
-        this.animating    = tag.getBoolean("animating", false);
-        this.orbitAngle   = tag.getFloat("orbit_angle", 0f);
-        this.currentAngle = tag.getFloat("current_angle", 0f);
-        this.boosted      = tag.getBoolean("boosted", false);
-        this.rawTick = tag.getInt("raw_tick", 0);
-
-        if (this.animating && tag.get("animal_uuid") != null) {
-            this.pendingAnimalUUID = UUID.fromString(tag.getString("animal_uuid"));
-            this.savedAnimalWasAI  = tag.getBoolean("animal_was_ai", true);
-        }
-
         for (int i = 0; i < GRIND_SLOTS; i++) {
             grindItems[i] = Item.empty();
             grindProgress[i] = 0;
-            grindTime[i] = 0;
+            requiredRotations[i] = 0;
         }
-        int gdv = tag.getInt("grind_data_version", Config.itemDataFixerUpperFallbackVersion());
-        ListTag grindTag = tag.getList("grind_items");
+
+        CompoundTag data = tag.getCompound(DATA_KEY);
+        if (data == null) return;
+        this.animating = data.getBoolean("animating", false);
+        this.orbitAngle = data.getFloat("orbit_angle", 0f);
+        this.currentAngle = data.getFloat("current_angle", 0f);
+        this.boosted = data.getBoolean("boosted", false);
+        this.currentSeconds = data.getFloat("anim_seconds", (float) MillstoneAnimals.PLAYER_SECONDS);
+        this.rawTick = data.getInt("raw_tick", 0);
+
+        int[] animalUuid = data.getIntArray("animal_uuid");
+        if (this.animating && animalUuid != null && animalUuid.length == 4) {
+            this.pendingAnimalUUID = UUIDUtils.uuidFromIntArray(animalUuid);
+            this.savedAnimalWasAI = data.getBoolean("animal_was_ai", true);
+        }
+
+        int gdv = data.getInt("grind_data_version", Config.itemDataFixerUpperFallbackVersion());
+        ListTag grindTag = data.getList("grind_items");
         if (grindTag != null) {
             for (Tag t : grindTag) {
                 if (!(t instanceof CompoundTag e)) {
@@ -1050,7 +1098,7 @@ public class MillstoneController extends FurnitureController {
                 if (nms != null) {
                     grindItems[slot] = ItemStackUtils.wrap(nms);
                     grindProgress[slot] = e.getInt("progress", 0);
-                    grindTime[slot] = e.getInt("time", behavior.playerGrindTime);
+                    requiredRotations[slot] = e.getInt("rotations", behavior.grindRotations);
                 }
             }
         }

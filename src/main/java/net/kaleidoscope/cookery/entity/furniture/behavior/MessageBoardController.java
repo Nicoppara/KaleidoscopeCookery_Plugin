@@ -1,6 +1,6 @@
 package net.kaleidoscope.cookery.entity.furniture.behavior;
 import net.kaleidoscope.cookery.entity.furniture.element.MessageBoardCommentElement;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import net.kaleidoscope.cookery.util.InteractGuard;
 
 import net.momirealms.craftengine.bukkit.api.CraftEngineFurniture;
 import net.momirealms.craftengine.core.entity.furniture.Furniture;
@@ -17,7 +17,6 @@ import net.momirealms.craftengine.libraries.nbt.ListTag;
 import net.momirealms.craftengine.bukkit.entity.furniture.BukkitFurniture;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
-import net.momirealms.antigrieflib.Flag;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.registry.data.InlinedRegistryBuilderProvider;
 import io.papermc.paper.registry.data.dialog.ActionButton;
@@ -29,7 +28,6 @@ import io.papermc.paper.registry.data.dialog.type.ConfirmationType;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickCallback;
 import org.bukkit.Location;
-import org.bukkit.World;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -38,7 +36,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-// 留言板控制器：维护每玩家留言展示状态，按 tick 检测视角朝向决定显隐，读写家具 NBT 中的留言列表
+// 留言板控制器 维护每玩家留言展示状态 按 tick 检测视角朝向决定显隐 读写家具 NBT 中的留言列表
 public class MessageBoardController extends FurnitureController {
     private static final String MESSAGES_KEY = "messages";
     private static final int MAX_COMMENTS = 5;
@@ -66,25 +64,16 @@ public class MessageBoardController extends FurnitureController {
     @Override
     public InteractionResult useOnFurniture(FurnitureHitBox hitBox, InteractEntityContext context) {
         Player player = context.getPlayer();
-        if (player == null) {
+        // 打开留言板 UI 视作开容器 校验领地 OPEN_CONTAINER 权限
+        if (!InteractGuard.canOpenContainer(player, furniture.position())) {
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         org.bukkit.entity.Player bukkitPlayer = ((BukkitServerPlayer) player).platformPlayer();
         if (bukkitPlayer == null) {
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
-        if (!canOpen(bukkitPlayer)) {
-            return InteractionResult.SUCCESS_AND_CANCEL;
-        }
         openMessageDialog(bukkitPlayer);
         return InteractionResult.SUCCESS_AND_CANCEL;
-    }
-
-    // 领地权限校验：打开留言板 UI 视作开容器
-    private boolean canOpen(org.bukkit.entity.Player bukkitPlayer) {
-        WorldPosition pos = furniture.position();
-        Location agLoc = new Location((World) furniture.world().platformWorld(), pos.x, pos.y, pos.z);
-        return KaleidoscopeCookeryPlugin.antiGrief().test(bukkitPlayer, Flag.OPEN_CONTAINER, agLoc);
     }
 
     private void openMessageDialog(org.bukkit.entity.Player bukkitPlayer) {
@@ -237,7 +226,7 @@ public class MessageBoardController extends FurnitureController {
 
     private boolean isPlayerLookingAtFurniture(org.bukkit.entity.Player bukkitPlayer) {
         WorldPosition thisPos = this.furniture.position();
-        org.bukkit.Location playerLoc = bukkitPlayer.getLocation();
+        Location playerLoc = bukkitPlayer.getLocation();
 
         double distance = Math.sqrt(
                 Math.pow(playerLoc.getX() - thisPos.x, 2) +

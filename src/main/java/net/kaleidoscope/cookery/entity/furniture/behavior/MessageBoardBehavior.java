@@ -7,7 +7,7 @@ import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureBehavi
 import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureController;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 
-// 留言板家具行为：右键打开留言对话框，留言存入家具 NBT 并按视角朝向悬浮展示最近若干条
+// 留言板家具行为 右键打开留言对话框 留言存入家具 NBT 并按视角朝向悬浮展示最近若干条
 public final class MessageBoardBehavior extends FurnitureBehaviorTemplate {
     private static class Factory implements FurnitureBehaviorFactory<MessageBoardBehavior> {
         @Override

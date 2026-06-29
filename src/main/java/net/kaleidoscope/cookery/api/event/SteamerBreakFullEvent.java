@@ -9,7 +9,7 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.List;
 
-// 玩家打破装满（8 个成品）的蒸笼时触发，products 为即将掉落的成品，可取消特殊掉落
+// 玩家打破装满的蒸笼时触发 products 为即将掉落的成品 可取消特殊掉落
 public class SteamerBreakFullEvent extends PlayerEvent implements Cancellable {
     private static final HandlerList HANDLER_LIST = new HandlerList();
     private final Location location;

@@ -1,12 +1,10 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.block.entity.StockpotController;
 import net.kaleidoscope.cookery.block.entity.StockpotStage;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 
-import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.DirectionUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -18,6 +16,7 @@ import net.momirealms.craftengine.core.block.behavior.EntityBlock;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
@@ -40,21 +39,22 @@ import org.bukkit.inventory.ItemStack;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.util.SupportStateUtils;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
+import net.kaleidoscope.cookery.util.Hands;
+import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.food.FlexFoodRecipe;
-import net.kaleidoscope.cookery.recipe.food.FoodCategoryRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.food.SoupBaseRegistry;
+import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
+import net.kaleidoscope.cookery.recipe.FoodCategoryRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.SoupBaseRegistry;
 import net.kaleidoscope.cookery.util.RecipeUtils;
 import net.kaleidoscope.cookery.api.event.StockpotExtractDishEvent;
 import net.kaleidoscope.cookery.util.EventUtils;
 
 import java.util.List;
 
-// 高汤锅方块行为：处理右键交互（锅盖、汤底、食材、成品）与放置/邻接更新（锅底、链条）
 public final class StockpotBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<StockpotBehavior> FACTORY = new Factory();
     private int controllerId;
@@ -63,9 +63,10 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     private Property<Boolean> hasChainsProperty;
     private Property<Direction> facingProperty;
 
+    public int animChunkRadius = TrackedPlayers.DEFAULT_ANIM_CHUNK_RADIUS;
     public int cookingTime = 400;
     public Key lidItem = ItemKeys.STOCKPOT_LID;
-    public Key bowlItem = Key.of("minecraft:bowl");
+    public Key bowlItem = ItemKeys.BOWL;
     public Key recipeItemNoRecipe = ItemKeys.RECIPE_ITEM_NO_RECIPE;
     public Key recipeItemHasRecipe = ItemKeys.RECIPE_ITEM_HAS_RECIPE;
     public String msgStartStewing = "开始炖煮了，记得准备碗来盛菜";
@@ -96,49 +97,58 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
             return InteractionResult.PASS;
         }
 
-        // 领地权限校验
         World level = context.getLevel();
         BlockPos pos = context.getClickedPos();
-        Location agLoc = new Location((org.bukkit.World) level.platformWorld(), pos.x, pos.y, pos.z);
-        if (!KaleidoscopeCookeryPlugin.antiGrief().test((Player) player.platformPlayer(), Flag.INTERACT, agLoc)) {
+        if (!InteractGuard.canInteract(player, level, pos)) {
             return InteractionResult.PASS;
         }
 
-        net.momirealms.craftengine.core.entity.player.InteractionHand hand = context.getHand();
-        Item itemInHand = player.getItemInHand(hand);
+        // 只处理主手那次调用 避免主副手各触发一次
+        if (context.getHand() == InteractionHand.OFF_HAND) {
+            return InteractionResult.PASS;
+        }
+        InteractionHand mainHand = InteractionHand.MAIN_HAND;
+        Item mainItem = player.getItemInHand(mainHand);
 
-        // 盖上锅盖
-        InteractionResult result = handleAddLid(context, state, controller, player, hand, itemInHand);
+        // 锅盖与食谱本 工具副手优先
+        InteractionHand toolHand = Hands.toolHand(player, this::isStockpotTool);
+        Item toolItem = player.getItemInHand(toolHand);
+
+        // 盖上锅盖 工具
+        InteractionResult result = handleAddLid(context, state, controller, player, toolHand, toolItem);
         if (result != InteractionResult.PASS) {
             return result;
         }
 
-        // 取下锅盖
-        result = handleRemoveLid(context, state, controller, player, hand, itemInHand);
+        // 取下锅盖 空手 只认主手
+        result = handleRemoveLid(context, state, controller, player, mainHand, mainItem);
         if (result != InteractionResult.PASS) {
             return result;
         }
 
         // 无锅盖时处理汤底/食材/食谱
         if (!state.get(hasLidProperty)) {
-            result = handleSoupBase(context, controller, player, hand, itemInHand);
+            // 汤底 只认主手
+            result = handleSoupBase(context, controller, player, mainHand, mainItem);
             if (result != InteractionResult.PASS) {
                 return result;
             }
 
-            result = handleRecipe(controller, player, hand, itemInHand);
+            // 食谱本 工具
+            result = handleRecipe(controller, player, toolHand, toolItem);
             if (result != InteractionResult.PASS) {
                 return result;
             }
 
-            result = handleIngredient(controller, player, hand, itemInHand);
+            // 食材 只认主手
+            result = handleIngredient(controller, player, mainHand, mainItem);
             if (result != InteractionResult.PASS) {
                 return result;
             }
         }
 
-        // 盛出成品
-        result = handleExtractDish(state, controller, player, hand, itemInHand, pos, world);
+        // 盛出成品 只认主手
+        result = handleExtractDish(state, controller, player, mainHand, mainItem, pos, world);
         if (result != InteractionResult.PASS) {
             return result;
         }
@@ -146,13 +156,20 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
         return InteractionResult.PASS;
     }
 
+    // 高汤锅的工具类物品 锅盖 食谱本 走副手优先
+    private boolean isStockpotTool(Item item) {
+        return ItemMatch.is(item, lidItem)
+                || ItemMatch.is(item, recipeItemNoRecipe)
+                || ItemMatch.is(item, recipeItemHasRecipe);
+    }
+
     // 盖上锅盖
     private InteractionResult handleAddLid(UseOnContext context, ImmutableBlockState state, StockpotController controller,
                                            net.momirealms.craftengine.core.entity.player.Player player,
-                                           net.momirealms.craftengine.core.entity.player.InteractionHand hand, Item itemInHand) {
+                                           InteractionHand hand, Item itemInHand) {
         if (ItemMatch.is(itemInHand, lidItem) && !state.get(hasLidProperty)) {
             if (controller.addLid(itemInHand)) {
-                itemInHand.shrink(1);
+                InventoryUtils.shrinkHeld(player, itemInHand, 1);
                 updateLidState(context, state, true);
                 player.swingHand(hand);
                 if (controller.stage() == StockpotStage.PUT_INGREDIENT && !controller.getIngredients().isEmpty()) {
@@ -167,7 +184,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     // 取下锅盖
     private InteractionResult handleRemoveLid(UseOnContext context, ImmutableBlockState state, StockpotController controller,
                                               net.momirealms.craftengine.core.entity.player.Player player,
-                                              net.momirealms.craftengine.core.entity.player.InteractionHand hand, Item itemInHand) {
+                                              InteractionHand hand, Item itemInHand) {
         if (itemInHand.isEmpty() && state.get(hasLidProperty)) {
             Item lid = controller.removeLid();
             if (lid != null) {
@@ -183,25 +200,23 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     // 放入/舀出汤底
     private InteractionResult handleSoupBase(UseOnContext context, StockpotController controller,
                                              net.momirealms.craftengine.core.entity.player.Player player,
-                                             net.momirealms.craftengine.core.entity.player.InteractionHand hand, Item itemInHand) {
+                                             InteractionHand hand, Item itemInHand) {
         // 放入汤底
         if (SoupBaseRegistry.instance().isSoupBase(itemInHand.id())) {
             if (controller.addSoupBase(itemInHand.id(), HeatSourceUtils.isHeatSourceBelow(context))) {
-                itemInHand.shrink(1);
-                Item emptyBucket = BukkitItemManager.instance()
-                        .createWrappedItem(Key.of("minecraft:bucket"), null);
-                InventoryUtils.giveOrHold(player, hand, emptyBucket);
+                InventoryUtils.shrinkHeld(player, itemInHand, 1);
+                InventoryUtils.giveOrHold(player, hand, InventoryUtils.createOrEmpty(ItemKeys.BUCKET));
                 player.swingHand(hand);
                 return InteractionResult.SUCCESS_AND_CANCEL;
             }
         }
 
         // 舀出汤底
-        if (ItemMatch.is(itemInHand, Key.of("minecraft:bucket"))) {
+        if (ItemMatch.is(itemInHand, ItemKeys.BUCKET)) {
             if (controller.stage() == StockpotStage.PUT_INGREDIENT && controller.getIngredients().isEmpty()) {
                 Item extractedSoup = controller.extractSoupBase();
                 if (extractedSoup != null) {
-                    itemInHand.shrink(1);
+                    InventoryUtils.shrinkHeld(player, itemInHand, 1);
                     InventoryUtils.giveOrHold(player, hand, extractedSoup);
                     player.swingHand(hand);
                     return InteractionResult.SUCCESS_AND_CANCEL;
@@ -216,7 +231,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     // 食谱 一键投料 / 记录食谱
     private InteractionResult handleRecipe(StockpotController controller,
                                            net.momirealms.craftengine.core.entity.player.Player player,
-                                           net.momirealms.craftengine.core.entity.player.InteractionHand hand, Item itemInHand) {
+                                           InteractionHand hand, Item itemInHand) {
         if (!ItemMatch.is(itemInHand, recipeItemNoRecipe) && !ItemMatch.is(itemInHand, recipeItemHasRecipe)) {
             return InteractionResult.PASS;
         }
@@ -258,11 +273,10 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
                 player.sendActionBar(Component.text(msgNoRecipe));
                 return InteractionResult.SUCCESS_AND_CANCEL;
             }
-            Item hasRecipeItem = BukkitItemManager.instance()
-                    .createWrappedItem(recipeItemHasRecipe, null);
+            Item hasRecipeItem = InventoryUtils.createOrEmpty(recipeItemHasRecipe);
             ItemStack recorded = ItemStackUtils.getBukkitStack(hasRecipeItem.minecraftItem());
             RecipeUtils.setRecipeItem(recorded, matchedRecipe.id(), "flex", ingredientIds, controller.getSoupBaseId());
-            itemInHand.shrink(1);
+            InventoryUtils.shrinkHeld(player, itemInHand, 1);
             Item ceRecorded = BukkitItemManager.instance().wrap(recorded);
             InventoryUtils.giveOrHold(player, hand, ceRecorded);
             player.swingHand(hand);
@@ -275,13 +289,13 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     // 加入/取出食材
     private InteractionResult handleIngredient(StockpotController controller,
                                                net.momirealms.craftengine.core.entity.player.Player player,
-                                               net.momirealms.craftengine.core.entity.player.InteractionHand hand, Item itemInHand) {
+                                               InteractionHand hand, Item itemInHand) {
         // 加入食材
         if (!itemInHand.isEmpty()
                 && FoodCategoryRegistry.instance().isRegistered(ApplianceType.STOCKPOT, itemInHand.id())
                 && controller.getIngredients().size() < StockpotController.MAX_INGREDIENTS) {
             if (controller.addIngredient(itemInHand.copyWithCount(1))) {
-                itemInHand.shrink(1);
+                InventoryUtils.shrinkHeld(player, itemInHand, 1);
                 player.swingHand(hand);
                 return InteractionResult.SUCCESS_AND_CANCEL;
             }
@@ -290,7 +304,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
         // 取出食材
         if (itemInHand.isEmpty()) {
             Item extracted = controller.extractIngredient(player);
-            if (extracted != null && !extracted.isEmpty()) {
+            if (!extracted.isEmpty()) {
                 InventoryUtils.giveOrHold(player, hand, extracted);
                 player.swingHand(hand);
                 return InteractionResult.SUCCESS_AND_CANCEL;
@@ -301,16 +315,15 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     }
 
     // 盛出成品
-    // TODO: 盛菜容器（碗）暴露为配置项
     private InteractionResult handleExtractDish(ImmutableBlockState state, StockpotController controller,
                                                 net.momirealms.craftengine.core.entity.player.Player player,
-                                                net.momirealms.craftengine.core.entity.player.InteractionHand hand, Item itemInHand,
+                                                InteractionHand hand, Item itemInHand,
                                                 BlockPos pos, CEWorld world) {
         if (controller.stage() == StockpotStage.FINISHED && !state.get(hasLidProperty)) {
             if (ItemMatch.is(itemInHand, bowlItem)) {
                 Item result = controller.takeOutResult();
-                if (result != null && !result.isEmpty()) {
-                    // 触发 StockpotExtractDishEvent，可改写/取消
+                if (!result.isEmpty()) {
+                    // 触发 StockpotExtractDishEvent 可改写/取消
                     ItemStack dish = ItemStackUtils.getBukkitStack(result.minecraftItem());
                     Location loc = new Location((org.bukkit.World) world.world().platformWorld(), pos.x, pos.y, pos.z);
                     StockpotExtractDishEvent event = new StockpotExtractDishEvent(
@@ -319,9 +332,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
                         return InteractionResult.SUCCESS_AND_CANCEL;
                     }
                     Item finalResult = BukkitItemManager.instance().wrap(event.dish());
-                    if (!player.canInstabuild()) {
-                        itemInHand.shrink(1);
-                    }
+                    InventoryUtils.shrinkHeld(player, itemInHand, 1);
                     InventoryUtils.giveOrHold(player, hand, finalResult);
                     player.swingHand(hand);
                     return InteractionResult.SUCCESS_AND_CANCEL;
@@ -453,11 +464,12 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
             behavior.hasChainsProperty = BlockBehaviorFactory.getProperty(section.path(), block, "has_chains", Boolean.class);
             behavior.facingProperty = BlockBehaviorFactory.getProperty(section.path(), block, "facing", Direction.class);
 
+            behavior.animChunkRadius = BehaviorConfig.getInt(section, behavior.animChunkRadius, "animation_view_distance", "animation-view-distance");
             behavior.cookingTime = BehaviorConfig.getInt(section, behavior.cookingTime, "cooking_time", "cooking-time");
-            behavior.lidItem = Key.of(BehaviorConfig.getString(section, behavior.lidItem.toString(), "lid_item", "lid-item"));
-            behavior.bowlItem = Key.of(BehaviorConfig.getString(section, behavior.bowlItem.toString(), "bowl_item", "bowl-item"));
-            behavior.recipeItemNoRecipe = Key.of(BehaviorConfig.getString(section, behavior.recipeItemNoRecipe.toString(), "recipe_item_no_recipe", "recipe-item-no-recipe"));
-            behavior.recipeItemHasRecipe = Key.of(BehaviorConfig.getString(section, behavior.recipeItemHasRecipe.toString(), "recipe_item_has_recipe", "recipe-item-has-recipe"));
+            behavior.lidItem = Key.of(BehaviorConfig.getString(section, behavior.lidItem.asString(), "lid_item", "lid-item"));
+            behavior.bowlItem = Key.of(BehaviorConfig.getString(section, behavior.bowlItem.asString(), "bowl_item", "bowl-item"));
+            behavior.recipeItemNoRecipe = Key.of(BehaviorConfig.getString(section, behavior.recipeItemNoRecipe.asString(), "recipe_item_no_recipe", "recipe-item-no-recipe"));
+            behavior.recipeItemHasRecipe = Key.of(BehaviorConfig.getString(section, behavior.recipeItemHasRecipe.asString(), "recipe_item_has_recipe", "recipe-item-has-recipe"));
             behavior.msgStartStewing = BehaviorConfig.getString(section, behavior.msgStartStewing, "msg_start_stewing", "msg-start-stewing");
             behavior.msgNotEnoughIngredients = BehaviorConfig.getString(section, behavior.msgNotEnoughIngredients, "msg_not_enough_ingredients", "msg-not-enough-ingredients");
             behavior.msgNoRecipe = BehaviorConfig.getString(section, behavior.msgNoRecipe, "msg_no_recipe", "msg-no-recipe");

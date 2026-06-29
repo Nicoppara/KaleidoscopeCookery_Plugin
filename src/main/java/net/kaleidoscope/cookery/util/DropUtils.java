@@ -4,7 +4,7 @@ import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.world.Vec3d;
 
-// 掉落工具：把物品自然掉落到方块实体所在格子的中心
+// 掉落工具 把物品自然掉落到方块实体所在格子的中心
 public final class DropUtils {
     private DropUtils() {}
 

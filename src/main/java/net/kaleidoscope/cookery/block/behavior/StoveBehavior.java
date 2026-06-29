@@ -1,17 +1,20 @@
 package net.kaleidoscope.cookery.block.behavior;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
-import net.momirealms.antigrieflib.Flag;
+import net.kaleidoscope.cookery.block.entity.StoveController;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.BlockDefinition;
-import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
+import net.momirealms.craftengine.core.block.behavior.EntityBlock;
+import net.momirealms.craftengine.core.block.entity.BlockEntity;
+import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.util.Direction;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
+import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.util.Key;
@@ -23,31 +26,25 @@ import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockB
 import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidStateProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.material.FluidsProxy;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
+import net.kaleidoscope.cookery.util.Hands;
+import net.kaleidoscope.cookery.util.InteractGuard;
+import net.kaleidoscope.cookery.util.InventoryUtils;
+import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 
-// 炉灶方块行为：点火（打火石/火焰弹）与熄火（铲子、降雨、上方水流），切换 lit 状态
-public class StoveBehavior extends BukkitBlockBehavior {
+public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<StoveBehavior> FACTORY = new Factory();
 
-    // TODO: 改用 tag 维护可熄火物品
-    private static final Key WOODEN_SHOVEL = Key.of("minecraft:wooden_shovel");
-    private static final Key STONE_SHOVEL = Key.of("minecraft:stone_shovel");
-    private static final Key IRON_SHOVEL = Key.of("minecraft:iron_shovel");
-    private static final Key GOLDEN_SHOVEL = Key.of("minecraft:golden_shovel");
-    private static final Key DIAMOND_SHOVEL = Key.of("minecraft:diamond_shovel");
-    private static final Key NETHERITE_SHOVEL = Key.of("minecraft:netherite_shovel");
-    private static final Key[] SHOVELS = new Key[] {
-            WOODEN_SHOVEL, STONE_SHOVEL, IRON_SHOVEL, GOLDEN_SHOVEL, DIAMOND_SHOVEL, NETHERITE_SHOVEL
+    private static final Key[] SHOVELS = {
+            ItemKeys.WOODEN_SHOVEL, ItemKeys.STONE_SHOVEL, ItemKeys.IRON_SHOVEL,
+            ItemKeys.GOLDEN_SHOVEL, ItemKeys.DIAMOND_SHOVEL, ItemKeys.NETHERITE_SHOVEL
     };
 
-    public Key kitchenShovelNoOilItem = Key.of("kaleidoscopecookery:kitchen_shovel_no_oil");
+    public Key kitchenShovelNoOilItem = ItemKeys.KITCHEN_SHOVEL_NO_OIL;
 
     private Property<Boolean> litProperty;
+    private Property<Direction> facingProperty;
+    private int controllerId;
 
     public StoveBehavior(BlockDefinition blockDefinition, Property<Boolean> litProperty) {
         super(blockDefinition);
@@ -55,30 +52,57 @@ public class StoveBehavior extends BukkitBlockBehavior {
     }
 
     @Override
-    public InteractionResult useOnBlock(UseOnContext context, ImmutableBlockState state) {
-        Player player = (Player) context.getPlayer().platformPlayer();
-        ItemStack heldItem = player.getInventory().getItemInMainHand();
-        Item craftItem = context.getItem();
+    public BlockEntityController createBlockEntityController(BlockEntity blockEntity) {
+        return new StoveController(blockEntity, this);
+    }
 
-        // 领地权限校验
-        BlockPos clickedPos = context.getClickedPos();
-        Location agLoc = new Location((World) context.getLevel().platformWorld(), clickedPos.x(), clickedPos.y(), clickedPos.z());
-        if (!KaleidoscopeCookeryPlugin.antiGrief().test(player, Flag.INTERACT, agLoc)) {
+    @Override
+    public void initControllerId(int id) {
+        this.controllerId = id;
+    }
+
+    public Property<Boolean> getLitProperty() {
+        return litProperty;
+    }
+
+    public Property<Direction> getFacingProperty() {
+        return facingProperty;
+    }
+
+    @Override
+    public InteractionResult useOnBlock(UseOnContext context, ImmutableBlockState state) {
+        Player player = context.getPlayer();
+        if (player == null) {
+            return InteractionResult.PASS;
+        }
+        if (!InteractGuard.canInteract(player, context.getLevel(), context.getClickedPos())) {
+            return InteractionResult.PASS;
+        }
+        // 只处理主手那次调用 避免主副手各触发一次
+        if (context.getHand() == InteractionHand.OFF_HAND) {
             return InteractionResult.PASS;
         }
 
-        // 打火石/火焰弹：切换点火状态
-        if (heldItem.getType() == Material.FLINT_AND_STEEL || heldItem.getType() == Material.FIRE_CHARGE) {
-            return handleIgnite(context, state, player, heldItem);
+        // 点火 打火石/火焰弹 工具副手优先
+        InteractionHand igniteHand = Hands.toolHand(player, this::isIgniteItem);
+        Item igniteItem = player.getItemInHand(igniteHand);
+        if (isIgniteItem(igniteItem)) {
+            return handleIgnite(context, state, player, igniteHand, igniteItem);
         }
-        // 铲子：熄火
-        if (state.get(litProperty) && !craftItem.isEmpty() && isExtinguishItem(craftItem)) {
-            return handleExtinguish(context, state, player);
+
+        // 熄火 铲子 工具副手优先
+        if (state.get(litProperty)) {
+            InteractionHand extHand = Hands.toolHand(player, this::isExtinguishItem);
+            Item extItem = player.getItemInHand(extHand);
+            if (isExtinguishItem(extItem)) {
+                return handleExtinguish(context, state, player, extHand);
+            }
         }
         return InteractionResult.PASS;
     }
 
-    private InteractionResult handleIgnite(UseOnContext context, ImmutableBlockState state, Player player, ItemStack heldItem) {
+    private InteractionResult handleIgnite(UseOnContext context, ImmutableBlockState state, Player player,
+                                          InteractionHand hand, Item igniteItem) {
         boolean newLit = !state.get(litProperty);
         ImmutableBlockState newState = state.with(litProperty, newLit);
 
@@ -89,16 +113,18 @@ public class StoveBehavior extends BukkitBlockBehavior {
                 3
         );
 
+        boolean fireCharge = ItemMatch.is(igniteItem, ItemKeys.FIRE_CHARGE);
         if (newLit) {
             context.getLevel().playBlockSound(
                     new Vec3d(context.getClickedPos().x() + 0.5, context.getClickedPos().y() + 0.5, context.getClickedPos().z() + 0.5),
-                    heldItem.getType() == Material.FIRE_CHARGE
+                    fireCharge
                             ? Key.of("minecraft:entity.firework_rocket.blast")
                             : Key.of("minecraft:item.flintandsteel.use"),
                     1.0f, 1.0f
             );
-            if (heldItem.getType() == Material.FIRE_CHARGE) {
-                heldItem.setAmount(heldItem.getAmount() - 1);
+            // 火焰弹点火消耗一个 创造不扣
+            if (fireCharge) {
+                InventoryUtils.shrinkHeld(player, igniteItem, 1);
             }
         } else {
             context.getLevel().playBlockSound(
@@ -108,11 +134,11 @@ public class StoveBehavior extends BukkitBlockBehavior {
             );
         }
 
-        player.swingMainHand();
+        player.swingHand(hand);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    private InteractionResult handleExtinguish(UseOnContext context, ImmutableBlockState state, Player player) {
+    private InteractionResult handleExtinguish(UseOnContext context, ImmutableBlockState state, Player player, InteractionHand hand) {
         ImmutableBlockState newState = state.with(litProperty, false);
         LevelWriterProxy.INSTANCE.setBlock(
                 context.getLevel().minecraftWorld(),
@@ -125,8 +151,12 @@ public class StoveBehavior extends BukkitBlockBehavior {
                 Key.of("minecraft:block.fire.extinguish"),
                 1.0f, 1.0f
         );
-        player.swingMainHand();
+        player.swingHand(hand);
         return InteractionResult.SUCCESS_AND_CANCEL;
+    }
+
+    private boolean isIgniteItem(Item item) {
+        return ItemMatch.is(item, ItemKeys.FLINT_AND_STEEL) || ItemMatch.is(item, ItemKeys.FIRE_CHARGE);
     }
 
     @Override
@@ -207,7 +237,9 @@ public class StoveBehavior extends BukkitBlockBehavior {
                     block,
                     BlockBehaviorFactory.getProperty(section.path(), block, "lit", Boolean.class)
             );
-            behavior.kitchenShovelNoOilItem = Key.of(BehaviorConfig.getString(section, behavior.kitchenShovelNoOilItem.toString(), "extinguish_kitchen_shovel_item", "extinguish-kitchen-shovel-item"));
+            // facing 用于决定火焰贴在哪一面 可能不存在 缺失时火焰落在中心
+            behavior.facingProperty = BlockBehaviorFactory.getOptionalProperty(block, "facing", Direction.class);
+            behavior.kitchenShovelNoOilItem = Key.of(BehaviorConfig.getString(section, behavior.kitchenShovelNoOilItem.asString(), "extinguish_kitchen_shovel_item", "extinguish-kitchen-shovel-item"));
             return behavior;
         }
     }

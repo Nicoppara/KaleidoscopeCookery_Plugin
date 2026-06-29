@@ -1,6 +1,5 @@
 package net.kaleidoscope.cookery.block.entity;
 import net.kaleidoscope.cookery.block.behavior.BarStoolBehavior;
-import net.kaleidoscope.cookery.block.entity.render.BarStoolElement;
 
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -26,8 +25,8 @@ import java.util.function.Consumer;
 
 public class BarStoolController extends BlockEntityController {
     private static final String CHAIR_TAG = "nico_stool_sit";
+    private static final String DATA_KEY = "kaleidoscopecookery:bar_stool";
 
-    // TODO: 座椅高度硬编码，若需多种高度座椅在此调整
     private static final double SEAT_Y_OFFSET = -0.15;
 
     private final BarStoolElement element;
@@ -58,7 +57,7 @@ public class BarStoolController extends BlockEntityController {
     public void tick() {
         if (needsRecoveryCheck) {
             needsRecoveryCheck = false;
-            // 加载后清理残留坐骑：扫描座位处旧 ArmorStand 并移除
+            // 加载后清理残留坐骑 扫描座位处旧 ArmorStand 并移除
             Location checkLoc = new Location(
                     (World) super.blockEntity.world.world().platformWorld(),
                     super.blockEntity.pos.x() + 0.5,
@@ -88,7 +87,7 @@ public class BarStoolController extends BlockEntityController {
                     refreshDynamicElement((element, p) -> element.updateSeatYaw(p, currentYaw, absDelta));
                 }
             } else {
-                // 玩家离座且不在等待落座 → 回收坐骑
+                // 玩家离座且不在等待落座 回收坐骑
                 if (!pendingPassenger) {
                     sitEntity.remove();
                     sitEntity = null;
@@ -128,7 +127,7 @@ public class BarStoolController extends BlockEntityController {
 
         bukkitPlayer.setRotation(lastYaw, currentPitch);
 
-        // 下一 tick 再上座，避开生成同帧的乘客占用竞态
+        // 下一 tick 再上座 避开生成同帧的乘客占用竞态
         pendingPassenger = true;
         ArmorStand pendingSeat = sitEntity;
         BukkitCraftEngine.instance().scheduler().platform().runDelayed(() -> {
@@ -153,7 +152,6 @@ public class BarStoolController extends BlockEntityController {
         };
     }
 
-    // TODO: 领地权限校验（破坏）—— onRemove 无玩家上下文，破坏权限需在破坏入口处校验
     @Override
     public void onRemove() {
         if (sitEntity != null && sitEntity.isValid()) {
@@ -173,16 +171,20 @@ public class BarStoolController extends BlockEntityController {
 
     @Override
     public void saveCustomData(CompoundTag tag) {
-        tag.putFloat("last_yaw", this.lastYaw);
+        CompoundTag data = new CompoundTag();
+        data.putFloat("last_yaw", this.lastYaw);
+        tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
-        if (tag.containsKey("last_yaw")) {
-            this.lastYaw = tag.getFloat("last_yaw");
+        this.needsRecoveryCheck = true;
+        CompoundTag data = tag.getCompound(DATA_KEY);
+        if (data == null) return;
+        if (data.containsKey("last_yaw")) {
+            this.lastYaw = data.getFloat("last_yaw");
             this.element.refreshPackets();
         }
-        this.needsRecoveryCheck = true;
     }
 
     public ArmorStand getSitEntity() {

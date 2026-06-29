@@ -1,8 +1,7 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.block.entity.BarStoolController;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import net.kaleidoscope.cookery.util.InteractGuard;
 
-import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
@@ -21,8 +20,12 @@ import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.BlockPlaceContext;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
-import org.bukkit.Location;
 
+/**
+ * 吧台凳行为处理 
+ * 支持右键坐下 并处理放置时的朝向 
+ * 待优化 非厨房内容 正式版删除
+ */
 public final class BarStoolBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<BarStoolBehavior> FACTORY = new Factory();
 
@@ -48,9 +51,7 @@ public final class BarStoolBehavior extends BukkitBlockBehavior implements Entit
             return InteractionResult.PASS;
         }
 
-        // 领地权限校验
-        Location agLoc = new Location((org.bukkit.World) world.platformWorld(), pos.x, pos.y, pos.z);
-        if (!KaleidoscopeCookeryPlugin.antiGrief().test((org.bukkit.entity.Player) player.platformPlayer(), Flag.INTERACT, agLoc)) {
+        if (!InteractGuard.canInteract(player, world, pos)) {
             return InteractionResult.PASS;
         }
 
@@ -59,10 +60,11 @@ public final class BarStoolBehavior extends BukkitBlockBehavior implements Entit
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    // 延迟一 tick 再坐，确保坐骑实体未被占用
+    // 延迟 1tick 再坐 确保坐骑实体未被占用
     private void scheduleSit(UseOnContext context, BukkitServerPlayer player, BlockEntity blockEntity) {
         BukkitCraftEngine.instance().scheduler().platform().runDelayed(() -> {
             blockEntity.controller.let(BarStoolController.class, this.controllerId, c -> {
+                // 没人的时候才能坐
                 if (c.getSitEntity() == null || !c.getSitEntity().isValid() || c.getSitEntity().getPassengers().isEmpty()) {
                     c.sit(player);
                     player.swingHand(context.getHand());
@@ -76,6 +78,7 @@ public final class BarStoolBehavior extends BukkitBlockBehavior implements Entit
         if (this.facingProperty == null) {
             return state;
         }
+        // 自动调整朝向 让凳子正对着玩家
         Direction horizontal = DirectionUtils.fromNMSDirection(context.getHorizontalDirection());
         Direction facing = switch (horizontal) {
             case NORTH -> Direction.SOUTH;

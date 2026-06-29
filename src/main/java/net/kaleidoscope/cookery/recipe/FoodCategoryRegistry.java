@@ -1,0 +1,63 @@
+package net.kaleidoscope.cookery.recipe;
+
+import net.momirealms.craftengine.core.util.Key;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+// 模糊配方的分类食材表 按厨具 POT 与 STOCKPOT 各自独立
+// 对应配置 pot_food_raw 与 stock_food_raw 中除 liquid 外的分类
+public final class FoodCategoryRegistry {
+    private static final FoodCategoryRegistry INSTANCE = new FoodCategoryRegistry();
+    private final Map<ApplianceType, Map<Key, Set<String>>> itemToCategories = new ConcurrentHashMap<>();
+    private final Map<ApplianceType, Set<Key>> allItems = new ConcurrentHashMap<>();
+
+    private FoodCategoryRegistry() {
+    }
+
+    public static FoodCategoryRegistry instance() {
+        return INSTANCE;
+    }
+
+    public void register(ApplianceType appliance, String category, Key itemKey) {
+        itemToCategories.computeIfAbsent(appliance, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(itemKey, k -> ConcurrentHashMap.newKeySet()).add(category);
+        allItems.computeIfAbsent(appliance, k -> ConcurrentHashMap.newKeySet()).add(itemKey);
+    }
+
+    public boolean isRegistered(ApplianceType appliance, Key itemKey) {
+        Set<Key> set = allItems.get(appliance);
+        return set != null && set.contains(itemKey);
+    }
+
+    public boolean isInCategory(ApplianceType appliance, Key itemKey, String category) {
+        Map<Key, Set<String>> map = itemToCategories.get(appliance);
+        if (map == null) {
+            return false;
+        }
+        Set<String> cats = map.get(itemKey);
+        return cats != null && cats.contains(category);
+    }
+
+    // 统计 ingredientIds 中属于该厨具 category 的数量
+    public int countInCategory(ApplianceType appliance, List<Key> ingredientIds, String category) {
+        int count = 0;
+        for (Key key : ingredientIds) {
+            if (isInCategory(appliance, key, category)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public void clear(ApplianceType appliance) {
+        Map<Key, Set<String>> map = itemToCategories.get(appliance);
+        if (map != null) {
+            map.clear();
+        }
+        Set<Key> set = allItems.get(appliance);
+        if (set != null) {
+            set.clear();
+        }
+    }
+}

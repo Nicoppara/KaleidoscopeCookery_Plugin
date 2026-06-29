@@ -7,7 +7,7 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerEvent;
 import org.bukkit.inventory.ItemStack;
 
-// 玩家从高汤锅盛出成品时触发，可改写 dish 或取消
+// 玩家从高汤锅盛出成品时触发 可改写 dish 或取消
 public class StockpotExtractDishEvent extends PlayerEvent implements Cancellable {
     private static final HandlerList HANDLER_LIST = new HandlerList();
     private final Location location;

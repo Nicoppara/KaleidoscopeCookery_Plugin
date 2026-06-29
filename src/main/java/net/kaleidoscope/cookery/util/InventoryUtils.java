@@ -1,5 +1,6 @@
 package net.kaleidoscope.cookery.util;
 
+import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.Player;
@@ -8,11 +9,17 @@ import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.GameMode;
 import org.bukkit.inventory.ItemStack;
 
-// 厨具通用给予/取出物品：合并堆叠、放手、掉落及空间预检查
+// 厨具通用给予 取出物品 合并堆叠 放手 掉落及空间预检查
 public final class InventoryUtils {
     private InventoryUtils() {}
 
-    // 把物品交给玩家：先并入已有同类堆叠，再填空格，背包满则掉落
+    // createWrappedItem 对无效 key 返回 null 这里收口成空物品 调用方一律用 isEmpty 判断
+    public static Item createOrEmpty(Key key) {
+        Item item = BukkitItemManager.instance().createWrappedItem(key, null);
+        return item == null ? Item.empty() : item;
+    }
+
+    // 把物品交给玩家 先并入已有同类堆叠 再填空格 背包满则掉落
     public static void give(Player player, Item item) {
         give(player, item, true);
     }
@@ -24,14 +31,17 @@ public final class InventoryUtils {
         player.giveItem(item, spawnPickupAnimation);
     }
 
-    // 统计玩家背包中指定 id 物品的总数量（不消耗）
+    // 统计玩家背包中指定 id 物品的总数量
     public static int countItem(Player player, Key itemId) {
         return player.clearOrCountMatchingInventoryItems(itemId, 0);
     }
 
-    // 从玩家背包中消耗指定数量的物品；数量不足则返回 false 且不消耗
+    // 从玩家背包中消耗指定数量的物品 数量不足则返回 false 且不消耗 创造模式视为成功且不消耗
     public static boolean consumeItem(Player player, Key itemId, int amount) {
         if (amount <= 0) {
+            return true;
+        }
+        if (player.canInstabuild()) {
             return true;
         }
         if (countItem(player, itemId) < amount) {
@@ -41,7 +51,14 @@ public final class InventoryUtils {
         return true;
     }
 
-    // 智能取出：固定使用主手（忽略传入 hand）。先与背包同类堆叠合并，剩余物品优先放空主手，否则走 give
+    // 扣减玩家手中物品 创造模式不消耗 统一收口创造判定
+    public static void shrinkHeld(Player player, Item item, int count) {
+        if (item != null && !item.isEmpty() && !player.canInstabuild()) {
+            item.shrink(count);
+        }
+    }
+
+    // 智能取出 固定使用主手 先与背包同类堆叠合并 剩余物品优先放空主手 否则走 give
     public static void giveOrHold(Player player, InteractionHand hand, Item item) {
         if (player == null || item == null || item.isEmpty()) {
             return;
@@ -82,7 +99,7 @@ public final class InventoryUtils {
         }
     }
 
-    // 预检查：玩家背包能否完整容纳该物品
+    // 预检查 玩家背包能否完整容纳该物品
     public static boolean hasSpaceFor(Player player, Item item) {
         if (item == null || item.isEmpty()) {
             return true;

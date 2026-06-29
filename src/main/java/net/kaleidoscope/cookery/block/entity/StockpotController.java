@@ -1,6 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
+
 import net.kaleidoscope.cookery.block.behavior.StockpotBehavior;
-import net.kaleidoscope.cookery.block.entity.render.StockpotElement;
 
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
@@ -14,6 +14,7 @@ import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
 import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.sound.SoundSource;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.VersionHelper;
@@ -24,24 +25,31 @@ import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.util.DropUtils;
+import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
+import net.kaleidoscope.cookery.item.ItemKeys;
+import org.bukkit.Particle;
+import org.bukkit.World;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
-// 高汤锅方块实体：持有烹饪状态机（汤底/食材/锅盖/成品），按 tick 推进烹饪并刷新渲染，负责 NBT 存读
 public class StockpotController extends BlockEntityController {
     public static final int MAX_INGREDIENTS = 8;
+    private static final int ANIM_INTERVAL = 4;
 
-    private static final Key NO_RECIPE_RESULT = Key.of("cook:suspicious_stir_fry");
-    private static final Key LAVA_BUCKET = Key.of("minecraft:lava_bucket");
+    private static final Key DAMAGE_GENERIC = Key.of("minecraft:generic");
+    private static final String DATA_KEY = "kaleidoscopecookery:stockpot";
 
     private StockpotStage stage = StockpotStage.PUT_SOUP_BASE;
     private int currentTick = -1;
@@ -52,11 +60,11 @@ public class StockpotController extends BlockEntityController {
     private final List<Item> ingredients = new ArrayList<>();
     private Item result = Item.empty();
     private final List<Key> lastCookedIngredients = new ArrayList<>();
-    private final List<Item> ingredientsView = java.util.Collections.unmodifiableList(ingredients);
-    private final List<Key> lastCookedIngredientsView = java.util.Collections.unmodifiableList(lastCookedIngredients);
+    private final List<Item> ingredientsView = Collections.unmodifiableList(ingredients);
+    private final List<Key> lastCookedIngredientsView = Collections.unmodifiableList(lastCookedIngredients);
     private final StockpotElement element;
     private final StockpotBehavior behavior;
-    private Key soupBaseId = Key.of("minecraft:water");
+    private Key soupBaseId = ItemKeys.WATER;
     private Item lidItem = Item.empty();
     private long seed = System.currentTimeMillis();
 
@@ -65,12 +73,12 @@ public class StockpotController extends BlockEntityController {
     public static final class RenderTracker {
         public StockpotStage stage = StockpotStage.PUT_SOUP_BASE;
         public int ingredientCount = 0;
-        public Key soupBaseId = Key.of("minecraft:water");
+        public Key soupBaseId = ItemKeys.WATER;
 
         void reset() {
             stage = StockpotStage.PUT_SOUP_BASE;
             ingredientCount = 0;
-            soupBaseId = Key.of("minecraft:water");
+            soupBaseId = ItemKeys.WATER;
         }
     }
 
@@ -95,6 +103,12 @@ public class StockpotController extends BlockEntityController {
         TrackedPlayers.forEach(super.blockEntity, player -> consumer.accept(this.element, player));
     }
 
+    public void refreshAnimation(BiConsumer<StockpotElement, Player> consumer) {
+        for (Player player : TrackedPlayers.snapshotInRange(super.blockEntity, behavior.animChunkRadius)) {
+            consumer.accept(this.element, player);
+        }
+    }
+
     public void tick() {
         if (stage == StockpotStage.PUT_SOUP_BASE) {
             return;
@@ -108,7 +122,7 @@ public class StockpotController extends BlockEntityController {
 
         boolean hasLid = hasLid();
 
-        org.bukkit.World bWorld = (org.bukkit.World) super.blockEntity.world.world().platformWorld();
+        World bWorld = (World) super.blockEntity.world.world().platformWorld();
         if (bWorld.getGameTime() % 15 == 0) {
             float volume = hasLid ? 0.3f : 0.6f;
             float pitch = 0.9f + (float) ThreadLocalRandom.current().nextDouble() * 0.2f;
@@ -124,13 +138,15 @@ public class StockpotController extends BlockEntityController {
                 double by = super.blockEntity.pos.y() + 0.4;
                 double bz = super.blockEntity.pos.z() + 0.3 + ThreadLocalRandom.current().nextDouble() * 0.4;
                 if (isLavaSoup()) {
-                    bWorld.spawnParticle(org.bukkit.Particle.LAVA, bx, by, bz, 1, 0, 0, 0, 0);
+                    bWorld.spawnParticle(Particle.LAVA, bx, by, bz, 1, 0, 0, 0, 0);
                 } else {
-                    bWorld.spawnParticle(org.bukkit.Particle.SPLASH, bx, by, bz, 2, 0.05, 0.0, 0.05, 0.1);
-                    bWorld.spawnParticle(org.bukkit.Particle.BUBBLE_POP, bx, by, bz, 1, 0.05, 0.0, 0.05, 0.02);
+                    bWorld.spawnParticle(Particle.SPLASH, bx, by, bz, 2, 0.05, 0.0, 0.05, 0.1);
+                    bWorld.spawnParticle(Particle.BUBBLE_POP, bx, by, bz, 1, 0.05, 0.0, 0.05, 0.02);
                 }
             }
-            refreshDynamicElement((element, p) -> element.updateAnimation(p));
+            if (bWorld.getGameTime() % ANIM_INTERVAL == 0) {
+                refreshAnimation((element, p) -> element.updateAnimation(p, ANIM_INTERVAL));
+            }
             return;
         }
 
@@ -144,7 +160,7 @@ public class StockpotController extends BlockEntityController {
                 double bx = super.blockEntity.pos.x() + 0.5 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.3;
                 double by = super.blockEntity.pos.y() + 0.85;
                 double bz = super.blockEntity.pos.z() + 0.5 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.3;
-                org.bukkit.Particle p = isLavaSoup() ? org.bukkit.Particle.LARGE_SMOKE : org.bukkit.Particle.CAMPFIRE_COSY_SMOKE;
+                Particle p = isLavaSoup() ? Particle.LARGE_SMOKE : Particle.CAMPFIRE_COSY_SMOKE;
                 bWorld.spawnParticle(p, bx, by, bz, 0, 0.0, 1.0, 0.0, 0.04);
             }
         }
@@ -166,7 +182,7 @@ public class StockpotController extends BlockEntityController {
             currentTick = -1;
 
             List<Key> ids = ingredientIds();
-            java.util.Optional<FoodRecipeResult> res = FoodRecipeRegistry.instance()
+            Optional<FoodRecipeResult> res = FoodRecipeRegistry.instance()
                     .cookFlex(ApplianceType.STOCKPOT, ids, this.soupBaseId);
 
             int servings;
@@ -175,8 +191,7 @@ public class StockpotController extends BlockEntityController {
                 this.result = fr.item().copyWithCount(1);
                 servings = Math.max(1, fr.count());
             } else {
-                Item suspense = BukkitItemManager.instance().createWrappedItem(NO_RECIPE_RESULT, null);
-                this.result = suspense != null ? suspense.copyWithCount(1) : Item.empty();
+                this.result = InventoryUtils.createOrEmpty(ItemKeys.SUSPICIOUS_STIR_FRY).copyWithCount(1);
                 servings = 1;
             }
             servings = Math.min(servings, MAX_INGREDIENTS);
@@ -225,7 +240,7 @@ public class StockpotController extends BlockEntityController {
     public Item removeLid() {
         if (!hasLid()) return null;
         Item lid = this.lidItem.isEmpty()
-                ? BukkitItemManager.instance().createWrappedItem(behavior.lidItem, null)
+                ? InventoryUtils.createOrEmpty(behavior.lidItem)
                 : this.lidItem.copy();
         this.lidItem = Item.empty();
         this.refreshRendering();
@@ -243,7 +258,7 @@ public class StockpotController extends BlockEntityController {
         if (!ingredients.isEmpty()) return null;
 
         Key soupBaseId = this.soupBaseId;
-        this.soupBaseId = Key.of("minecraft:water");
+        this.soupBaseId = ItemKeys.WATER;
         this.stage = StockpotStage.PUT_SOUP_BASE;
         this.seed = System.currentTimeMillis();
         this.renderTracker.soupBaseId = this.soupBaseId;
@@ -256,14 +271,14 @@ public class StockpotController extends BlockEntityController {
             element.show(p);
         });
 
-        // 汤底物品本身就是对应的桶，取不到时回退到水桶
+        // 汤底物品本身就是对应的桶 取不到时回退到水桶
         Item bucket = BukkitItemManager.instance().createWrappedItem(soupBaseId, null);
         return bucket != null ? bucket
-                : BukkitItemManager.instance().createWrappedItem(Key.of("minecraft:water_bucket"), null);
+                : BukkitItemManager.instance().createWrappedItem(ItemKeys.WATER_BUCKET, null);
     }
 
     private boolean isLavaSoup() {
-        return LAVA_BUCKET.equals(this.soupBaseId);
+        return ItemKeys.LAVA_BUCKET.equals(this.soupBaseId);
     }
 
     public boolean addSoupBase(Key soupBaseId, boolean hasHeatSource) {
@@ -304,13 +319,13 @@ public class StockpotController extends BlockEntityController {
     }
 
     public Item extractIngredient(Player player) {
-        if (hasLid()) return null;
-        if (ingredients.isEmpty()) return null;
+        if (hasLid()) return Item.empty();
+        if (ingredients.isEmpty()) return Item.empty();
 
         Item extracted = ingredients.remove(ingredients.size() - 1);
 
         if (stage == StockpotStage.COOKING) {
-            if (player != null) player.damage(2, Key.of("minecraft:generic"), null);
+            if (player != null) player.damage(2, DAMAGE_GENERIC, null);
             stage = StockpotStage.PUT_INGREDIENT;
             currentTick = -1;
         }
@@ -322,9 +337,9 @@ public class StockpotController extends BlockEntityController {
     }
 
     public Item takeOutResult() {
-        if (stage != StockpotStage.FINISHED) return null;
-        if (hasLid()) return null;
-        if (takeoutCount <= 0 || result.isEmpty()) return null;
+        if (stage != StockpotStage.FINISHED) return Item.empty();
+        if (hasLid()) return Item.empty();
+        if (takeoutCount <= 0 || result.isEmpty()) return Item.empty();
 
         Item toReturn = result.copyWithCount(1);
         takeoutCount--;
@@ -345,7 +360,7 @@ public class StockpotController extends BlockEntityController {
         this.stage = StockpotStage.PUT_SOUP_BASE;
         this.currentTick = -1;
         this.takeoutCount = 0;
-        this.soupBaseId = Key.of("minecraft:water");
+        this.soupBaseId = ItemKeys.WATER;
         this.seed = System.currentTimeMillis();
         this.renderTracker.reset();
         updateBlockState();
@@ -396,52 +411,57 @@ public class StockpotController extends BlockEntityController {
 
     @Override
     public void saveCustomData(CompoundTag tag) {
-        tag.putInt("data_version", VersionHelper.WORLD_VERSION);
-        tag.putInt("status", this.stage.ordinal());
-        tag.putInt("current_tick", this.currentTick);
-        tag.putInt("takeout_count", this.takeoutCount);
-        tag.putInt("finished_max", this.finishedMax);
+        CompoundTag data = new CompoundTag();
+        data.putInt("data_version", VersionHelper.WORLD_VERSION);
+        data.putInt("status", this.stage.ordinal());
+        data.putInt("current_tick", this.currentTick);
+        data.putInt("takeout_count", this.takeoutCount);
+        data.putInt("finished_max", this.finishedMax);
         if (!this.lastCookedIngredients.isEmpty()) {
-            tag.putString("last_cooked", this.lastCookedIngredients.stream()
-                    .map(Key::toString).collect(java.util.stream.Collectors.joining(",")));
+            data.putString("last_cooked", this.lastCookedIngredients.stream()
+                    .map(Key::asString).collect(Collectors.joining(",")));
         }
-        tag.putLong("seed", this.seed);
-        tag.putString("soup_base_id", this.soupBaseId.toString());
+        data.putLong("seed", this.seed);
+        data.putString("soup_base_id", this.soupBaseId.asString());
 
-        tag.put("ingredients", BlockEntityNbt.saveItems(ingredients));
+        data.put("ingredients", BlockEntityNbt.saveItems(ingredients));
         if (!result.isEmpty()) {
-            tag.put("result", ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
+            data.put("result", ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
         }
 
         if (!lidItem.isEmpty()) {
-            tag.put("lid_item", ItemStackUtils.saveMinecraftItemStackAsTag(lidItem.minecraftItem()));
+            data.put("lid_item", ItemStackUtils.saveMinecraftItemStackAsTag(lidItem.minecraftItem()));
         }
+        tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
-        int dataVersion = tag.getInt("data_version", VersionHelper.WORLD_VERSION);
+        CompoundTag data = tag.getCompound(DATA_KEY);
+        if (data == null) return;
 
-        this.stage = StockpotStage.fromOrdinal(tag.getInt("status", 0));
-        this.currentTick = tag.getInt("current_tick", -1);
-        this.takeoutCount = tag.getInt("takeout_count", 0);
-        this.finishedMax = tag.getInt("finished_max", this.takeoutCount);
+        int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
+
+        this.stage = StockpotStage.fromOrdinal(data.getInt("status", 0));
+        this.currentTick = data.getInt("current_tick", -1);
+        this.takeoutCount = data.getInt("takeout_count", 0);
+        this.finishedMax = data.getInt("finished_max", this.takeoutCount);
         this.lastCookedIngredients.clear();
-        String lc = tag.getString("last_cooked", "");
+        String lc = data.getString("last_cooked", "");
         if (!lc.isEmpty()) for (String s : lc.split(",")) if (!s.isEmpty()) this.lastCookedIngredients.add(Key.of(s));
-        this.seed = tag.getLong("seed", System.currentTimeMillis());
-        this.soupBaseId = Key.of(tag.getString("soup_base_id", "minecraft:water"));
+        this.seed = data.getLong("seed", System.currentTimeMillis());
+        this.soupBaseId = Key.of(data.getString("soup_base_id", ItemKeys.WATER.asString()));
 
-        BlockEntityNbt.loadItems(tag, "ingredients", dataVersion, this.ingredients);
+        BlockEntityNbt.loadItems(data, "ingredients", dataVersion, this.ingredients);
 
         this.result = Item.empty();
-        if (tag.containsKey("result")) {
-            Item r = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(tag.getCompound("result"), dataVersion));
+        if (data.containsKey("result")) {
+            Item r = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(data.getCompound("result"), dataVersion));
             if (r != null) this.result = r;
         }
 
-        if (tag.containsKey("lid_item")) {
-            this.lidItem = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(tag.getCompound("lid_item"), dataVersion));
+        if (data.containsKey("lid_item")) {
+            this.lidItem = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(data.getCompound("lid_item"), dataVersion));
         }
 
         this.refreshRendering();

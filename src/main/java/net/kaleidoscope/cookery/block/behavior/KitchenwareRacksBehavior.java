@@ -1,10 +1,7 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.block.entity.KitchenwareRacksController;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
-import net.momirealms.antigrieflib.Flag;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
@@ -24,8 +21,8 @@ import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
-import org.bukkit.Location;
 import org.jetbrains.annotations.Nullable;
+import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 
 public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implements EntityBlock {
@@ -36,18 +33,15 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
     @Nullable
     private final Property<Direction> facingProperty;
     private int controllerId;
-    public final String customDataKey;
 
     private KitchenwareRacksBehavior(BlockDefinition blockDefinition,
                                      SoundData putSound,
                                      SoundData takeSound,
-                                     @Nullable Property<Direction> facingProperty,
-                                     String customDataKey) {
+                                     @Nullable Property<Direction> facingProperty) {
         super(blockDefinition);
         this.putSound = putSound;
         this.takeSound = takeSound;
         this.facingProperty = facingProperty;
-        this.customDataKey = customDataKey;
     }
 
     @Override
@@ -80,13 +74,15 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
             return InteractionResult.PASS;
         }
 
-        // 领地权限校验
-        Location agLoc = new Location((org.bukkit.World) world.platformWorld(), pos.x, pos.y, pos.z);
-        if (!KaleidoscopeCookeryPlugin.antiGrief().test((org.bukkit.entity.Player) player.platformPlayer(), Flag.INTERACT, agLoc)) {
+        if (!InteractGuard.canInteract(player, world, pos)) {
             return InteractionResult.PASS;
         }
 
-        InteractionHand hand = context.getHand();
+        // 挂放取下只认主手 副手触发直接放行
+        if (context.getHand() == InteractionHand.OFF_HAND) {
+            return InteractionResult.PASS;
+        }
+        InteractionHand hand = InteractionHand.MAIN_HAND;
         Item itemInHand = player.getItemInHand(hand);
 
         return blockEntity.controller.let(KitchenwareRacksController.class, this.controllerId, controller -> {
@@ -119,7 +115,7 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
     private InteractionResult handlePut(Player player, InteractionHand hand, World world, BlockPos pos,
                                         KitchenwareRacksController controller, boolean isLeftClick, Item itemInHand) {
         Item toPut = itemInHand.copyWithCount(1);
-        itemInHand.shrink(1);
+        InventoryUtils.shrinkHeld(player, itemInHand, 1);
         if (isLeftClick) {
             controller.putLeft(toPut);
         } else {
@@ -147,12 +143,12 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
         };
     }
 
-    // TODO: 改为可配置 tag 或白名单形式
+    // 按物品 id 后缀判定原版工具 用 endsWith 避免 waxed 等含子串的 id 误命中
     private boolean isTool(Item item) {
         String itemId = item.vanillaId().asString();
-        return itemId.contains("sword") || itemId.contains("axe") ||
-                itemId.contains("pickaxe") || itemId.contains("shovel") ||
-                itemId.contains("hoe") || itemId.contains("shears");
+        return itemId.endsWith("sword") || itemId.endsWith("axe")
+                || itemId.endsWith("shovel") || itemId.endsWith("hoe")
+                || itemId.endsWith("shears");
     }
 
     private static class Factory implements BlockBehaviorFactory<KitchenwareRacksBehavior> {
@@ -166,14 +162,12 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
                 takeSound = soundSection.getValue("take", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
             }
             Property<Direction> facingProperty = BlockBehaviorFactory.getOptionalProperty(block, "facing", Direction.class);
-            String customDataKey = section.getString("data_key", "kaleidoscopecookery:kitchenware_racks");
 
             return new KitchenwareRacksBehavior(
                     block,
                     putSound,
                     takeSound,
-                    facingProperty,
-                    customDataKey
+                    facingProperty
             );
         }
     }

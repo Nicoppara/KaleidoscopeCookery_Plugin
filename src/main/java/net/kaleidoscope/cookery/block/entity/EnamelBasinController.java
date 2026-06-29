@@ -1,20 +1,20 @@
 package net.kaleidoscope.cookery.block.entity;
 import net.kaleidoscope.cookery.block.behavior.EnamelBasinBehavior;
 
-import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
+import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.util.Direction;
-import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.util.DropUtils;
 
-// 搪瓷盆方块实体控制器
 public class EnamelBasinController extends BlockEntityController {
+    private static final String DATA_KEY = "kaleidoscopecookery:cooking_enamel_basin";
+
     private int oilCount = 0;
     private boolean closed = true;
     private final EnamelBasinBehavior behavior;
@@ -62,7 +62,8 @@ public class EnamelBasinController extends BlockEntityController {
     private void updateBlockState() {
         int oilLevel;
         if (this.closed) {
-            oilLevel = 0; // 关闭时显示底座
+            // 关闭时显示底座
+            oilLevel = 0;
         } else {
             oilLevel = getOilLevelInt(this.oilCount);
         }
@@ -93,23 +94,28 @@ public class EnamelBasinController extends BlockEntityController {
     @Override
     public void onRemove() {
         if (oilCount > 0) {
-            Item oilItem = BukkitItemManager.instance().createWrappedItem(behavior.oilItem, null);
-            oilItem.count(oilCount);
-            DropUtils.dropAtCenter(super.blockEntity, oilItem);
+            Item oilItem = InventoryUtils.createOrEmpty(behavior.oilItem);
+            if (!oilItem.isEmpty()) {
+                oilItem.count(oilCount);
+                DropUtils.dropAtCenter(super.blockEntity, oilItem);
+            }
         }
         super.onRemove();
     }
 
     @Override
     public void saveCustomData(CompoundTag tag) {
-        tag.putInt("data_version", VersionHelper.WORLD_VERSION);
-        tag.putInt("oil_count", oilCount);
-        tag.putBoolean("closed", closed);
+        CompoundTag data = new CompoundTag();
+        data.putInt("oil_count", oilCount);
+        data.putBoolean("closed", closed);
+        tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
-        this.oilCount = tag.getInt("oil_count", 0);
-        this.closed = tag.getBoolean("closed", true);
+        CompoundTag data = tag.getCompound(DATA_KEY);
+        if (data == null) return;
+        this.oilCount = data.getInt("oil_count", 0);
+        this.closed = data.getBoolean("closed", true);
     }
 }

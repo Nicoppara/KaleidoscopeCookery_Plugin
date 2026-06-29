@@ -1,4 +1,5 @@
 package net.kaleidoscope.cookery.block.listener;
+
 import net.kaleidoscope.cookery.block.behavior.MillstoneBehavior;
 import net.kaleidoscope.cookery.block.entity.MillstoneController;
 
@@ -8,7 +9,7 @@ import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 
-// 石磨只能放在占满整格的完整方块上，否则拉磨轨道高度不平整会导致推磨异常
+// 石磨只能放在占满整格的完整方块上 否则拉磨轨道高度不平整会导致推磨异常
 public class MillstonePlaceListener implements Listener {
 
     @EventHandler

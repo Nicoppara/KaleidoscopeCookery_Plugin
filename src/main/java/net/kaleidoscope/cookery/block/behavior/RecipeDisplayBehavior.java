@@ -17,9 +17,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
-import net.kaleidoscope.cookery.recipe.food.AccurateFoodRecipe;
-import net.kaleidoscope.cookery.recipe.food.FlexFoodRecipe;
-import net.kaleidoscope.cookery.recipe.food.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.AccurateFoodRecipe;
+import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.util.RecipeUtils;
 
 import java.util.LinkedHashMap;
@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-// 配方展示家具行为：家具承载配方道具时，在其表面叠加成品 ItemDisplay 进行展示
 public class RecipeDisplayBehavior extends FurnitureBehaviorTemplate {
 
     public RecipeDisplayBehavior(FurnitureDefinition furniture) {
@@ -41,7 +40,7 @@ public class RecipeDisplayBehavior extends FurnitureBehaviorTemplate {
         return new RecipeDisplayController(furniture);
     }
 
-    // 配方展示控制器：根据承载物品决定是否生成展示用的成品 ItemDisplay 元素
+    // 配方展示控制器 根据承载物品决定是否生成展示用的成品 ItemDisplay 元素
     public static class RecipeDisplayController extends FurnitureController {
         public RecipeDisplayController(Furniture furniture) {
             super(furniture);

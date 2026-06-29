@@ -5,24 +5,25 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.List;
 
-// 石磨磨完一批产出成品时触发；推磨者可能是玩家也可能是生物（player 为空表示生物拉磨）
+// 石磨磨完一批产出成品时触发 推磨者可能是玩家也可能是生物
 public class MillstoneGrindCompleteEvent extends Event implements Cancellable {
     private static final HandlerList HANDLER_LIST = new HandlerList();
     private final Player player;
     private final Location location;
-    private final List<org.bukkit.inventory.ItemStack> products;
+    private final List<ItemStack> products;
     private boolean cancelled;
 
-    public MillstoneGrindCompleteEvent(Player player, Location location, List<org.bukkit.inventory.ItemStack> products) {
+    public MillstoneGrindCompleteEvent(Player player, Location location, List<ItemStack> products) {
         this.player = player;
         this.location = location;
         this.products = products;
     }
 
-    // 生物拉磨时为 null
+    /** @return 拉磨的玩家 生物拉磨则返回 null */
     public Player player() {
         return this.player;
     }
@@ -31,7 +32,7 @@ public class MillstoneGrindCompleteEvent extends Event implements Cancellable {
         return this.location;
     }
 
-    public List<org.bukkit.inventory.ItemStack> products() {
+    public List<ItemStack> products() {
         return this.products;
     }
 

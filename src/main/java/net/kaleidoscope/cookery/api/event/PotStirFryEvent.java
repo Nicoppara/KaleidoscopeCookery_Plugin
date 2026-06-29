@@ -6,7 +6,7 @@ import org.bukkit.event.Cancellable;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerEvent;
 
-// 玩家翻炒炒锅一次时触发，count 为本次翻炒后的累计次数
+// 玩家翻炒炒锅一次时触发 count 为本次翻炒后的累计次数
 public class PotStirFryEvent extends PlayerEvent implements Cancellable {
     private static final HandlerList HANDLER_LIST = new HandlerList();
     private final Location location;
