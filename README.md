@@ -70,10 +70,8 @@
 
   ```bash
   ./gradlew shadowJar
-  # 产物：build/libs/KaleidoscopeCookeryPlugin-<version>-all.jar  （务必用带 -all 的那个）
+  # 产物：build/libs/KaleidoscopeCookeryPlugin-<version>.jar
   ```
-
-> 💡 部署时请用 **`-all`（shaded）** 的 jar，否则会缺少内置的 AntiGriefLib 而在交互时报 `NoClassDefFoundError`。
 
 ### 🛡️ 领地权限
 
