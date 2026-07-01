@@ -1,7 +1,7 @@
 name: KaleidoscopeCookeryPlugin
 version: '${version}'
 main: net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin
-api-version: '21.1.2'
+api-version: '1.21'
 
 dependencies:
   server:
