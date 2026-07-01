@@ -139,9 +139,9 @@ public final class FruitBasketController extends BlockEntityController {
         return placed;
     }
 
-    // 取出第一个非空槽
+    // 取出最后放入的 后放先出
     public Item takeOut() {
-        for (int i = 0; i < SLOTS; i++) {
+        for (int i = SLOTS - 1; i >= 0; i--) {
             if (!items[i].isEmpty()) {
                 Item taken = items[i];
                 items[i] = Item.empty();

@@ -2,7 +2,6 @@ package net.kaleidoscope.cookery.plugin;
 
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorType;
 import net.momirealms.craftengine.core.util.Key;
-import net.kaleidoscope.cookery.block.behavior.BarStoolBehavior;
 import net.kaleidoscope.cookery.block.behavior.StoveBehavior;
 import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
 import net.kaleidoscope.cookery.block.behavior.PotBehavior;
@@ -13,6 +12,8 @@ import net.kaleidoscope.cookery.block.behavior.KitchenwareRacksBehavior;
 import net.kaleidoscope.cookery.block.behavior.ChoppingBoardBehavior;
 import net.kaleidoscope.cookery.block.behavior.StackedExtraDropBehavior;
 import net.kaleidoscope.cookery.block.behavior.FruitBasketBehavior;
+import net.kaleidoscope.cookery.block.behavior.TeapotBehavior;
+import net.kaleidoscope.cookery.block.behavior.TeacupCoasterBehavior;
 
 // 方块行为注册
 public final class BlockBehaviors {
@@ -26,7 +27,8 @@ public final class BlockBehaviors {
     public static BlockBehaviorType<ChoppingBoardBehavior> CHOPPING_BOARD;
     public static BlockBehaviorType<StackedExtraDropBehavior> STACKED_EXTRA_DROP;
     public static BlockBehaviorType<FruitBasketBehavior> FRUIT_BASKET;
-    public static BlockBehaviorType<BarStoolBehavior> BAR_STOOL;
+    public static BlockBehaviorType<TeapotBehavior> TEAPOT;
+    public static BlockBehaviorType<TeacupCoasterBehavior> TEACUP_COASTER;
 
     private BlockBehaviors() {}
 
@@ -92,10 +94,16 @@ public final class BlockBehaviors {
                     FruitBasketBehavior.FACTORY
             );
         }
-        if (BAR_STOOL == null) {
-            BAR_STOOL = RegistryUtils.registerBlockBehavior(
-                    Key.of("kaleidoscopecookery:bar_stool"),
-                    BarStoolBehavior.FACTORY
+        if (TEAPOT == null) {
+            TEAPOT = RegistryUtils.registerBlockBehavior(
+                    Key.of("kaleidoscopecookery:teapot"),
+                    TeapotBehavior.FACTORY
+            );
+        }
+        if (TEACUP_COASTER == null) {
+            TEACUP_COASTER = RegistryUtils.registerBlockBehavior(
+                    Key.of("kaleidoscopecookery:teacup_coaster"),
+                    TeacupCoasterBehavior.FACTORY
             );
         }
     }

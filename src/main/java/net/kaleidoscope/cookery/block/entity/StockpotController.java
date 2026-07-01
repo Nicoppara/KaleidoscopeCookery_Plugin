@@ -26,6 +26,7 @@ import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.InventoryUtils;
+import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
@@ -133,15 +134,16 @@ public class StockpotController extends BlockEntityController {
         }
 
         if (!hasLid) {
-            if (bWorld.getGameTime() % 8 == 0) {
+            if (bWorld.getGameTime() % behavior.particleInterval == 0) {
                 double bx = super.blockEntity.pos.x() + 0.3 + ThreadLocalRandom.current().nextDouble() * 0.4;
                 double by = super.blockEntity.pos.y() + 0.4;
                 double bz = super.blockEntity.pos.z() + 0.3 + ThreadLocalRandom.current().nextDouble() * 0.4;
+                int pc = behavior.particleCount;
                 if (isLavaSoup()) {
-                    bWorld.spawnParticle(Particle.LAVA, bx, by, bz, 1, 0, 0, 0, 0);
+                    Particles.emit(super.blockEntity.world, Particle.LAVA, bx, by, bz, pc, 0.05, 0.0, 0.05, 0, null);
                 } else {
-                    bWorld.spawnParticle(Particle.SPLASH, bx, by, bz, 2, 0.05, 0.0, 0.05, 0.1);
-                    bWorld.spawnParticle(Particle.BUBBLE_POP, bx, by, bz, 1, 0.05, 0.0, 0.05, 0.02);
+                    Particles.emit(super.blockEntity.world, Particle.SPLASH, bx, by, bz, pc, 0.05, 0.0, 0.05, 0.1, null);
+                    Particles.emit(super.blockEntity.world, Particle.BUBBLE_POP, bx, by, bz, pc, 0.05, 0.0, 0.05, 0.02, null);
                 }
             }
             if (bWorld.getGameTime() % ANIM_INTERVAL == 0) {
@@ -150,18 +152,19 @@ public class StockpotController extends BlockEntityController {
             return;
         }
 
-        if (ThreadLocalRandom.current().nextDouble() < 0.05) {
+        if (bWorld.getGameTime() % behavior.particleInterval == 0) {
+            int pc = behavior.particleCount;
             if (stage == StockpotStage.FINISHED) {
                 double bx = super.blockEntity.pos.x() + 0.5 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6;
                 double by = super.blockEntity.pos.y() + 0.85 + ThreadLocalRandom.current().nextDouble() * 0.25;
                 double bz = super.blockEntity.pos.z() + 0.5 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6;
-                bWorld.spawnParticle(org.bukkit.Particle.CLOUD, bx, by, bz, 1, 0.05, 0.0, 0.05, 0.01);
+                Particles.emit(super.blockEntity.world, Particle.CLOUD, bx, by, bz, pc, 0.05, 0.0, 0.05, 0.01, null);
             } else {
                 double bx = super.blockEntity.pos.x() + 0.5 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.3;
                 double by = super.blockEntity.pos.y() + 0.85;
                 double bz = super.blockEntity.pos.z() + 0.5 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.3;
                 Particle p = isLavaSoup() ? Particle.LARGE_SMOKE : Particle.CAMPFIRE_COSY_SMOKE;
-                bWorld.spawnParticle(p, bx, by, bz, 0, 0.0, 1.0, 0.0, 0.04);
+                Particles.emit(super.blockEntity.world, p, bx, by, bz, pc, 0.05, 0.1, 0.05, 0.02, null);
             }
         }
 

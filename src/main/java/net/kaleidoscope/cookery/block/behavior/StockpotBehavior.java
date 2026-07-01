@@ -64,6 +64,8 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     private Property<Direction> facingProperty;
 
     public int animChunkRadius = TrackedPlayers.DEFAULT_ANIM_CHUNK_RADIUS;
+    public int particleInterval = 20;
+    public int particleCount = 3;
     public int cookingTime = 400;
     public Key lidItem = ItemKeys.STOCKPOT_LID;
     public Key bowlItem = ItemKeys.BOWL;
@@ -465,6 +467,8 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
             behavior.facingProperty = BlockBehaviorFactory.getProperty(section.path(), block, "facing", Direction.class);
 
             behavior.animChunkRadius = BehaviorConfig.getInt(section, behavior.animChunkRadius, "animation_view_distance", "animation-view-distance");
+            behavior.particleInterval = BehaviorConfig.getInt(section, behavior.particleInterval, "particle_interval", "particle-interval");
+            behavior.particleCount = BehaviorConfig.getInt(section, behavior.particleCount, "particle_count", "particle-count");
             behavior.cookingTime = BehaviorConfig.getInt(section, behavior.cookingTime, "cooking_time", "cooking-time");
             behavior.lidItem = Key.of(BehaviorConfig.getString(section, behavior.lidItem.asString(), "lid_item", "lid-item"));
             behavior.bowlItem = Key.of(BehaviorConfig.getString(section, behavior.bowlItem.asString(), "bowl_item", "bowl-item"));

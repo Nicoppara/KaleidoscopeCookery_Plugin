@@ -25,6 +25,9 @@ public final class FoodRecipeManager {
     public static final LoadingStage STOCK_FLEX_FOODS = new LoadingStage("stock flex foods");
     public static final LoadingStage ACCURATE_FOODS = new LoadingStage("accurate foods");
     public static final LoadingStage CHOPPING_BOARD_RAWS = new LoadingStage("chopping board raws");
+    public static final LoadingStage TEAPOT_LIQUID = new LoadingStage("teapot liquid");
+    public static final LoadingStage TEA_CUP = new LoadingStage("tea cup");
+    public static final LoadingStage TEAPOT_RESULT = new LoadingStage("teapot result");
 
     private FoodRecipeManager() {}
 
@@ -35,6 +38,9 @@ public final class FoodRecipeManager {
         CraftEngine.instance().packManager().registerConfigSectionParser(new StockFlexFoodsParser());
         CraftEngine.instance().packManager().registerConfigSectionParser(new AccurateFoodsParser());
         CraftEngine.instance().packManager().registerConfigSectionParser(new ChoppingBoardRawsParser());
+        CraftEngine.instance().packManager().registerConfigSectionParser(new TeapotLiquidParser());
+        CraftEngine.instance().packManager().registerConfigSectionParser(new TeaCupParser());
+        CraftEngine.instance().packManager().registerConfigSectionParser(new TeapotResultParser());
     }
 
     // 解析 minecraft:beef 2 得到 beef 数量 2 省略数量默认 1
@@ -338,6 +344,192 @@ public final class FoodRecipeManager {
                     new AccurateFoodRecipe(id, input, results, cook, rotations, lore));
             // require 自动放入白名单
             ApplianceFoodRegistry.instance().register(cook, input);
+            count++;
+        }
+    }
+
+    // teapot_liquid 每个液体 id 下配 bar_left bar_right bar_empty 与满格字形(bar_water/bar_lava/bar_xxx) 字形为完整 image id
+    static final class TeapotLiquidParser extends SectionConfigParser {
+        private int count;
+
+        @Override
+        public String[] sectionId() {
+            return new String[]{"teapot_liquid", "teapot-liquid"};
+        }
+
+        @Override
+        public LoadingStage loadingStage() {
+            return TEAPOT_LIQUID;
+        }
+
+        @Override
+        public List<LoadingStage> dependencies() {
+            return List.of(LoadingStages.ITEM);
+        }
+
+        @Override
+        public int count() {
+            return count;
+        }
+
+        @Override
+        public void preProcess() {
+            count = 0;
+            FoodRecipeRegistry.instance().clearTeapotLiquid();
+        }
+
+        @Override
+        protected void parseSection(Pack pack, Path path, ConfigSection section) {
+            for (String fluidStr : section.keySet()) {
+                ConfigSection sub = section.getSection(fluidStr);
+                if (sub == null) {
+                    continue;
+                }
+                String name = sub.getString(new String[]{"display_name", "display-name"}, fluidStr);
+                String left = sub.getString(new String[]{"bar_left", "bar-left"}, "");
+                String right = sub.getString(new String[]{"bar_right", "bar-right"}, "");
+                String empty = sub.getString(new String[]{"bar_empty", "bar-empty"}, "");
+                String full = findFullGlyph(sub);
+                FoodRecipeRegistry.instance().registerTeapotLiquid(
+                        new TeapotLiquid(Key.of(fluidStr), name, left, right, empty, full));
+                count++;
+            }
+        }
+
+        // 满格字形键名随液体而变(bar_water/bar_lava/bar_xxx) 取除左右空格外的首个 bar_ 键值
+        private static String findFullGlyph(ConfigSection sub) {
+            for (String key : sub.keySet()) {
+                String norm = key.replace('-', '_');
+                if (norm.equals("bar_left") || norm.equals("bar_right") || norm.equals("bar_empty")) {
+                    continue;
+                }
+                if (norm.startsWith("bar_")) {
+                    String value = sub.getString(new String[]{key}, "");
+                    if (value != null && !value.isEmpty()) {
+                        return value;
+                    }
+                }
+            }
+            return "";
+        }
+    }
+
+    // tea_cup 每个茶(成品)id 下配 display_model 扁平或列表 成形时随机取一个 模型需在 items 定义
+    static final class TeaCupParser extends SectionConfigParser {
+        private int count;
+
+        @Override
+        public String[] sectionId() {
+            return new String[]{"tea_cup", "tea-cup"};
+        }
+
+        @Override
+        public LoadingStage loadingStage() {
+            return TEA_CUP;
+        }
+
+        @Override
+        public List<LoadingStage> dependencies() {
+            return List.of(LoadingStages.ITEM);
+        }
+
+        @Override
+        public int count() {
+            return count;
+        }
+
+        @Override
+        public void preProcess() {
+            count = 0;
+            FoodRecipeRegistry.instance().clearTeaCup();
+        }
+
+        @Override
+        protected void parseSection(Pack pack, Path path, ConfigSection section) {
+            for (String teaStr : section.keySet()) {
+                ConfigSection sub = section.getSection(teaStr);
+                if (sub == null) {
+                    continue;
+                }
+                Key tea = Key.of(teaStr);
+                // item 缺省取成品自身 表示手持该物品右键即可放到杯垫
+                Key item = Key.of(sub.getString(new String[]{"item"}, teaStr));
+                Object raw = sub.get("display_model");
+                if (raw == null) {
+                    raw = sub.get("display-model");
+                }
+                List<Key> models = new ArrayList<>();
+                if (raw instanceof List<?> list) {
+                    for (Object o : list) {
+                        models.add(Key.of(String.valueOf(o)));
+                    }
+                } else if (raw != null) {
+                    models.add(Key.of(String.valueOf(raw)));
+                }
+                if (models.isEmpty()) {
+                    continue;
+                }
+                FoodRecipeRegistry.instance().registerTeaCup(new TeaCup(tea, item, models));
+                count++;
+            }
+        }
+    }
+
+    static final class TeapotResultParser extends IdSectionConfigParser {
+        private int count;
+
+        @Override
+        public String[] sectionId() {
+            return new String[]{"teapot_result", "teapot-result"};
+        }
+
+        @Override
+        public LoadingStage loadingStage() {
+            return TEAPOT_RESULT;
+        }
+
+        @Override
+        public List<LoadingStage> dependencies() {
+            return List.of(LoadingStages.ITEM, TEAPOT_LIQUID, TEA_CUP);
+        }
+
+        @Override
+        public int count() {
+            return count;
+        }
+
+        @Override
+        public void preProcess() {
+            count = 0;
+            FoodRecipeRegistry.instance().clearTeapot();
+            ApplianceFoodRegistry.instance().clear(ApplianceType.TEAPOT);
+        }
+
+        // fluid 液体类型(如 minecraft:water) require 原料 数量(消耗) result 产物 数量 time 处理 tick
+        @Override
+        protected void parseSection(@NotNull Pack pack, @NotNull Path path,
+                                    @NotNull Key id, @NotNull ConfigSection section) {
+            Key fluid = section.getNonNullIdentifier("fluid");
+            if (!FoodRecipeRegistry.instance().hasTeapotLiquid(fluid)) {
+                KaleidoscopeCookeryPlugin.instance().getLogger().warning(
+                        "[food] 茶壶配方 " + id.asString() + " 的液体 " + fluid.asString()
+                                + " 未在 teapot_liquid 注册 已跳过该配方");
+                return;
+            }
+            ItemRequirement ingredient = parseAmount(section.getNonNullString("require"));
+            ItemRequirement result = parseAmount(section.getNonNullString("result"));
+            // 成品必须在 tea_cup 定义模型 否则跳过
+            if (!FoodRecipeRegistry.instance().hasTeaCup(result.item())) {
+                KaleidoscopeCookeryPlugin.instance().getLogger().warning(
+                        "[food] 茶壶配方 " + id.asString() + " 的成品 " + result.item().asString()
+                                + " 未在 tea_cup 定义模型 已跳过该配方");
+                return;
+            }
+            int time = section.getInt("time", 200);
+
+            FoodRecipeRegistry.instance().registerTeapot(new TeapotRecipe(
+                    id, fluid, ingredient.item(), ingredient.count(), result.item(), result.count(), time));
+            ApplianceFoodRegistry.instance().register(ApplianceType.TEAPOT, ingredient.item());
             count++;
         }
     }

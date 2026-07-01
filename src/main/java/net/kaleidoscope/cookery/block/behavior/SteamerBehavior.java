@@ -83,6 +83,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     public int campfireStackHeight = 8;
     public int stoveStackHeight = 16;
     public int cookingTime = 200;
+    public int particleInterval = 20;
+    public int particleCount = 3;
     public String msgMaxLayers = "蒸笼最多只能叠 {max} 层";
     public String msgFull = "蒸笼已满";
     public String msgNeedStove = "请放在炉灶上方";
@@ -724,6 +726,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
             behavior.cookingTime = BehaviorConfig.getInt(section, behavior.cookingTime, "cooking_time", "cooking-time");
             behavior.campfireStackHeight = BehaviorConfig.getInt(section, behavior.campfireStackHeight, "campfire_stack_height", "campfire-stack-height");
             behavior.stoveStackHeight = BehaviorConfig.getInt(section, behavior.stoveStackHeight, "stove_stack_height", "stove-stack-height");
+            behavior.particleInterval = BehaviorConfig.getInt(section, behavior.particleInterval, "particle_interval", "particle-interval");
+            behavior.particleCount = BehaviorConfig.getInt(section, behavior.particleCount, "particle_count", "particle-count");
             behavior.msgMaxLayers = BehaviorConfig.getString(section, behavior.msgMaxLayers, "msg_max_layers", "msg-max-layers");
             behavior.msgFull = BehaviorConfig.getString(section, behavior.msgFull, "msg_full", "msg-full");
             behavior.msgNeedStove = BehaviorConfig.getString(section, behavior.msgNeedStove, "msg_need_stove", "msg-need-stove");

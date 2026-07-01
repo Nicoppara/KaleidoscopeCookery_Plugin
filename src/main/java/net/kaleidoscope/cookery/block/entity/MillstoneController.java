@@ -2,6 +2,7 @@ package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.api.MillstoneAnimals;
 import net.kaleidoscope.cookery.block.behavior.MillstoneBehavior;
+import net.kaleidoscope.cookery.block.entity.render.Particles;
 
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
@@ -319,7 +320,7 @@ public class MillstoneController extends FurnitureController {
         double pz = furniture().position().z + p.z;
         try {
             org.bukkit.inventory.ItemStack stack = ItemStackUtils.getBukkitStack(current.minecraftItem());
-            world.spawnParticle(org.bukkit.Particle.ITEM, px, py, pz, 5, 0.1, 0.1, 0.1, 0.05, stack);
+            Particles.emit(world, org.bukkit.Particle.ITEM, px, py, pz, 5, 0.1, 0.1, 0.1, 0.05, stack);
         } catch (Exception ignored) {}
     }
 

@@ -22,7 +22,7 @@ public final class InteractGuard {
         return test(player, Flag.INTERACT, (org.bukkit.World) pos.world().platformWorld(), pos.x, pos.y, pos.z);
     }
 
-    // 打开 UI 视作开容器 留言板这类用 OPEN_CONTAINER 权限
+    // 打开 UI 视作开容器 用 OPEN_CONTAINER 权限
     public static boolean canOpenContainer(Player player, WorldPosition pos) {
         return test(player, Flag.OPEN_CONTAINER, (org.bukkit.World) pos.world().platformWorld(), pos.x, pos.y, pos.z);
     }

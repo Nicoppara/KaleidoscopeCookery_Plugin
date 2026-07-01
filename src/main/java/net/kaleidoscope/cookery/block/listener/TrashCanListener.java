@@ -9,10 +9,10 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.world.GenericGameEvent;
 
-// 垃圾桶进入机制监听 落地检测进入 下座或退出登录时清理
 public class TrashCanListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
@@ -39,13 +39,22 @@ public class TrashCanListener implements Listener {
         }, 1L, player.getLocation());
     }
 
-    // 玩家停止旁观相机
+    // 玩家停止旁观相机 死亡触发的停止旁观交给重生处理 不在此处退出(避免传送/切模式死人)
     @EventHandler
     public void onStopSpectating(PlayerStopSpectatingEntityEvent event) {
+        if (event.getPlayer().isDead()) {
+            return;
+        }
         TrashCanController ctrl = TrashCanController.byOccupant(event.getPlayer().getUniqueId());
         if (ctrl != null) {
             ctrl.exit();
         }
+    }
+
+    // 在桶里死亡后点重生 松开桶并还原生存模式 在正确的重生点重生
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        TrashCanController.handleRespawn(event.getPlayer());
     }
 
     // 潜行退出垃圾桶

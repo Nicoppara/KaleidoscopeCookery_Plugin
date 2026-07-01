@@ -13,7 +13,7 @@ public final class TrackedPlayers {
     private TrackedPlayers() {}
 
     // 动画视距默认值 切比雪夫区块距离 远于此的玩家反正也不渲染动画 就不发动画包
-    public static final int DEFAULT_ANIM_CHUNK_RADIUS = 2;
+    public static final int DEFAULT_ANIM_CHUNK_RADIUS = 1;
 
     public static void forEach(BlockEntity blockEntity, Consumer<Player> action) {
         CEChunk chunk = blockEntity.world.getChunkAtIfLoaded(blockEntity.pos.x() >> 4, blockEntity.pos.z() >> 4);

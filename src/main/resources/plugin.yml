@@ -1,5 +1,5 @@
 name: KaleidoscopeCookeryPlugin
-version: '1.0-SNAPSHOT'
+version: '${version}'
 main: net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin
 api-version: '21.1.2'
 

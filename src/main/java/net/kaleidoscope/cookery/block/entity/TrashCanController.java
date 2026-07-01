@@ -2,10 +2,18 @@ package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.InteractGuard;
+import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelPipeline;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
+import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import net.momirealms.craftengine.core.util.ItemUtils;
+import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.entity.furniture.Furniture;
 import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureController;
 import net.momirealms.craftengine.core.entity.furniture.element.FurnitureElement;
@@ -23,9 +31,18 @@ import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.ListTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.SoundCategory;
+import org.bukkit.World;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.Mob;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -52,6 +69,17 @@ public class TrashCanController extends FurnitureController {
 
     private record BlockKey(UUID world, int x, int y, int z) {}
     private static final Map<UUID, TrashCanController> BY_OCCUPANT = new ConcurrentHashMap<>();
+
+    private static final String TELEPORT_BLOCKER = "kaleidoscopecookery_trashcan_spectate";
+    private static final Class<?> SPECTATE_PACKET = resolveSpectatePacket();
+
+    private static Class<?> resolveSpectatePacket() {
+        try {
+            return Class.forName("net.minecraft.network.protocol.game.ServerboundTeleportToEntityPacket");
+        } catch (ClassNotFoundException e) {
+            return null;
+        }
+    }
 
     private static final double CAMERA_EYE_Y = 0.9;
     private static final float VIEW_PITCH = 0f;
@@ -121,16 +149,18 @@ public class TrashCanController extends FurnitureController {
     // 占用代次 每次进入自增 待机调度任务带着进入时的代次 代次变了就失效 防止旧任务在快速换人后乱发
     private int occupancyId;
     // 进入前的状态 退出时还原
-    private org.bukkit.GameMode previousGameMode;
-    private org.bukkit.inventory.ItemStack previousHelmet;
+    private GameMode previousGameMode;
+    private ItemStack previousHelmet;
     // 固定视角用的相机实体 玩家旁观它 视角与位置都被锁住
-    private org.bukkit.entity.Entity camera;
+    private Entity camera;
+    private final Key helmetItem;
 
-    public TrashCanController(Furniture furniture, int animChunkRadius) {
+    public TrashCanController(Furniture furniture, int animChunkRadius, Key helmetItem) {
         super(furniture);
         Arrays.fill(this.storage, Item.empty());
         WorldPosition pos = furniture.position();
         this.animChunkRadius = animChunkRadius;
+        this.helmetItem = helmetItem;
         this.srcChunkX = ((int) Math.floor(pos.x)) >> 4;
         this.srcChunkZ = ((int) Math.floor(pos.z)) >> 4;
         this.element = new TrashCanElement(this, pos);
@@ -232,7 +262,7 @@ public class TrashCanController extends FurnitureController {
     private void playAnimation(float[][] frames) {
         animating = true;
         List<Player> recipients = rangePlayers();
-        org.bukkit.Location loc = topCenter();
+        Location loc = topCenter();
         for (int i = 1; i < frames.length; i++) {
             int delay = (int) frames[i - 1][0];
             int duration = Math.max(1, (int) (frames[i][0] - frames[i - 1][0]));
@@ -253,14 +283,14 @@ public class TrashCanController extends FurnitureController {
     }
 
     private void playEffects(float pitch) {
-        org.bukkit.Location loc = topCenter();
-        loc.getWorld().spawnParticle(Particle.SMOKE, loc.getX(), loc.getY(), loc.getZ(), 3, 0.2, 0.05, 0.2, 0.01);
+        Location loc = topCenter();
+        Particles.emit(loc.getWorld(), Particle.SMOKE, loc.getX(), loc.getY(), loc.getZ(), 3, 0.2, 0.05, 0.2, 0.01, null);
         loc.getWorld().playSound(loc, SOUND, SoundCategory.BLOCKS, 1.0f, pitch);
     }
 
-    private org.bukkit.Location topCenter() {
+    private Location topCenter() {
         WorldPosition p = furniture().position();
-        return new org.bukkit.Location((org.bukkit.World) p.world().platformWorld(), p.x, p.y + 1.1, p.z);
+        return new Location((World) p.world().platformWorld(), p.x, p.y + 1.1, p.z);
     }
 
     // 进入桶内 旁观相机锁视角 戴南瓜遮罩 隐藏掉落物
@@ -269,11 +299,11 @@ public class TrashCanController extends FurnitureController {
             return;
         }
         WorldPosition p = furniture().position();
-        org.bukkit.World world = (org.bukkit.World) p.world().platformWorld();
+        World world = (World) p.world().platformWorld();
         int bx = (int) Math.floor(p.x);
         int by = (int) Math.floor(p.y);
         int bz = (int) Math.floor(p.z);
-        org.bukkit.Location camLoc = new org.bukkit.Location(world,
+        Location camLoc = new Location(world,
                 bx + 0.5, by + CAMERA_EYE_Y, bz + 0.5, facingDegrees(), VIEW_PITCH);
 
         this.previousGameMode = player.getGameMode();
@@ -284,24 +314,17 @@ public class TrashCanController extends FurnitureController {
         this.occupantId = player.getUniqueId();
         BY_OCCUPANT.put(occupantId, this);
 
-        // 相机用隐形盔甲架 Marker 实体不一定同步给客户端 盔甲架可靠 读眼高把相机精确放到桶口
-        org.bukkit.entity.ArmorStand stand = world.spawn(camLoc, org.bukkit.entity.ArmorStand.class, a -> {
-            a.setVisible(false);
-            a.setGravity(false);
-            a.setMarker(true);
-            a.setSmall(true);
-            a.setBasePlate(false);
-            a.setInvulnerable(true);
-            a.setPersistent(false);
-            a.setSilent(true);
+        // 相机用空 ItemDisplay 无物品即无模型 旁观模式下无剪影无阴影(隐形盔甲架会被旁观者看到半透明剪影) 仍是真实体可被旁观锁定
+        ItemDisplay display = world.spawn(camLoc, ItemDisplay.class, d -> {
+            d.setPersistent(false);
+            d.setGravity(false);
         });
-        stand.teleport(new org.bukkit.Location(world,
-                bx + 0.5, by + CAMERA_EYE_Y - stand.getEyeHeight(), bz + 0.5, facingDegrees(), VIEW_PITCH));
-        this.camera = stand;
+        this.camera = display;
 
-        player.setGameMode(org.bukkit.GameMode.SPECTATOR);
-        player.getInventory().setHelmet(new org.bukkit.inventory.ItemStack(org.bukkit.Material.CARVED_PUMPKIN));
-        org.bukkit.entity.Entity cam = this.camera;
+        player.setGameMode(GameMode.SPECTATOR);
+        player.getInventory().setHelmet(helmetStack());
+        Entity cam = this.camera;
+        addTeleportBlocker(player);
         BukkitCraftEngine.instance().scheduler().platform().runLater(() -> {
             if (occupied && player.isOnline() && cam.isValid()) {
                 player.setSpectatorTarget(cam);
@@ -314,6 +337,52 @@ public class TrashCanController extends FurnitureController {
         // 进入摆动结束后转入占用待机 盖子微抬 眼睛冒出 并开始微动循环
         int enterEnd = (int) LID_ENTER[LID_ENTER.length - 1][0] + 1;
         BukkitCraftEngine.instance().scheduler().platform().runLater(() -> beginOccupiedIdle(gen), enterEnd, topCenter());
+    }
+
+    // 进桶头盔 配置的自定义帽(带 camera_overlay 遮罩) 取不到退回南瓜
+    private ItemStack helmetStack() {
+        Item item = InventoryUtils.createOrEmpty(helmetItem);
+        if (ItemUtils.isEmpty(item)) {
+            return new ItemStack(Material.CARVED_PUMPKIN);
+        }
+        return ItemStackUtils.getBukkitStack(item);
+    }
+
+    // 旁观传送(teleport_to_entity)不触发 PlayerTeleportEvent 在玩家管线上挂一道 netty 拦截 直接丢弃该包 进桶挂上 退出摘掉
+    private void addTeleportBlocker(org.bukkit.entity.Player player) {
+        if (SPECTATE_PACKET == null) {
+            return;
+        }
+        Channel channel = BukkitNetworkManager.instance().getChannel(player);
+        if (channel == null) {
+            return;
+        }
+        ChannelPipeline pipeline = channel.pipeline();
+        if (pipeline.get(TELEPORT_BLOCKER) != null || pipeline.get("packet_handler") == null) {
+            return;
+        }
+        pipeline.addBefore("packet_handler", TELEPORT_BLOCKER, new SpectateTeleportBlocker());
+    }
+
+    private void removeTeleportBlocker(org.bukkit.entity.Player player) {
+        Channel channel = BukkitNetworkManager.instance().getChannel(player);
+        if (channel == null) {
+            return;
+        }
+        ChannelPipeline pipeline = channel.pipeline();
+        if (pipeline.get(TELEPORT_BLOCKER) != null) {
+            pipeline.remove(TELEPORT_BLOCKER);
+        }
+    }
+
+    private static final class SpectateTeleportBlocker extends ChannelInboundHandlerAdapter {
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            if (SPECTATE_PACKET.isInstance(msg)) {
+                return;
+            }
+            super.channelRead(ctx, msg);
+        }
     }
 
     // 占用待机 盖子定格微抬 眼睛冒出 然后开始微动循环
@@ -342,7 +411,7 @@ public class TrashCanController extends FurnitureController {
     // 播放一条眼睛轨道 每个关键帧把下一帧目标发给追踪玩家 Y 叠加在冒出基准上
     private void playEyeTrack(float[][] frames) {
         List<Player> recipients = rangePlayers();
-        org.bukkit.Location loc = topCenter();
+        Location loc = topCenter();
         for (int i = 1; i < frames.length; i++) {
             int delay = (int) frames[i - 1][0];
             int duration = Math.max(1, (int) (frames[i][0] - frames[i - 1][0]));
@@ -382,13 +451,14 @@ public class TrashCanController extends FurnitureController {
         // 先从登记表移除再解除相机 解除会触发停止旁观事件 此时反查为空不会重入
         if (id != null) {
             BY_OCCUPANT.remove(id);
-            org.bukkit.entity.Player bp = org.bukkit.Bukkit.getPlayer(id);
+            org.bukkit.entity.Player bp = Bukkit.getPlayer(id);
             if (bp != null) {
+                removeTeleportBlocker(bp);
                 bp.setSpectatorTarget(null);
                 bp.getInventory().setHelmet(previousHelmet);
                 if (!shutdown) {
                     WorldPosition p = furniture().position();
-                    org.bukkit.Location out = new org.bukkit.Location((org.bukkit.World) p.world().platformWorld(),
+                    Location out = new Location((World) p.world().platformWorld(),
                             Math.floor(p.x) + 0.5, Math.floor(p.y) + 1.0, Math.floor(p.z) + 0.5,
                             bp.getLocation().getYaw(), bp.getLocation().getPitch());
                     bp.teleport(out);
@@ -415,7 +485,7 @@ public class TrashCanController extends FurnitureController {
         this.previousGameMode = null;
     }
 
-    private static void markRestoreState(org.bukkit.entity.Player player, org.bukkit.GameMode gameMode, org.bukkit.inventory.ItemStack helmet) {
+    private static void markRestoreState(org.bukkit.entity.Player player, GameMode gameMode, ItemStack helmet) {
         PersistentDataContainer pdc = player.getPersistentDataContainer();
         pdc.set(RESTORE_GAMEMODE_KEY, PersistentDataType.STRING, gameMode.name());
         if (helmet != null && !helmet.getType().isAir()) {
@@ -440,13 +510,47 @@ public class TrashCanController extends FurnitureController {
         }
         player.setSpectatorTarget(null);
         try {
-            player.setGameMode(org.bukkit.GameMode.valueOf(gameModeName));
+            player.setGameMode(GameMode.valueOf(gameModeName));
         } catch (IllegalArgumentException ignored) {
         }
         byte[] helmetBytes = pdc.get(RESTORE_HELMET_KEY, PersistentDataType.BYTE_ARRAY);
         player.getInventory().setHelmet(
-                helmetBytes == null ? null : org.bukkit.inventory.ItemStack.deserializeBytes(helmetBytes));
+                helmetBytes == null ? null : ItemStack.deserializeBytes(helmetBytes));
         clearRestoreState(player);
+    }
+
+    // 在桶里死亡后点重生 松开桶的相机/拦截/占用 再据 PDC 还原游戏模式+头盔 让原版重生点与生存模式生效
+    public static void handleRespawn(org.bukkit.entity.Player player) {
+        TrashCanController c = BY_OCCUPANT.remove(player.getUniqueId());
+        boolean marked = player.getPersistentDataContainer().has(RESTORE_GAMEMODE_KEY, PersistentDataType.STRING);
+        if (c != null) {
+            c.detachForRespawn(player);
+        }
+        if (c == null && !marked) {
+            return;
+        }
+        // 延后一 tick 待重生完成再还原游戏模式 否则可能被重生逻辑盖掉
+        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> restoreIfCrashed(player), 1L, player.getLocation());
+    }
+
+    // 只松开占用/相机/拦截 不传送不改模式(交给上面延后的 restoreIfCrashed) 先移除登记再解旁观避免重入
+    private void detachForRespawn(org.bukkit.entity.Player player) {
+        this.occupied = false;
+        this.occupancyId++;
+        this.occupantId = null;
+        removeTeleportBlocker(player);
+        player.setSpectatorTarget(null);
+        if (camera != null) {
+            if (camera.isValid()) {
+                camera.remove();
+            }
+            camera = null;
+        }
+        sendToTracked(element.openFrameMeta(0f, 0f, 5));
+        sendToTracked(element.eyeMeta(0f, 0f, 5));
+        element.setItemsHidden(false);
+        this.previousHelmet = null;
+        this.previousGameMode = null;
     }
 
     // 服务器关闭时统一把所有进入桶里的玩家放出来 避免卡在旁观模式
@@ -458,8 +562,8 @@ public class TrashCanController extends FurnitureController {
 
     // 清除附近生物对进入玩家的敌意 仿模组进桶即安全
     private void clearNearbyHostility(org.bukkit.entity.Player player) {
-        for (org.bukkit.entity.Entity e : player.getWorld().getNearbyEntities(player.getLocation(), 32, 32, 32)) {
-            if (e instanceof org.bukkit.entity.Mob mob && mob.getTarget() == player) {
+        for (Entity e : player.getWorld().getNearbyEntities(player.getLocation(), 32, 32, 32)) {
+            if (e instanceof Mob mob && mob.getTarget() == player) {
                 mob.setTarget(null);
             }
         }
@@ -469,7 +573,7 @@ public class TrashCanController extends FurnitureController {
     private void playEnterAnimation() {
         animating = true;
         List<Player> recipients = rangePlayers();
-        org.bukkit.Location loc = topCenter();
+        Location loc = topCenter();
         for (int i = 1; i < BODY_ENTER.length; i++) {
             int delay = (int) BODY_ENTER[i - 1][0];
             int duration = Math.max(1, (int) (BODY_ENTER[i][0] - BODY_ENTER[i - 1][0]));
@@ -495,7 +599,7 @@ public class TrashCanController extends FurnitureController {
         BukkitCraftEngine.instance().scheduler().platform().runLater(() -> animating = false, total, loc);
     }
 
-    private void scheduleFrame(Runnable send, int delay, org.bukkit.Location loc) {
+    private void scheduleFrame(Runnable send, int delay, Location loc) {
         if (delay <= 0) {
             send.run();
         } else {
@@ -506,7 +610,7 @@ public class TrashCanController extends FurnitureController {
     // 按玩家脚下方块查询唯一垃圾桶 脚下方块或其下一格 检测到多个则返回 null 不进入
     public static TrashCanController findUnder(org.bukkit.entity.Player player) {
         UUID world = player.getWorld().getUID();
-        org.bukkit.Location loc = player.getLocation();
+        Location loc = player.getLocation();
         int bx = loc.getBlockX();
         int by = loc.getBlockY();
         int bz = loc.getBlockZ();
@@ -524,7 +628,7 @@ public class TrashCanController extends FurnitureController {
 
     private BlockKey myBlockKey() {
         WorldPosition p = furniture().position();
-        UUID world = ((org.bukkit.World) p.world().platformWorld()).getUID();
+        UUID world = ((World) p.world().platformWorld()).getUID();
         return new BlockKey(world, (int) Math.floor(p.x), (int) Math.floor(p.y), (int) Math.floor(p.z));
     }
 
@@ -562,9 +666,9 @@ public class TrashCanController extends FurnitureController {
         if (occupied) {
             exit();
         }
-        org.bukkit.World world = (org.bukkit.World) furniture().position().world().platformWorld();
+        World world = (World) furniture().position().world().platformWorld();
         WorldPosition p = furniture().position();
-        org.bukkit.Location dropLoc = new org.bukkit.Location(world, p.x, p.y + 0.5, p.z);
+        Location dropLoc = new Location(world, p.x, p.y + 0.5, p.z);
         for (Item item : storage) {
             if (!item.isEmpty()) {
                 world.dropItemNaturally(dropLoc, ItemStackUtils.getBukkitStack(item.minecraftItem()));

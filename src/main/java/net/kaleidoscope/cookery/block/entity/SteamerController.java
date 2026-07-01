@@ -29,10 +29,9 @@ import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.util.DropUtils;
+import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
-import org.bukkit.Location;
 import org.bukkit.Particle;
-import org.bukkit.World;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
@@ -58,6 +57,7 @@ public class SteamerController extends BlockEntityController {
     private boolean wasCovered = false;
     private long seed = System.currentTimeMillis();
     private int tickCounter = 0;
+    private int particleTick = 0;
     private int litLevel = 0;
     private boolean fallingAway = false;
     private boolean skipFoodDrop = false;
@@ -98,9 +98,12 @@ public class SteamerController extends BlockEntityController {
             refreshElementState();
         }
 
+        particleTick++;
         if (++tickCounter >= 5) {
             tickCounter = 0;
             updateLitLevel();
+        }
+        if (particleTick % behavior.particleInterval == 0) {
             for (int i = 0; i < itemCount; i++) {
                 if (cookingTime[i] == -1) {
                     makeRipeParticles();
@@ -260,37 +263,24 @@ public class SteamerController extends BlockEntityController {
     }
 
     private void makeCookingParticles() {
-        if (random.nextDouble() >= 0.1) {
+        if (particleTick % behavior.particleInterval != 0) {
             return;
         }
-        try {
-            World bukkitWorld = (World) super.blockEntity.world.world().platformWorld();
-            SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
-            double yOffset = (type != SlabType.DOUBLE) ? 0.5 : 1.0;
-
-            double x = super.blockEntity.pos.x + 0.5 + (random.nextDouble() / 2) * (random.nextBoolean() ? 1 : -1);
-            double y = super.blockEntity.pos.y + yOffset + random.nextDouble() / 2;
-            double z = super.blockEntity.pos.z + 0.5 + (random.nextDouble() / 2) * (random.nextBoolean() ? 1 : -1);
-
-            bukkitWorld.spawnParticle(Particle.CLOUD, new Location(bukkitWorld, x, y, z), 1, 0, 0, 0, 0.05);
-        } catch (Exception ignored) {}
+        SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+        double yOffset = (type != SlabType.DOUBLE) ? 0.5 : 1.0;
+        double x = super.blockEntity.pos.x + 0.5 + (random.nextDouble() / 2) * (random.nextBoolean() ? 1 : -1);
+        double y = super.blockEntity.pos.y + yOffset + random.nextDouble() / 2;
+        double z = super.blockEntity.pos.z + 0.5 + (random.nextDouble() / 2) * (random.nextBoolean() ? 1 : -1);
+        Particles.emit(super.blockEntity.world, Particle.CLOUD, x, y, z, behavior.particleCount, 0.05, 0.05, 0.05, 0.05, null);
     }
 
     private void makeRipeParticles() {
-        if (random.nextDouble() >= 0.5) {
-            return;
-        }
-        try {
-            World bukkitWorld = (World) super.blockEntity.world.world().platformWorld();
-            SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
-            double yOffset = (type != SlabType.DOUBLE) ? 0.25 : 0.75;
-
-            double x = super.blockEntity.pos.x + 0.5 + (random.nextDouble() / 1.25) * (random.nextBoolean() ? 1 : -1);
-            double y = super.blockEntity.pos.y + yOffset + random.nextDouble() / 2;
-            double z = super.blockEntity.pos.z + 0.5 + (random.nextDouble() / 1.25) * (random.nextBoolean() ? 1 : -1);
-
-            bukkitWorld.spawnParticle(Particle.CLOUD, new Location(bukkitWorld, x, y, z), 1, 0, 0, 0, 0.05);
-        } catch (Exception ignored) {}
+        SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+        double yOffset = (type != SlabType.DOUBLE) ? 0.25 : 0.75;
+        double x = super.blockEntity.pos.x + 0.5 + (random.nextDouble() / 1.25) * (random.nextBoolean() ? 1 : -1);
+        double y = super.blockEntity.pos.y + yOffset + random.nextDouble() / 2;
+        double z = super.blockEntity.pos.z + 0.5 + (random.nextDouble() / 1.25) * (random.nextBoolean() ? 1 : -1);
+        Particles.emit(super.blockEntity.world, Particle.CLOUD, x, y, z, behavior.particleCount, 0.05, 0.05, 0.05, 0.05, null);
     }
 
     public boolean isCovered() {

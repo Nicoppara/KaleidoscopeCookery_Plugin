@@ -125,6 +125,10 @@ public void onExtract(PotExtractDishEvent event) {
 
 下列配置写在 CraftEngine 的方块 / 家具 / 物品定义里的 `behaviors:` 段。键名同时支持下划线与连字符两种写法。默认值即下方所示。
 
+> **`animation_view_distance`**（仅**有动画**的机型：炒锅、高汤锅、沙威玛、石磨、垃圾桶、茶壶）：动画帧发包的区块视距，切比雪夫距离，默认 `1`。离机型超过该区块距离的玩家不再收到动画包——反正太远也渲染不出来。想更远可见就调大，想进一步省发包就调小。
+>
+> **粒子发包不受此项控制**：所有机型的粒子统一只发给粒子点约 8 格球形范围内的玩家（Paper `ParticleBuilder.receivers`），固定不可配。所以纯出粒子、无动画的机型（炉灶、蒸笼、砧板）**没有** `animation_view_distance` 这一项。
+
 ### 🥘 炒锅 `kaleidoscopecookery:cooking_pot`
 
 倒油、翻炒、投料、盛出、记录食谱。
@@ -136,6 +140,7 @@ behaviors:
     stir_fry_count: 6            # 出锅所需翻炒次数
     cook_done_time: 200          # 出锅后多少 tick 进入烧焦阶段（-1 = 永不烧焦）
     burnt_to_charcoal_time: 400  # 烧焦后多少 tick 变成木炭
+    animation_view_distance: 1   # 翻炒动画发包视距（区块）
     oil_item: "kaleidoscopecookery:oil"
     shovel_no_oil_item: "kaleidoscopecookery:kitchen_shovel_no_oil"
     shovel_has_oil_item: "kaleidoscopecookery:kitchen_shovel_has_oil"
@@ -167,6 +172,8 @@ behaviors:
   - type: kaleidoscopecookery:stove
     # 可熄火的自定义厨铲（原版各种铲子始终可熄火）
     extinguish_kitchen_shovel_item: "kaleidoscopecookery:kitchen_shovel_no_oil"
+    particle_interval: 20        # 每隔多少 tick 出一次火焰/烟雾 越大发包越少
+    particle_count: 3            # 一个包内塞几颗粒子 越大越密但不增发包
 ```
 
 ### 🫕 搪瓷盆 `kaleidoscopecookery:cooking_enamel_basin`
@@ -190,6 +197,9 @@ behaviors:
 behaviors:
   - type: kaleidoscopecookery:stockpot
     cooking_time: 400                # 盖盖后多少 tick 炖煮完成
+    particle_interval: 20            # 每隔多少 tick 出一次沸腾/蒸汽粒子 越大发包越少
+    particle_count: 3                # 一个包内塞几颗粒子 越大越密但不增发包
+    animation_view_distance: 1       # 浮动动画发包视距（区块）
     lid_item: "kaleidoscopecookery:stockpot_lid"
     bowl_item: "minecraft:bowl"
     recipe_item_no_recipe: "kaleidoscopecookery:recipe_item_no_recipe"
@@ -211,6 +221,8 @@ behaviors:
     cooking_time: 200            # 每个食材蒸熟所需 tick
     campfire_stack_height: 8     # 在篝火等热源上最多叠几层
     stove_stack_height: 16       # 在炉灶上最多叠几层
+    particle_interval: 20        # 每隔多少 tick 出一次蒸汽 越大发包越少
+    particle_count: 3            # 一个包内塞几颗蒸汽 越大越密但不增发包
     msg_max_layers: "蒸笼最多只能叠 {max} 层"   # {max} 替换为实际上限
     msg_full: "蒸笼已满"
     msg_need_stove: "请放在炉灶上方"
@@ -237,6 +249,7 @@ behaviors:
 behaviors:
   - type: kaleidoscopecookery:shawarma_spit
     grill_time: 300              # 每个食材烤熟所需 tick
+    animation_view_distance: 1   # 旋转动画发包视距（区块）
 ```
 
 ### 🪨 石磨 `kaleidoscopecookery:millstone`
@@ -247,6 +260,7 @@ behaviors:
 behaviors:
   - type: kaleidoscopecookery:millstone
     grind_rotations: 4           # 每料产出所需圈数 默认 精准配方可用 rotations 覆盖
+    animation_view_distance: 1   # 转动动画发包视距（区块）
     stick_item: "show:new_millstone_stick"     # 中心自转棍展示模型
     stick2_item: "show:new_millstone_stick2"   # 公转支架展示模型
     stone_item: "show:new_millstone_stone"     # 横向滚动磨石展示模型
@@ -304,6 +318,7 @@ MillstoneAnimals.instance().addProvider(entity ->
 ```yaml
 behaviors:
   - type: kaleidoscopecookery:trashcan
+    animation_view_distance: 1   # 开合动画发包视距（区块）
 ```
 
 > 进入桶内的遮罩复用原版南瓜头覆盖层：把资源包的 `assets/minecraft/textures/misc/pumpkinblur.png` 替换成垃圾桶遮罩（透明缝隙版），戴南瓜时看到的就是它。这是全局的，戴真南瓜也会变这个图。
@@ -366,7 +381,21 @@ stock_flex_foods:
     require: [ minecraft:cod ]
 ```
 
-> `lore` 支持两种写法：扁平 `{ require, data }`，或块状 `{ when: [...], unpreferred, data: [...] }`。
+字段含义：
+
+- `require`：必须存在的具体物品，可带数量（`"minecraft:beef 2"`）。
+- `raw`：按食材分类的门槛，`"meat 1"` = 至少 1 个 meat 类，`"vegetable 0"` = 允许但不强制。
+- `preferred` / `unpreferred`：口味标记。出现 `unpreferred` 里的食材会把底味切到「不好吃」那一档，并覆盖菜名与 lore。
+- `lore`：命中条件时给成品加的描述，支持扁平 `{ require, data }` 或块状 `{ when: [...], unpreferred, data: [...] }`。
+
+**多个配方同时匹配时的优先级**（依次比较，前者相同才看后者）：
+
+1. **消耗食材最多**：能把锅里食材用掉最多的配方优先（`份数 × 每份消耗数`）。
+2. **unpreferred 命中种类最多**：负向食材越多越优先（脏锅先出黑暗料理）。
+3. **lore 命中行数最多**。
+4. **主料出现最早**：标志性食材在投料顺序里越靠前越优先。
+
+> 举例：锅里放了 3 牛肉 + 1 土豆。配方 A =「1 牛肉 → 熟牛肉」，配方 B =「3 牛肉 + 1 土豆 → 土豆炖牛肉」。B 消耗 4 个食材、A 只消耗 1 个 → 选 B。若两个配方消耗数相同，再依次比 unpreferred 命中数、lore 命中数、主料位置。
 
 ### 🎯 精准配方
 
@@ -423,6 +452,55 @@ chopping_board_raws:
     extra:                        # 附带产物 权重 = 百分比 各自独立判定
       - minecraft:bone 1 30       # 30% 概率附带 1 根骨头
 ```
+
+### 🫖 茶壶 `teapot_liquid` / `tea_cup` / `teapot_result`
+
+茶壶配方分三部分，加载有先后依赖：`teapot_liquid` → `tea_cup` → `teapot_result`。
+
+**1. `teapot_liquid`** — 声明允许的液体与液体条字形。只有在这里注册过的液体，才能写进茶配方，否则该配方报错跳过：
+
+```yaml
+teapot_liquid:
+  minecraft:water:
+    display_name: "水"                              # 头顶文本显示的中文名
+    bar_left: kaleidoscopecookery:tea_left          # 液体条左端字形（完整 image id）
+    bar_right: kaleidoscopecookery:tea_right
+    bar_empty: kaleidoscopecookery:tea_empty        # 空格字形
+    bar_water: kaleidoscopecookery:tea_water_full   # 满格字形（键名随意，除左右/空格外的 bar_ 键即满格）
+```
+
+**2. `tea_cup`** — 声明「茶（成品）→ 杯子物品 + 展示模型」。模型需在 `items` 里定义，多个则成形时随机取一个：
+
+```yaml
+tea_cup:
+  kaleidoscopecookery:barley_tea:
+    item: kaleidoscopecookery:barley_tea            # 手持它可直接放到茶杯垫上
+    display_model:
+      - show:barley_tea                             # 空杯倒入这种茶后变成的模型（多个随机）
+```
+
+**3. `teapot_result`** — 茶配方本体，是**模糊配方**，`require` 要带数量：
+
+```yaml
+teapot_result:
+  barley_tea_recipe:
+    fluid: minecraft:water                          # 必须已在 teapot_liquid 注册
+    require: minecraft:wheat_seeds 5                # 原料 + 「满产量」所需数量
+    result: kaleidoscopecookery:barley_tea          # 必须已在 tea_cup 定义模型
+    time: 200                                       # 熬煮 tick
+```
+
+**茶壶模糊产量逻辑**：茶壶满液体条 = 8 份（可倒 8 杯茶）。玩家放的原料越少，产量按比例减少：
+
+```
+份数 = 向下取整( 8 × 玩家放入量 / require 要求量 )    （结果不足 1 时强制为 1）
+```
+
+- 放满 5 个 `wheat_seeds` → `8 × 5/5 = 8` 份（满）。
+- 放 3 个 → `8 × 3/5 = 4.8 → 4` 份。
+- 放 1 个 → `8 × 1/5 = 1.6 → 1` 份。
+
+放料上限为 `require` 的数量（放再多也只按满产量算）；之后每往茶杯垫的空杯里倒一杯，消耗 1 份、液体条减一格，倒空则茶壶恢复空壶。
 
 ---
 

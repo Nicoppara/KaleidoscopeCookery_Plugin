@@ -15,6 +15,11 @@ public final class FoodRecipeRegistry {
     private final List<FlexFoodRecipe> flexRecipes = new CopyOnWriteArrayList<>();
     private final List<AccurateFoodRecipe> accurateRecipes = new CopyOnWriteArrayList<>();
     private final List<ChoppingBoardRecipe> choppingRecipes = new CopyOnWriteArrayList<>();
+    private final List<TeapotRecipe> teapotRecipes = new CopyOnWriteArrayList<>();
+    private final Map<Key, TeapotLiquid> teapotLiquids = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile TeapotLiquid defaultLiquid;
+    private final Map<Key, TeaCup> teaCups = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Key, TeaCup> teaCupsByItem = new java.util.concurrent.ConcurrentHashMap<>();
 
     private FoodRecipeRegistry() {
     }
@@ -45,6 +50,82 @@ public final class FoodRecipeRegistry {
 
     public void clearChopping() {
         choppingRecipes.clear();
+    }
+
+    public void registerTeapot(TeapotRecipe r) {
+        teapotRecipes.add(r);
+    }
+
+    public void clearTeapot() {
+        teapotRecipes.clear();
+    }
+
+    public void registerTeapotLiquid(TeapotLiquid l) {
+        teapotLiquids.put(l.fluid(), l);
+        if (defaultLiquid == null) {
+            defaultLiquid = l;
+        }
+    }
+
+    public void clearTeapotLiquid() {
+        teapotLiquids.clear();
+        defaultLiquid = null;
+    }
+
+    public TeapotLiquid getTeapotLiquid(Key fluid) {
+        return teapotLiquids.get(fluid);
+    }
+
+    public boolean hasTeapotLiquid(Key fluid) {
+        return teapotLiquids.containsKey(fluid);
+    }
+
+    // 空壶液体条用首个注册液体的左右空格字形
+    public TeapotLiquid defaultTeapotLiquid() {
+        return defaultLiquid;
+    }
+
+    public void registerTeaCup(TeaCup c) {
+        teaCups.put(c.tea(), c);
+        teaCupsByItem.put(c.item(), c);
+    }
+
+    public void clearTeaCup() {
+        teaCups.clear();
+        teaCupsByItem.clear();
+    }
+
+    public boolean hasTeaCup(Key tea) {
+        return teaCups.containsKey(tea);
+    }
+
+    public TeaCup getTeaCup(Key tea) {
+        return teaCups.get(tea);
+    }
+
+    // 按手持物品 id 找茶杯 用于直接放置茶到杯垫
+    public TeaCup getTeaCupByItem(Key itemId) {
+        return teaCupsByItem.get(itemId);
+    }
+
+    // 茶杯成品随机取一个展示模型 无则返回 null
+    public Key pickTeaModel(Key tea) {
+        TeaCup c = teaCups.get(tea);
+        if (c == null || c.displayModels().isEmpty()) {
+            return null;
+        }
+        List<Key> models = c.displayModels();
+        return models.get(ThreadLocalRandom.current().nextInt(models.size()));
+    }
+
+    // 液体类型与原料共同匹配茶壶配方
+    public TeapotRecipe findTeapot(Key fluid, Key input) {
+        for (TeapotRecipe r : teapotRecipes) {
+            if (r.fluid().equals(fluid) && r.input().equals(input)) {
+                return r;
+            }
+        }
+        return null;
     }
 
     public ChoppingBoardRecipe findChoppingByInput(Key input) {

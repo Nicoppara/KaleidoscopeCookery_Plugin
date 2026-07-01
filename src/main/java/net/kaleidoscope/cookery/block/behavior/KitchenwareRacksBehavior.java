@@ -14,8 +14,8 @@ import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
-import net.momirealms.craftengine.core.sound.SoundData;
 import net.momirealms.craftengine.core.util.Direction;
+import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
@@ -28,19 +28,19 @@ import net.kaleidoscope.cookery.util.InventoryUtils;
 public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<KitchenwareRacksBehavior> FACTORY = new Factory();
 
-    private final SoundData putSound;
-    private final SoundData takeSound;
+    // 挂放/取下音效 硬编码 无需配置
+    private static final Key PUT_SOUND = Key.of("minecraft:entity.item_frame.add_item");
+    private static final Key TAKE_SOUND = Key.of("minecraft:entity.item_frame.remove_item");
+    private static final float SOUND_VOLUME = 1.0f;
+    private static final float SOUND_PITCH = 1.0f;
+
     @Nullable
     private final Property<Direction> facingProperty;
     private int controllerId;
 
     private KitchenwareRacksBehavior(BlockDefinition blockDefinition,
-                                     SoundData putSound,
-                                     SoundData takeSound,
                                      @Nullable Property<Direction> facingProperty) {
         super(blockDefinition);
-        this.putSound = putSound;
-        this.takeSound = takeSound;
         this.facingProperty = facingProperty;
     }
 
@@ -106,9 +106,7 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
         Item takenItem = isLeftClick ? controller.takeLeft() : controller.takeRight();
         InventoryUtils.giveOrHold(player, hand, takenItem);
         player.swingHand(hand);
-        if (this.takeSound != null) {
-            world.playBlockSound(Vec3d.atCenterOf(pos), this.takeSound);
-        }
+        world.playBlockSound(Vec3d.atCenterOf(pos), TAKE_SOUND, SOUND_VOLUME, SOUND_PITCH);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
@@ -122,9 +120,7 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
             controller.putRight(toPut);
         }
         player.swingHand(hand);
-        if (this.putSound != null) {
-            world.playBlockSound(Vec3d.atCenterOf(pos), this.putSound);
-        }
+        world.playBlockSound(Vec3d.atCenterOf(pos), PUT_SOUND, SOUND_VOLUME, SOUND_PITCH);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
@@ -154,21 +150,8 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
     private static class Factory implements BlockBehaviorFactory<KitchenwareRacksBehavior> {
         @Override
         public KitchenwareRacksBehavior create(BlockDefinition block, ConfigSection section) {
-            ConfigSection soundSection = section.getSection("sounds");
-            SoundData putSound = null;
-            SoundData takeSound = null;
-            if (soundSection != null) {
-                putSound = soundSection.getValue("put", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
-                takeSound = soundSection.getValue("take", v -> SoundData.fromConfig(v, SoundData.SoundValue.FIXED_1, SoundData.SoundValue.RANGED_0_9_1));
-            }
             Property<Direction> facingProperty = BlockBehaviorFactory.getOptionalProperty(block, "facing", Direction.class);
-
-            return new KitchenwareRacksBehavior(
-                    block,
-                    putSound,
-                    takeSound,
-                    facingProperty
-            );
+            return new KitchenwareRacksBehavior(block, facingProperty);
         }
     }
 }

@@ -7,5 +7,6 @@ public enum ApplianceType {
     STOCKPOT,
     SHAWARMA,
     MILLSTONE,
-    CHOPPING_BOARD
+    CHOPPING_BOARD,
+    TEAPOT
 }

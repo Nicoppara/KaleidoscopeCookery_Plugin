@@ -22,12 +22,12 @@ import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
+import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
 import net.kaleidoscope.cookery.util.Hands;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
-import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -178,13 +178,10 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
 
     // 剁菜时的粒子
     private void spawnCutParticles(CEWorld world, BlockPos pos) {
-        try {
-            org.bukkit.World bw = (org.bukkit.World) world.world().platformWorld();
-            double x = pos.x() + 0.25 + Math.random() / 2;
-            double y = pos.y() + 0.25;
-            double z = pos.z() + 0.25 + Math.random() / 2;
-            bw.spawnParticle(Particle.CRIT, new Location(bw, x, y, z), 2, 0, 0, 0, 0.1);
-        } catch (Exception ignored) {}
+        double x = pos.x() + 0.25 + Math.random() / 2;
+        double y = pos.y() + 0.25;
+        double z = pos.z() + 0.25 + Math.random() / 2;
+        Particles.emit(world, Particle.CRIT, x, y, z, 2, 0, 0, 0, 0.1, null);
     }
 
     @Override

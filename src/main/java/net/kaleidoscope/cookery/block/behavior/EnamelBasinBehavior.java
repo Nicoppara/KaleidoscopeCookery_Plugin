@@ -1,17 +1,15 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.block.entity.EnamelBasinController;
 
-import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
 import net.kaleidoscope.cookery.util.Hands;
 import net.kaleidoscope.cookery.util.InteractGuard;
+import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
-import net.momirealms.craftengine.bukkit.entity.data.item.ItemEntityData;
 import net.momirealms.craftengine.bukkit.item.BukkitItem;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.block.BlockDefinition;
@@ -23,29 +21,15 @@ import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
-import net.momirealms.craftengine.core.sound.Sounds;
 import net.momirealms.craftengine.core.sound.SoundSource;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.core.util.random.RandomUtils;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
-import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
-import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy;
-import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy;
-import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.player.InventoryProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.entity.player.PlayerProxy;
-import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-
-import java.util.List;
-import java.util.UUID;
 
 public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<EnamelBasinBehavior> FACTORY = new Factory();
@@ -158,7 +142,7 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    // 逐个取出油 带飞向玩家动画
+    // 逐个取出油 走 give 轮子 带拾取动画 背包满则掉落
     private InteractionResult handleTakeOil(EnamelBasinController controller, CEWorld world, BlockPos pos,
                                             Player bukkitPlayer, BukkitServerPlayer player) {
         if (controller.getOilCount() <= 0) {
@@ -169,21 +153,7 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         controller.removeOil(1);
-
-        Item animationItem = oilItem.copyWithCount(1);
-
-        Object serverPlayer = player.serverPlayer();
-        Object inventory = PlayerProxy.INSTANCE.getInventory(serverPlayer);
-        boolean added = InventoryProxy.INSTANCE.add(inventory, oilItem.minecraftItem());
-
-        if (added) {
-            spawnFakeItemFromBlock(player, animationItem, pos);
-        } else {
-            WorldPosition dropPos = new WorldPosition(world.world(),
-                    pos.x() + 0.5, pos.y() + 0.5, pos.z() + 0.5);
-            world.world().dropItemNaturally(dropPos, oilItem);
-        }
-
+        InventoryUtils.give(player, oilItem.copyWithCount(1), true);
         playSound(world, pos, OIL_SOUND_KEY, DEFAULT_VOLUME, 1.2f);
         bukkitPlayer.swingMainHand();
         return InteractionResult.SUCCESS_AND_CANCEL;
@@ -238,53 +208,6 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
         if (newShovel != null) {
             bukkitPlayer.getInventory().setItem(slot, ItemStackUtils.getBukkitStack(newShovel));
         }
-    }
-
-    // 取油的飞向玩家动画
-    private void spawnFakeItemFromBlock(net.momirealms.craftengine.core.entity.player.Player player,
-                                        Item item, BlockPos blockPos) {
-        Vec3d blockCenter = Vec3d.atCenterOf(blockPos);
-        Vec3d playerPos = player.position().toVec3d();
-
-        double distance = Math.sqrt(Vec3d.distanceToSqr(blockCenter, playerPos));
-
-        double speed = 0.6;
-        double velX = (playerPos.x() - blockCenter.x()) / distance * speed;
-        double velY = (playerPos.y() + 0.5 - blockCenter.y()) / distance * speed + 0.1;
-        double velZ = (playerPos.z() - blockCenter.z()) / distance * speed;
-
-        int entityId = EntityProxy.ENTITY_COUNTER.incrementAndGet();
-
-        Object addEntityPacket = ClientboundAddEntityPacketProxy.INSTANCE.newInstance(
-                entityId, UUID.randomUUID(),
-                blockCenter.x(), blockCenter.y(), blockCenter.z(),
-                0, 0, EntityTypeProxy.ITEM, 0,
-                Vec3Proxy.INSTANCE.newInstance(velX, velY, velZ), 0
-        );
-
-        Object itemMetaPacket = ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(
-                entityId,
-                List.of(ItemEntityData.Item.createEntityData(item.copyWithCount(1).minecraftItem()))
-        );
-
-        player.sendPackets(List.of(addEntityPacket, itemMetaPacket), false);
-
-        player.world().playSound(player.position(),
-                Sounds.ENTITY_ITEM_PICKUP,
-                0.2F,
-                ((RandomUtils.generateRandomFloat() - RandomUtils.generateRandomFloat()) * 0.7F + 1.0F) * 2.0F,
-                SoundSource.PLAYER);
-
-        long delayTicks = (long) Math.ceil(distance / speed / 0.05 * 0.05);
-
-        IntArrayList removeIds = new IntArrayList();
-        removeIds.add(entityId);
-        BukkitCraftEngine.instance().scheduler().platform().runLater(
-                () -> player.sendPacket(ClientboundRemoveEntitiesPacketProxy.INSTANCE.newInstance(removeIds), false),
-                null,
-                delayTicks,
-                (Player) player.platformPlayer()
-        );
     }
 
     private boolean isCustomItem(ItemStack item, Key expectedKey) {

@@ -41,6 +41,8 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
     };
 
     public Key kitchenShovelNoOilItem = ItemKeys.KITCHEN_SHOVEL_NO_OIL;
+    public int particleInterval = 20;
+    public int particleCount = 3;
 
     private Property<Boolean> litProperty;
     private Property<Direction> facingProperty;
@@ -240,6 +242,8 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
             // facing 用于决定火焰贴在哪一面 可能不存在 缺失时火焰落在中心
             behavior.facingProperty = BlockBehaviorFactory.getOptionalProperty(block, "facing", Direction.class);
             behavior.kitchenShovelNoOilItem = Key.of(BehaviorConfig.getString(section, behavior.kitchenShovelNoOilItem.asString(), "extinguish_kitchen_shovel_item", "extinguish-kitchen-shovel-item"));
+            behavior.particleInterval = BehaviorConfig.getInt(section, behavior.particleInterval, "particle_interval", "particle-interval");
+            behavior.particleCount = BehaviorConfig.getInt(section, behavior.particleCount, "particle_count", "particle-count");
             return behavior;
         }
     }

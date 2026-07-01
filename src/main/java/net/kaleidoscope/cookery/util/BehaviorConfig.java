@@ -17,4 +17,8 @@ public final class BehaviorConfig {
     public static String getString(ConfigSection section, String def, String... keys) {
         return section.getString(keys, def);
     }
+
+    public static double getDouble(ConfigSection section, double def, String... keys) {
+        return section.getDouble(keys, def);
+    }
 }

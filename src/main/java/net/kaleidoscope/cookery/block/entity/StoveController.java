@@ -1,16 +1,13 @@
 package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.block.behavior.StoveBehavior;
+import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
 import net.momirealms.craftengine.core.block.property.Property;
-import net.momirealms.craftengine.core.plugin.CraftEngine;
-import net.momirealms.craftengine.core.plugin.context.Context;
-import net.momirealms.craftengine.core.plugin.context.ContextHolder;
-import net.momirealms.craftengine.core.plugin.context.SimpleContext;
 import net.momirealms.craftengine.core.sound.SoundSource;
 import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.Key;
@@ -18,21 +15,14 @@ import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
-import net.momirealms.craftengine.core.world.particle.ParticleType;
+import org.bukkit.Particle;
 
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class StoveController extends BlockEntityController {
-    private static final Key FLAME = Key.of("minecraft:flame");
-    private static final Key SMOKE = Key.of("minecraft:smoke");
     private static final Key CRACKLE = Key.of("minecraft:block.campfire.crackle");
-    private static final int TICK_INTERVAL = 3;
 
     private final StoveBehavior behavior;
-    private final Context context = SimpleContext.of(ContextHolder.empty());
-    private ParticleType flameType;
-    private ParticleType smokeType;
-    private boolean particleResolved;
     private int tickCount;
 
     public StoveController(BlockEntity blockEntity, StoveBehavior behavior) {
@@ -46,7 +36,7 @@ public final class StoveController extends BlockEntityController {
     }
 
     private static void tick(CEWorld ceWorld, BlockPos pos, ImmutableBlockState state, StoveController controller) {
-        if (++controller.tickCount % TICK_INTERVAL != 0) {
+        if (++controller.tickCount % controller.behavior.particleInterval != 0) {
             return;
         }
         controller.animateTick(ceWorld.world(), pos, state);
@@ -57,35 +47,19 @@ public final class StoveController extends BlockEntityController {
         if (litProperty == null || !state.get(litProperty)) {
             return;
         }
-        if (!particleResolved) {
-            flameType = CraftEngine.instance().platform().getParticleType(FLAME);
-            smokeType = CraftEngine.instance().platform().getParticleType(SMOKE);
-            particleResolved = true;
-        }
-        if (flameType == null || smokeType == null) {
-            return;
-        }
 
         ThreadLocalRandom random = ThreadLocalRandom.current();
         double x = pos.x() + 0.5;
         double y = pos.y() + 0.5;
         double z = pos.z() + 0.5;
 
-        if (random.nextInt(10) == 0) {
-            float volume = 0.5f + random.nextFloat();
-            float pitch = random.nextFloat() * 0.7f + 0.6f;
-            Vec3d soundPos = new Vec3d(x, y, z);
-            BukkitCraftEngine.instance().scheduler().platform().runDelayed(
-                    () -> level.playSound(soundPos, CRACKLE, volume, pitch, SoundSource.BLOCK),
-                    level, pos.x(), pos.z());
-        }
+        boolean crackle = random.nextInt(10) == 0;
+        float volume = 0.5f + random.nextFloat();
+        float pitch = random.nextFloat() * 0.7f + 0.6f;
 
-        level.spawnParticle(
-                new Vec3d(
-                        x + random.nextDouble() / 3 * (random.nextBoolean() ? 1 : -1),
-                        y + 0.5 + random.nextDouble() / 3,
-                        z + random.nextDouble() / 3 * (random.nextBoolean() ? 1 : -1)),
-                smokeType, 0, 0.0, 1.0, 0.0, 0.02, null, context);
+        double sx = x + random.nextDouble() / 3 * (random.nextBoolean() ? 1 : -1);
+        double sy = y + 0.5 + random.nextDouble() / 3;
+        double sz = z + random.nextDouble() / 3 * (random.nextBoolean() ? 1 : -1);
 
         double offsetRandom = random.nextDouble() * 0.6 - 0.3;
         double xOffset = offsetRandom;
@@ -97,9 +71,18 @@ public final class StoveController extends BlockEntityController {
             xOffset = axis == Direction.Axis.X ? direction.stepX() * 0.52 : offsetRandom;
             zOffset = axis == Direction.Axis.Z ? direction.stepZ() * 0.52 : offsetRandom;
         }
-        double yOffset = 0.25 + random.nextDouble() * 6.0 / 16.0;
-        level.spawnParticle(
-                new Vec3d(x + xOffset, pos.y() + yOffset, z + zOffset),
-                flameType, 1, 0.0, 0.0, 0.0, 0.0, null, context);
+        double fx = x + xOffset;
+        double fy = pos.y() + 0.25 + random.nextDouble() * 6.0 / 16.0;
+        double fz = z + zOffset;
+
+        CEWorld ceWorld = super.blockEntity.world();
+        int count = behavior.particleCount;
+        BukkitCraftEngine.instance().scheduler().platform().run(() -> {
+            if (crackle) {
+                level.playSound(new Vec3d(x, y, z), CRACKLE, volume, pitch, SoundSource.BLOCK);
+            }
+            Particles.emit(ceWorld, Particle.SMOKE, sx, sy, sz, count, 0.08, 0.12, 0.08, 0.02, null);
+            Particles.emit(ceWorld, Particle.FLAME, fx, fy, fz, count, 0.05, 0.06, 0.05, 0.0, null);
+        }, level, pos.x(), pos.z());
     }
 }

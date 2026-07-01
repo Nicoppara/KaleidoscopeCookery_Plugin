@@ -4,9 +4,6 @@ plugins {
     id("com.gradleup.shadow") version "9.2.2"
 }
 
-group = 'net.kaleidoscope'
-version = '1.0-SNAPSHOT'
-
 repositories {
     mavenCentral()
     maven {
@@ -48,7 +45,16 @@ dependencies {
 }
 
 shadowJar {
+    archiveClassifier.set('')
     relocate 'net.momirealms.antigrieflib', 'net.kaleidoscope.cookery.libs.antigrieflib'
+}
+
+jar {
+    enabled = false
+}
+
+tasks.named('assemble') {
+    dependsOn(tasks.named('shadowJar'))
 }
 
 tasks {

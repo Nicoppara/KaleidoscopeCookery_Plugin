@@ -22,6 +22,7 @@ public final class ItemKeys {
     public static final Key BUCKET = Key.of("minecraft:bucket");
     public static final Key LEAD = Key.of("minecraft:lead");
     public static final Key WATER = Key.of("minecraft:water");
+    public static final Key LAVA = Key.of("minecraft:lava");
     public static final Key WATER_BUCKET = Key.of("minecraft:water_bucket");
     public static final Key LAVA_BUCKET = Key.of("minecraft:lava_bucket");
     public static final Key FLINT_AND_STEEL = Key.of("minecraft:flint_and_steel");
@@ -45,11 +46,16 @@ public final class ItemKeys {
     public static final Key IRON_KITCHEN_KNIFE = Key.of("kaleidoscopecookery:iron_kitchen_knife");
     public static final Key NETHERITE_KITCHEN_KNIFE = Key.of("kaleidoscopecookery:netherite_kitchen_knife");
 
-    public static final Key BAR_STOOL_STAND_BLACK = Key.of("show:bar_stool_stand_black");
-    public static final Key BAR_STOOL_SOFA_BLACK = Key.of("show:bar_stool_sofa_black");
     public static final Key STOVE_FINISHED = Key.of("show:stove_finished");
 
     public static final Key TRASHCAN_BODY = Key.of("show:trashcan_1");
     public static final Key TRASHCAN_LID = Key.of("show:trashcan_2");
     public static final Key TRASHCAN_EYE = Key.of("show:trashcan_3");
+    public static final Key TRASHCAN_HELMET = Key.of("kaleidoscopecookery:trashcan_helmet");
+
+    public static final Key TEAPOT_LID = Key.of("show:teapot_1");
+    public static final Key TEAPOT_BODY = Key.of("show:teapot_2");
+
+    public static final Key EMPTY_CUP = Key.of("kaleidoscopecookery:empty_cup");
+    public static final Key EMPTY_CUP_MODEL = Key.of("show:empty_cup");
 }
