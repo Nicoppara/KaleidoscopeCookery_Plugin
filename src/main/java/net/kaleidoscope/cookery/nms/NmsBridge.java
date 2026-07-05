@@ -12,6 +12,8 @@ public interface NmsBridge {
 
     boolean isSpectateTeleportPacket(Object packet);
 
+    boolean isPerformRespawnPacket(Object packet);
+
     default Player bukkitPlayer(Object nmsEntity) {
         Object bukkit = bukkitEntity(nmsEntity);
         return bukkit instanceof Player player ? player : null;

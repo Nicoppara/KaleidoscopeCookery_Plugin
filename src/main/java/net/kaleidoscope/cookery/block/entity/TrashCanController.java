@@ -2,7 +2,7 @@ package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.InteractGuard;
-import net.kaleidoscope.cookery.util.TeleportUtils;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
@@ -451,7 +451,7 @@ public class TrashCanController extends FurnitureController {
                     Location out = new Location((World) p.world().platformWorld(),
                             Math.floor(p.x) + 0.5, Math.floor(p.y) + 1.0, Math.floor(p.z) + 0.5,
                             bp.getLocation().getYaw(), bp.getLocation().getPitch());
-                    TeleportUtils.teleport(bp, out);
+                    FoliaUtil.teleport(bp, out);
                 }
                 if (previousGameMode != null) {
                     bp.setGameMode(previousGameMode);

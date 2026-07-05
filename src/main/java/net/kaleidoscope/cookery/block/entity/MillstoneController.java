@@ -33,7 +33,7 @@ import net.kaleidoscope.cookery.util.EventUtils;
 import net.kaleidoscope.cookery.util.Hands;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
-import net.kaleidoscope.cookery.util.TeleportUtils;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
@@ -558,7 +558,7 @@ public class MillstoneController extends FurnitureController {
         if (dx * dx + dz * dz > 4.0) {
             currentLoc.setX(targetX);
             currentLoc.setZ(targetZ);
-            TeleportUtils.teleport(bukkitPlayer, currentLoc);
+            FoliaUtil.teleport(bukkitPlayer, currentLoc);
             bukkitPlayer.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
         } else {
             double vx = dx * 0.8;
@@ -612,7 +612,7 @@ public class MillstoneController extends FurnitureController {
 
         currentLoc.setX(targetX);
         currentLoc.setZ(targetZ);
-        TeleportUtils.teleport(pullingAnimal, currentLoc);
+        FoliaUtil.teleport(pullingAnimal, currentLoc);
         pullingAnimal.setRotation(currentLoc.getYaw(), currentLoc.getPitch());
         return true;
     }
@@ -668,7 +668,7 @@ public class MillstoneController extends FurnitureController {
             org.bukkit.Location loc = bukkitPlayer.getLocation();
             loc.setX(startX);
             loc.setZ(startZ);
-            TeleportUtils.teleport(bukkitPlayer, loc);
+            FoliaUtil.teleport(bukkitPlayer, loc);
             bukkitPlayer.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
         }
 
@@ -710,7 +710,7 @@ public class MillstoneController extends FurnitureController {
             loc.setX(furniture().position().x() + startOffset.x);
             loc.setY(furniture().position().y());
             loc.setZ(furniture().position().z() + startOffset.z);
-            TeleportUtils.teleport(animal, loc);
+            FoliaUtil.teleport(animal, loc);
         }
 
         playMillstoneSound(1.0f, 0.8f);
@@ -994,7 +994,7 @@ public class MillstoneController extends FurnitureController {
             loc.setX(furniture().position().x() + targetOffset.x);
             loc.setY(furniture().position().y());
             loc.setZ(furniture().position().z() + targetOffset.z);
-            TeleportUtils.teleport(living, loc);
+            FoliaUtil.teleport(living, loc);
         } else {
             this.animating = false;
             furniture().setUnsaved();
