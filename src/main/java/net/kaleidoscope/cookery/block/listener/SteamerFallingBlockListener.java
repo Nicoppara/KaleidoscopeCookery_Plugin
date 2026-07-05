@@ -2,6 +2,7 @@ package net.kaleidoscope.cookery.block.listener;
 
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
+import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
@@ -21,14 +22,12 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SteamerFallingBlockListener implements Listener {
 
-    private static volatile Method GET_HANDLE_METHOD;
     private static final Set<Object> ceCancelledEntities = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -106,15 +105,6 @@ public class SteamerFallingBlockListener implements Listener {
     }
 
     private static Object getNmsHandle(Entity entity) {
-        try {
-            Method m = GET_HANDLE_METHOD;
-            if (m == null) {
-                m = entity.getClass().getMethod("getHandle");
-                GET_HANDLE_METHOD = m;
-            }
-            return m.invoke(entity);
-        } catch (Exception ignored) {
-            return null;
-        }
+        return NmsBridgeProvider.bridge().nmsHandle(entity);
     }
 }

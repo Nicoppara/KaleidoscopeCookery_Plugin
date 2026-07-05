@@ -4,11 +4,27 @@ plugins {
     id("com.gradleup.shadow") version "9.2.2"
 }
 
+def nmsVersions = [
+        nmsV121R1: [path: 'v1_21_R1', dependency: '1.21.1-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
+        nmsV121R2: [path: 'v1_21_R2', dependency: '1.21.3-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
+        nmsV121R3: [path: 'v1_21_R3', dependency: '1.21.4-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
+        nmsV121R4: [path: 'v1_21_R4', dependency: '1.21.5-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
+        nmsV121R5: [path: 'v1_21_R5', dependency: '1.21.8-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
+        nmsV121R6: [path: 'v1_21_R6', dependency: '1.21.10-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
+        nmsV121R7: [path: 'v1_21_R7', dependency: '1.21.11-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
+        nmsV261R1: [path: 'v26_1_R1', dependency: '26.1.2-R0.1-SNAPSHOT'],
+        nmsV262R1: [path: 'v26_2_R1', dependency: '26.2-R0.1-SNAPSHOT'],
+]
+
 repositories {
     mavenCentral()
     maven {
         name = "papermc-repo"
         url = "https://repo.papermc.io/repository/maven-public/"
+    }
+    maven {
+        name = "codemc-nms"
+        url = "https://repo.codemc.io/repository/nms/"
     }
     maven {
         name = "xenondevsReleases"
@@ -22,8 +38,16 @@ repositories {
     }
 }
 
+nmsVersions.each { sourceSetName, version ->
+    sourceSets.create(sourceSetName) {
+        java.srcDir("src/nms/${version.path}/java")
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:26.1.2.build.+")
+    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("net.momirealms:craft-engine-bukkit:26.7")
     compileOnly("net.momirealms:craft-engine-core:26.7")
     compileOnly("net.momirealms:craft-engine-adventure:26.7")
@@ -42,10 +66,19 @@ dependencies {
     compileOnly("net.momirealms:sparrow-reflection:0.31")
     compileOnly("net.momirealms:sparrow-reflection-proxy-scanner:1.1")
     implementation("net.momirealms:antigrieflib:1.0.11")
+
+    nmsVersions.each { sourceSetName, version ->
+        def notation = "org.spigotmc:spigot:${version.dependency}"
+        if (version.classifier != null) {
+            notation += ":${version.classifier}"
+        }
+        add("${sourceSetName}CompileOnly", notation)
+    }
 }
 
 shadowJar {
     archiveClassifier.set('')
+    from(nmsVersions.keySet().collect { sourceSets.named(it).get().output })
     relocate 'net.momirealms.antigrieflib', 'net.kaleidoscope.cookery.libs.antigrieflib'
 }
 

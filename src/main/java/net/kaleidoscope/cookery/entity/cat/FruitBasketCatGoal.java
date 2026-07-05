@@ -3,6 +3,7 @@ package net.kaleidoscope.cookery.entity.cat;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.util.Key;
@@ -227,7 +228,7 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
             Location on = new Location(target.getWorld(),
                     target.getBlockX() + 0.5, target.getBlockY() + BASKET_TOP, target.getBlockZ() + 0.5,
                     catLoc.getYaw(), 0f);
-            cat.teleport(on);
+            FoliaUtil.teleport(cat, on);
             cat.setSitting(false);
             cat.setLyingDown(true);
             // 趴在果篮上静音 屏蔽睡觉呼噜声
@@ -253,7 +254,7 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
         cat.getPathfinder().stopPathfinding();
         Location safe = cat.getLocation();
         safe.setY(target.getBlockY() + 1.0);
-        cat.teleport(safe);
+        FoliaUtil.teleport(cat, safe);
         cat.removePotionEffect(PotionEffectType.REGENERATION);
         releaseOwnClaim();
         target = null;

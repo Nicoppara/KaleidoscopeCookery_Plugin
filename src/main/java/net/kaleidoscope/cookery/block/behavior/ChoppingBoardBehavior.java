@@ -38,11 +38,12 @@ import java.util.Set;
 public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<ChoppingBoardBehavior> FACTORY = new Factory();
 
-    public Set<Key> knives = Set.of(
-            ItemKeys.DIAMOND_KITCHEN_KNIFE,
-            ItemKeys.GOLD_KITCHEN_KNIFE,
-            ItemKeys.IRON_KITCHEN_KNIFE,
-            ItemKeys.NETHERITE_KITCHEN_KNIFE);
+    public Set<String> knives = Set.of();
+    public Set<String> craftEngineKnives = Set.of(
+            ItemKeys.DIAMOND_KITCHEN_KNIFE.asString(),
+            ItemKeys.GOLD_KITCHEN_KNIFE.asString(),
+            ItemKeys.IRON_KITCHEN_KNIFE.asString(),
+            ItemKeys.NETHERITE_KITCHEN_KNIFE.asString());
 
     private static final float DEFAULT_VOLUME = 1.0f;
     private static final Key PLACE_SOUND = Key.of("minecraft:block.wood.place");
@@ -85,9 +86,9 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         }
 
         // 切菜的刀副手优先
-        InteractionHand toolHand = Hands.toolHand(player, it -> knives.contains(it.id()));
+        InteractionHand toolHand = Hands.toolHand(player, this::isKnife);
         Item toolItem = player.getItemInHand(toolHand);
-        if (!toolItem.isEmpty() && knives.contains(toolItem.id())) {
+        if (isKnife(toolItem)) {
             InteractionResult cut = handleCut(context, controller, toolHand);
             if (cut != InteractionResult.PASS) {
                 return cut;
@@ -100,6 +101,17 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
             return handleTakeBack(context, controller, InteractionHand.MAIN_HAND);
         }
         return handlePlaceRaw(context, controller, mainItem, InteractionHand.MAIN_HAND);
+    }
+
+    private boolean isKnife(Item item) {
+        if (item.isEmpty()) {
+            return false;
+        }
+        if (knives.contains(item.id().asString()) || knives.contains(item.vanillaId().asString())) {
+            return true;
+        }
+        return item.isCustomItem() && (craftEngineKnives.contains(item.id().asString())
+                || item.customId().map(Key::asString).filter(craftEngineKnives::contains).isPresent());
     }
 
     // 处理切菜逻辑
@@ -208,13 +220,59 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
             ChoppingBoardBehavior behavior = new ChoppingBoardBehavior(block);
             behavior.facingProperty = BlockBehaviorFactory.getProperty(section.path(), block, "facing", Direction.class);
 
-            Set<Key> knives = new HashSet<>();
-            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.DIAMOND_KITCHEN_KNIFE.asString(), "diamond_knife_item", "diamond-knife-item")));
-            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.GOLD_KITCHEN_KNIFE.asString(), "gold_knife_item", "gold-knife-item")));
-            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.IRON_KITCHEN_KNIFE.asString(), "iron_knife_item", "iron-knife-item")));
-            knives.add(Key.of(BehaviorConfig.getString(section, ItemKeys.NETHERITE_KITCHEN_KNIFE.asString(), "netherite_knife_item", "netherite-knife-item")));
+            Set<String> knives = new HashSet<>();
+            Set<String> craftEngineKnives = new HashSet<>();
+            addLegacyKnife(knives, craftEngineKnives, BehaviorConfig.getString(section, ItemKeys.DIAMOND_KITCHEN_KNIFE.asString(), "diamond_knife_item", "diamond-knife-item"));
+            addLegacyKnife(knives, craftEngineKnives, BehaviorConfig.getString(section, ItemKeys.GOLD_KITCHEN_KNIFE.asString(), "gold_knife_item", "gold-knife-item"));
+            addLegacyKnife(knives, craftEngineKnives, BehaviorConfig.getString(section, ItemKeys.IRON_KITCHEN_KNIFE.asString(), "iron_knife_item", "iron-knife-item"));
+            addLegacyKnife(knives, craftEngineKnives, BehaviorConfig.getString(section, ItemKeys.NETHERITE_KITCHEN_KNIFE.asString(), "netherite_knife_item", "netherite-knife-item"));
+            addKnives(knives, craftEngineKnives, section.getStringList("knives"));
+            addKnives(knives, craftEngineKnives, section.getStringList("knife_items"));
+            addKnives(knives, craftEngineKnives, section.getStringList("knife-items"));
             behavior.knives = knives;
+            behavior.craftEngineKnives = craftEngineKnives;
             return behavior;
+        }
+
+        private static void addKnives(Set<String> knives, Set<String> craftEngineKnives, Iterable<String> ids) {
+            for (String id : ids) {
+                addKnife(knives, craftEngineKnives, id);
+            }
+        }
+
+        private static void addLegacyKnife(Set<String> knives, Set<String> craftEngineKnives, String id) {
+            addKnife(knives, craftEngineKnives, id);
+            String trimmed = id.trim();
+            if (!trimmed.isEmpty() && !trimmed.startsWith(Key.CRAFTENGINE_NAMESPACE + ":")) {
+                addCraftEngineKnife(craftEngineKnives, trimmed);
+            }
+        }
+
+        private static void addKnife(Set<String> knives, Set<String> craftEngineKnives, String id) {
+            String trimmed = id.trim();
+            if (trimmed.isEmpty()) {
+                return;
+            }
+            String prefix = Key.CRAFTENGINE_NAMESPACE + ":";
+            if (trimmed.startsWith(prefix)) {
+                addCraftEngineKnife(craftEngineKnives, trimmed.substring(prefix.length()));
+            } else {
+                addPlainKnife(knives, trimmed);
+            }
+        }
+
+        private static void addPlainKnife(Set<String> knives, String id) {
+            String trimmed = id.trim();
+            if (!trimmed.isEmpty()) {
+                knives.add(trimmed);
+            }
+        }
+
+        private static void addCraftEngineKnife(Set<String> craftEngineKnives, String id) {
+            String trimmed = id.trim();
+            if (!trimmed.isEmpty()) {
+                craftEngineKnives.add(trimmed);
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.api.event.SteamerBreakFullEvent;
 import net.kaleidoscope.cookery.block.entity.SteamerController;
+import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
 
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitFallableBlock;
@@ -59,7 +60,6 @@ import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -634,23 +634,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         return args[2];
     }
 
-    private static volatile Method GET_BUKKIT_ENTITY;
-
     private static org.bukkit.entity.Player bukkitPlayer(Object nmsPlayer) {
-        if (nmsPlayer == null) {
-            return null;
-        }
-        try {
-            Method m = GET_BUKKIT_ENTITY;
-            if (m == null) {
-                m = nmsPlayer.getClass().getMethod("getBukkitEntity");
-                GET_BUKKIT_ENTITY = m;
-            }
-            Object bukkitEntity = m.invoke(nmsPlayer);
-            return bukkitEntity instanceof org.bukkit.entity.Player p ? p : null;
-        } catch (Exception ignored) {
-            return null;
-        }
+        return NmsBridgeProvider.bridge().bukkitPlayer(nmsPlayer);
     }
 
     @Override

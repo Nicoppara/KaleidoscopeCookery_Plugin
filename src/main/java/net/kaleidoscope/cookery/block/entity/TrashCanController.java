@@ -2,8 +2,10 @@ package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.InteractGuard;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
+import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -71,15 +73,6 @@ public class TrashCanController extends FurnitureController {
     private static final Map<UUID, TrashCanController> BY_OCCUPANT = new ConcurrentHashMap<>();
 
     private static final String TELEPORT_BLOCKER = "kaleidoscopecookery_trashcan_spectate";
-    private static final Class<?> SPECTATE_PACKET = resolveSpectatePacket();
-
-    private static Class<?> resolveSpectatePacket() {
-        try {
-            return Class.forName("net.minecraft.network.protocol.game.ServerboundTeleportToEntityPacket");
-        } catch (ClassNotFoundException e) {
-            return null;
-        }
-    }
 
     private static final double CAMERA_EYE_Y = 0.9;
     private static final float VIEW_PITCH = 0f;
@@ -350,9 +343,6 @@ public class TrashCanController extends FurnitureController {
 
     // 旁观传送(teleport_to_entity)不触发 PlayerTeleportEvent 在玩家管线上挂一道 netty 拦截 直接丢弃该包 进桶挂上 退出摘掉
     private void addTeleportBlocker(org.bukkit.entity.Player player) {
-        if (SPECTATE_PACKET == null) {
-            return;
-        }
         Channel channel = BukkitNetworkManager.instance().getChannel(player);
         if (channel == null) {
             return;
@@ -378,7 +368,7 @@ public class TrashCanController extends FurnitureController {
     private static final class SpectateTeleportBlocker extends ChannelInboundHandlerAdapter {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-            if (SPECTATE_PACKET.isInstance(msg)) {
+            if (NmsBridgeProvider.bridge().isSpectateTeleportPacket(msg)) {
                 return;
             }
             super.channelRead(ctx, msg);
@@ -461,7 +451,7 @@ public class TrashCanController extends FurnitureController {
                     Location out = new Location((World) p.world().platformWorld(),
                             Math.floor(p.x) + 0.5, Math.floor(p.y) + 1.0, Math.floor(p.z) + 0.5,
                             bp.getLocation().getYaw(), bp.getLocation().getPitch());
-                    bp.teleport(out);
+                    FoliaUtil.teleport(bp, out);
                 }
                 if (previousGameMode != null) {
                     bp.setGameMode(previousGameMode);

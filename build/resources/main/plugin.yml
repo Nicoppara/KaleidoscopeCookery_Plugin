@@ -1,7 +1,8 @@
 name: KaleidoscopeCookeryPlugin
-version: '1.0-SNAPSHOT'
+version: '1.0.0'
 main: net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin
-api-version: '21.1.2'
+api-version: '1.21'
+folia-supported: true
 
 dependencies:
   server:

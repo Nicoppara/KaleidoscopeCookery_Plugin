@@ -233,10 +233,14 @@ behaviors:
 ```yaml
 behaviors:
   - type: kaleidoscopecookery:chopping_board
-    diamond_knife_item: "kaleidoscopecookery:diamond_kitchen_knife"
-    gold_knife_item: "kaleidoscopecookery:gold_kitchen_knife"
-    iron_knife_item: "kaleidoscopecookery:iron_kitchen_knife"
-    netherite_knife_item: "kaleidoscopecookery:netherite_kitchen_knife"
+    diamond_knife_item: "craftengine:kaleidoscopecookery:diamond_kitchen_knife"
+    gold_knife_item: "craftengine:kaleidoscopecookery:gold_kitchen_knife"
+    iron_knife_item: "craftengine:kaleidoscopecookery:iron_kitchen_knife"
+    netherite_knife_item: "craftengine:kaleidoscopecookery:netherite_kitchen_knife"
+    knives:
+      - "craftengine:otherplugin:custom_knife"
+      - "othermod:steel_knife"
+      - "minecraft:iron_sword"
 ```
 
 ### 🍢 沙威玛烤架 `kaleidoscopecookery:shawarma_spit`

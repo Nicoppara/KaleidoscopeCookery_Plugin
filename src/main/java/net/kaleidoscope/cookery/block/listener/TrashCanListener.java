@@ -9,7 +9,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.world.GenericGameEvent;
 
@@ -52,11 +51,6 @@ public class TrashCanListener implements Listener {
     }
 
     // 在桶里死亡后点重生 松开桶并还原生存模式 在正确的重生点重生
-    @EventHandler
-    public void onRespawn(PlayerRespawnEvent event) {
-        TrashCanController.handleRespawn(event.getPlayer());
-    }
-
     // 潜行退出垃圾桶
     @EventHandler
     public void onSneak(PlayerToggleSneakEvent event) {

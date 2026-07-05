@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.block.entity.TeapotController;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
+import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
 
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
@@ -34,10 +35,6 @@ import net.kaleidoscope.cookery.item.ItemMatch;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.SupportStateUtils;
-import org.bukkit.GameMode;
-
-import java.lang.reflect.Method;
-
 public final class TeapotBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<TeapotBehavior> FACTORY = new Factory();
 
@@ -173,21 +170,12 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
         return args[2];
     }
 
-    private static volatile Method GET_BUKKIT_ENTITY;
-
     private static boolean isCreativePlayer(Object nmsPlayer) {
         if (nmsPlayer == null) {
             return false;
         }
-        try {
-            if (GET_BUKKIT_ENTITY == null) {
-                GET_BUKKIT_ENTITY = nmsPlayer.getClass().getMethod("getBukkitEntity");
-            }
-            Object bukkit = GET_BUKKIT_ENTITY.invoke(nmsPlayer);
-            return bukkit instanceof org.bukkit.entity.Player p && p.getGameMode() == GameMode.CREATIVE;
-        } catch (Exception ignored) {
-            return false;
-        }
+        org.bukkit.entity.Player player = NmsBridgeProvider.bridge().bukkitPlayer(nmsPlayer);
+        return player != null && player.getGameMode() == org.bukkit.GameMode.CREATIVE;
     }
 
     private boolean canHangChains(Object level, Object abovePos, Object aboveState) {

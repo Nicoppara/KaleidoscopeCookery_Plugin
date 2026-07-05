@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.block.behavior;
 
 import net.kaleidoscope.cookery.block.entity.FruitBasketController;
+import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
@@ -26,8 +27,6 @@ import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
-
-import java.lang.reflect.Method;
 
 public final class FruitBasketBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<FruitBasketBehavior> FACTORY = new Factory();
@@ -69,19 +68,10 @@ public final class FruitBasketBehavior extends BukkitBlockBehavior implements En
         return args[2];
     }
 
-    private static volatile Method GET_BUKKIT_ENTITY;
-
     private static boolean isCreativePlayer(Object nmsPlayer) {
         if (nmsPlayer == null) return false;
-        try {
-            if (GET_BUKKIT_ENTITY == null) {
-                GET_BUKKIT_ENTITY = nmsPlayer.getClass().getMethod("getBukkitEntity");
-            }
-            Object bukkit = GET_BUKKIT_ENTITY.invoke(nmsPlayer);
-            return bukkit instanceof org.bukkit.entity.Player p && p.getGameMode() == org.bukkit.GameMode.CREATIVE;
-        } catch (Exception ignored) {
-            return false;
-        }
+        org.bukkit.entity.Player player = NmsBridgeProvider.bridge().bukkitPlayer(nmsPlayer);
+        return player != null && player.getGameMode() == org.bukkit.GameMode.CREATIVE;
     }
 
     @Override
