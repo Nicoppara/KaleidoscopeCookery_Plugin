@@ -546,8 +546,22 @@ public class TrashCanController extends FurnitureController {
     // 服务器关闭时统一把所有进入桶里的玩家放出来 避免卡在旁观模式
     public static void releaseAll() {
         for (TrashCanController c : new ArrayList<>(BY_OCCUPANT.values())) {
-            c.exit(true);
+            if (FoliaUtil.isFolia()) {
+                c.releaseOnFolia();
+            } else {
+                c.exit(true);
+            }
         }
+    }
+
+    private void releaseOnFolia() {
+        WorldPosition p = furniture().position();
+        BukkitCraftEngine.instance().scheduler().platform().run(
+                () -> exit(true),
+                p.world(),
+                (int) Math.floor(p.x),
+                (int) Math.floor(p.z)
+        );
     }
 
     // 清除附近生物对进入玩家的敌意 仿模组进桶即安全
