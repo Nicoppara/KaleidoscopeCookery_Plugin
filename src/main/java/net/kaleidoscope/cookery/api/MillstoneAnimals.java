@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.api;
 
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import net.kaleidoscope.cookery.util.ConsoleMessages;
 import net.momirealms.craftengine.core.pack.Pack;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
@@ -150,7 +151,7 @@ public final class MillstoneAnimals {
                     type = EntityType.valueOf(typeName.trim().toUpperCase());
                 } catch (IllegalArgumentException e) {
                     KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                            "[millstone] 未知生物类型 " + typeName + " 已跳过");
+                            ConsoleMessages.t("millstone.unknown_entity_type", typeName));
                     continue;
                 }
                 Profile def = INSTANCE.vanilla.getOrDefault(type, new Profile(PLAYER_SECONDS, true, false));

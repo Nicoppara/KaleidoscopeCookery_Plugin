@@ -2,6 +2,7 @@ package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.api.event.SteamerBreakFullEvent;
 import net.kaleidoscope.cookery.block.entity.SteamerController;
 import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
+import net.kaleidoscope.cookery.util.ConsoleMessages;
 
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitFallableBlock;
@@ -546,7 +547,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
                 ceWorld.world().dropItemNaturally(dropPos, steamerItem.copyWithCount(amount));
             }
         } catch (Exception e) {
-            KaleidoscopeCookeryPlugin.instance().getLogger().log(Level.SEVERE, "无法掉落蒸笼，出错，请报告作者", e);
+            KaleidoscopeCookeryPlugin.instance().getLogger().log(Level.SEVERE,
+                    ConsoleMessages.t("steamer.drop_failed"), e);
         }
     }
 

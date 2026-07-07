@@ -66,6 +66,7 @@ dependencies {
     compileOnly("net.momirealms:sparrow-reflection:0.31")
     compileOnly("net.momirealms:sparrow-reflection-proxy-scanner:1.1")
     implementation("net.momirealms:antigrieflib:1.0.11")
+    implementation("org.bstats:bstats-bukkit:3.2.1")
 
     nmsVersions.each { sourceSetName, version ->
         def notation = "org.spigotmc:spigot:${version.dependency}"
@@ -80,6 +81,7 @@ shadowJar {
     archiveClassifier.set('')
     from(nmsVersions.keySet().collect { sourceSets.named(it).get().output })
     relocate 'net.momirealms.antigrieflib', 'net.kaleidoscope.cookery.libs.antigrieflib'
+    relocate 'org.bstats', 'net.kaleidoscope.cookery.libs.bstats'
 }
 
 jar {

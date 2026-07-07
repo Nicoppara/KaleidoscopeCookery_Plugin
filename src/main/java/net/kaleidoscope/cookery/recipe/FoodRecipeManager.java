@@ -11,6 +11,7 @@ import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStages;
 import net.momirealms.craftengine.core.util.Key;
 import org.jetbrains.annotations.NotNull;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import net.kaleidoscope.cookery.util.ConsoleMessages;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -184,9 +185,8 @@ public final class FoodRecipeManager {
             for (RawRequirement r : raw) {
                 if (r.min() > 0 && cat.isInCategory(cook, req.item(), r.category()) && r.min() < req.count()) {
                     KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                            "[food] 配方 " + id.asString() + " 非法 require " + req.item().asString()
-                                    + " " + req.count() + " 超过类别 " + r.category() + " 的 min " + r.min()
-                                    + " 已跳过该配方");
+                            ConsoleMessages.t("food.flex.require_exceeds_min",
+                                    id.asString(), req.item().asString(), req.count(), r.category(), r.min()));
                     return false;
                 }
             }
@@ -333,7 +333,7 @@ public final class FoodRecipeManager {
             if (section.get("rotations") != null) {
                 if (cook != ApplianceType.MILLSTONE) {
                     KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                            "[food] 精准配方 " + id.asString() + " 的 rotations 仅石磨可用 已跳过");
+                            ConsoleMessages.t("food.accurate.rotations_millstone_only", id.asString()));
                     return;
                 }
                 rotations = section.getInt("rotations", 0);
@@ -512,8 +512,7 @@ public final class FoodRecipeManager {
             Key fluid = section.getNonNullIdentifier("fluid");
             if (!FoodRecipeRegistry.instance().hasTeapotLiquid(fluid)) {
                 KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                        "[food] 茶壶配方 " + id.asString() + " 的液体 " + fluid.asString()
-                                + " 未在 teapot_liquid 注册 已跳过该配方");
+                        ConsoleMessages.t("food.teapot.unregistered_liquid", id.asString(), fluid.asString()));
                 return;
             }
             ItemRequirement ingredient = parseAmount(section.getNonNullString("require"));
@@ -521,8 +520,7 @@ public final class FoodRecipeManager {
             // 成品必须在 tea_cup 定义模型 否则跳过
             if (!FoodRecipeRegistry.instance().hasTeaCup(result.item())) {
                 KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                        "[food] 茶壶配方 " + id.asString() + " 的成品 " + result.item().asString()
-                                + " 未在 tea_cup 定义模型 已跳过该配方");
+                        ConsoleMessages.t("food.teapot.missing_tea_cup", id.asString(), result.item().asString()));
                 return;
             }
             int time = section.getInt("time", 200);
@@ -588,8 +586,8 @@ public final class FoodRecipeManager {
             }
             if (modelCount != stage) {
                 KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                        "[food] 砧板配方 " + id.asString() + " 模型数 " + modelCount + " 与 stage " + stage
-                                + " 不一致 请检查 " + prefix + "/0 到 /" + (stage - 1));
+                        ConsoleMessages.t("food.chopping.model_stage_mismatch",
+                                id.asString(), modelCount, stage, prefix, stage - 1));
             }
 
             // result single 与 single_extra 填单个产物 物品 数量 multi_random 可多个 物品 数量 权重 权重当百分比
@@ -600,8 +598,8 @@ public final class FoodRecipeManager {
             // single 与 single_extra 的 result 只能是单个产物 配多个则报错跳过该配方
             if ((mode == ChoppingMode.SINGLE || mode == ChoppingMode.SINGLE_EXTRA) && results.size() > 1) {
                 KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                        "[food] 砧板配方 " + id.asString() + " 的 " + mode + " 模式 result 只能配置一个产物 当前有 "
-                                + results.size() + " 个 已跳过该配方");
+                        ConsoleMessages.t("food.chopping.single_result_too_many",
+                                id.asString(), mode, results.size()));
                 return;
             }
 
