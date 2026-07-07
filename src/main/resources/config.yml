@@ -1,0 +1,12 @@
+# KaleidoscopeCookery 配置文件
+
+# 控制台日志语言
+# 支持：zh_cn, zh_tw, zh_hk, lzh, en_us, es_es, ja_jp, ko_kr, fr_fr, ru_ru, it_it, de_de
+# 修改后可重启服务器生效；执行 /ce reload all 时，本插件的 CraftEngine 自检日志也会重新读取该配置。
+console:
+  language: zh_cn
+
+# bStats 匿名统计 (https://bstats.org/plugin/bukkit/KaleidoscopeCookeryPlugin/32444)
+# 默认开启。改为 false 可关闭本插件向 bStats 发送匿名统计数据。
+metrics:
+  enabled: true
