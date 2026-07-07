@@ -45,6 +45,117 @@ public final class FoodRecipeRegistry {
     }
 
     /**
+     * Counts all registered cookery recipes.
+     *
+     * @return total recipe count
+     */
+    public int totalRecipeCount() {
+        return flexRecipeCount() + accurateRecipeCount() + choppingRecipeCount() + teapotRecipeCount();
+    }
+
+    /**
+     * Counts recipes for one appliance type.
+     *
+     * @param cook appliance type
+     * @return matching recipe count
+     */
+    public int recipeCount(ApplianceType cook) {
+        int count = flexRecipeCount(cook) + accurateRecipeCount(cook);
+        if (cook == ApplianceType.CHOPPING_BOARD) {
+            count += choppingRecipeCount();
+        } else if (cook == ApplianceType.TEAPOT) {
+            count += teapotRecipeCount();
+        }
+        return count;
+    }
+
+    /**
+     * Counts all flexible pot/stockpot recipes.
+     *
+     * @return flexible recipe count
+     */
+    public int flexRecipeCount() {
+        return flexRecipes.size();
+    }
+
+    /**
+     * Counts flexible recipes for one appliance type.
+     *
+     * @param cook appliance type
+     * @return matching flexible recipe count
+     */
+    public int flexRecipeCount(ApplianceType cook) {
+        int count = 0;
+        for (FlexFoodRecipe recipe : flexRecipes) {
+            if (recipe.cook() == cook) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Counts all accurate one-input recipes.
+     *
+     * @return accurate recipe count
+     */
+    public int accurateRecipeCount() {
+        return accurateRecipes.size();
+    }
+
+    /**
+     * Counts accurate recipes for one appliance type.
+     *
+     * @param cook appliance type
+     * @return matching accurate recipe count
+     */
+    public int accurateRecipeCount(ApplianceType cook) {
+        int count = 0;
+        for (AccurateFoodRecipe recipe : accurateRecipes) {
+            if (recipe.cook() == cook) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Counts chopping board recipes.
+     *
+     * @return chopping board recipe count
+     */
+    public int choppingRecipeCount() {
+        return choppingRecipes.size();
+    }
+
+    /**
+     * Counts teapot recipes.
+     *
+     * @return teapot recipe count
+     */
+    public int teapotRecipeCount() {
+        return teapotRecipes.size();
+    }
+
+    /**
+     * Counts registered teapot liquids.
+     *
+     * @return teapot liquid count
+     */
+    public int teapotLiquidCount() {
+        return teapotLiquids.size();
+    }
+
+    /**
+     * Counts registered tea cup display definitions.
+     *
+     * @return tea cup definition count
+     */
+    public int teaCupCount() {
+        return teaCups.size();
+    }
+
+    /**
      * Registers a flexible pot or stockpot recipe.
      *
      * @param r recipe to register

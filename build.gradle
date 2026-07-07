@@ -12,8 +12,8 @@ def nmsVersions = [
         nmsV121R5: [path: 'v1_21_R5', dependency: '1.21.8-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
         nmsV121R6: [path: 'v1_21_R6', dependency: '1.21.10-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
         nmsV121R7: [path: 'v1_21_R7', dependency: '1.21.11-R0.1-SNAPSHOT', classifier: 'remapped-mojang'],
-        nmsV261R1: [path: 'v26_1_R1', dependency: '26.1.2-R0.1-SNAPSHOT'],
-        nmsV262R1: [path: 'v26_2_R1', dependency: '26.2-R0.1-SNAPSHOT'],
+        nmsV261R1: [path: 'v26_1_R1', dependency: '26.1.2-R0.1-SNAPSHOT', javaVersion: 25],
+        nmsV262R1: [path: 'v26_2_R1', dependency: '26.2-R0.1-SNAPSHOT', javaVersion: 25],
 ]
 
 repositories {
@@ -35,6 +35,10 @@ repositories {
     }
     maven {
         url = "https://repo.momirealms.net/snapshots/"
+    }
+    maven {
+        name = "placeholderapi"
+        url = "https://repo.extendedclip.com/releases/"
     }
 }
 
@@ -65,6 +69,7 @@ dependencies {
     compileOnly("net.momirealms:sparrow-metadata:1.13")
     compileOnly("net.momirealms:sparrow-reflection:0.31")
     compileOnly("net.momirealms:sparrow-reflection-proxy-scanner:1.1")
+    compileOnly("me.clip:placeholderapi:2.11.6")
     implementation("net.momirealms:antigrieflib:1.0.11")
     implementation("org.bstats:bstats-bukkit:3.2.1")
 
@@ -100,12 +105,26 @@ tasks {
 }
 
 java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
     withJavadocJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.release.set(21)
+}
 
+nmsVersions.each { sourceSetName, version ->
+    if (version.javaVersion != null) {
+        tasks.named(sourceSets[sourceSetName].compileJavaTaskName, JavaCompile) {
+            options.release.set(version.javaVersion)
+            javaCompiler.set(javaToolchains.compilerFor {
+                languageVersion = JavaLanguageVersion.of(version.javaVersion)
+            })
+        }
+    }
 }
 
 tasks.withType(Javadoc).configureEach {

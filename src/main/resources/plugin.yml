@@ -9,3 +9,6 @@ dependencies:
     CraftEngine:
       load: BEFORE
       required: true
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
