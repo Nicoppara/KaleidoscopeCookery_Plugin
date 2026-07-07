@@ -66,6 +66,8 @@
 
 - **领地保护**：内置打包 [AntiGriefLib](https://github.com/Xiao-MoMi/AntiGriefLib)（shadow 重定位到 `net.kaleidoscope.cookery.libs.antigrieflib`），自动复用服务器上的领地 / 保护插件做交互与破坏判定。
 
+- **可选集成**：安装 [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) 后会自动注册内置变量扩展，无需从 eCloud 额外下载。
+
 - **构建**：
 
   ```bash
@@ -93,6 +95,39 @@
 | English              | `en_us` | 模组原文        |
 
 玩家把客户端语言切到对应语言即可看到对应翻译，无需任何额外操作。
+
+---
+
+## 🔌 PlaceholderAPI 变量
+
+服务器安装 PlaceholderAPI 时，插件会自动注册内置 expansion。变量前缀为 `kaleidoscopecookery`，可直接在菜单、计分板、聊天格式等支持 PAPI 的插件中使用。
+
+| 变量 | 含义 |
+| ---- | ---- |
+| `%kaleidoscopecookery_version%` | 当前插件版本 |
+| `%kaleidoscopecookery_enabled%` | 插件是否已启用，返回 `true` / `false` |
+| `%kaleidoscopecookery_loaded%` | `enabled` 的同义变量 |
+| `%kaleidoscopecookery_recipes_total%` | 已加载的烹饪配方总数 |
+| `%kaleidoscopecookery_recipes_flex_total%` | 已加载的动态配方总数，主要用于炒锅 / 高汤锅 |
+| `%kaleidoscopecookery_recipes_accurate_total%` | 已加载的单输入精准配方总数，主要用于蒸笼 / 石磨 / 沙威玛 |
+| `%kaleidoscopecookery_recipes_chopping_total%` | 已加载的砧板配方数量 |
+| `%kaleidoscopecookery_recipes_teapot_total%` | 已加载的茶壶配方数量 |
+| `%kaleidoscopecookery_teapot_liquids_total%` | 已注册的茶壶液体类型数量 |
+| `%kaleidoscopecookery_tea_cups_total%` | 已注册的茶杯展示定义数量 |
+
+也可以按厨具查询配方数量：
+
+| 变量 | 含义 |
+| ---- | ---- |
+| `%kaleidoscopecookery_recipes_pot_total%` | 炒锅配方数量 |
+| `%kaleidoscopecookery_recipes_stockpot_total%` | 高汤锅配方数量 |
+| `%kaleidoscopecookery_recipes_steamer_total%` | 蒸笼配方数量 |
+| `%kaleidoscopecookery_recipes_shawarma_total%` | 沙威玛烤架配方数量 |
+| `%kaleidoscopecookery_recipes_millstone_total%` | 石磨配方数量 |
+| `%kaleidoscopecookery_recipes_chopping_board_total%` | 砧板配方数量 |
+| `%kaleidoscopecookery_recipes_teapot_total%` | 茶壶配方数量 |
+
+变量名中的 `recipe_...` 单数写法也兼容，例如 `%kaleidoscopecookery_recipe_total%`。
 
 ---
 
