@@ -1,4 +1,6 @@
 package net.kaleidoscope.cookery.block.behavior;
+
+import net.kaleidoscope.cookery.api.ChoppingBoardKnives;
 import net.kaleidoscope.cookery.block.entity.ChoppingBoardController;
 
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
@@ -33,6 +35,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements EntityBlock {
@@ -98,14 +101,17 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         // 取放食材只认主手
         Item mainItem = player.getItemInHand(InteractionHand.MAIN_HAND);
         if (mainItem.isEmpty()) {
-            return handleTakeBack(context, controller, InteractionHand.MAIN_HAND);
+            return handleTakeBack(context, controller);
         }
-        return handlePlaceRaw(context, controller, mainItem, InteractionHand.MAIN_HAND);
+        return handlePlaceRaw(context, controller, mainItem);
     }
 
     private boolean isKnife(Item item) {
         if (item.isEmpty()) {
             return false;
+        }
+        if (ChoppingBoardKnives.instance().isKnife(item)) {
+            return true;
         }
         if (knives.contains(item.id().asString()) || knives.contains(item.vanillaId().asString())) {
             return true;
@@ -125,7 +131,7 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         if (result == ChoppingBoardController.CutResult.NOTHING) {
             return InteractionResult.PASS;
         }
-        player.swingHand(hand);
+        Objects.requireNonNull(player).swingHand(hand);
 
         // 扣菜刀耐久
         if (!player.canInstabuild()) {
@@ -141,15 +147,15 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
     }
 
     // 拿回砧板上的原料
-    private InteractionResult handleTakeBack(UseOnContext context, ChoppingBoardController controller, InteractionHand hand) {
+    private InteractionResult handleTakeBack(UseOnContext context, ChoppingBoardController controller) {
         Player player = context.getPlayer();
         World level = context.getLevel();
         Vec3d center = Vec3d.atCenterOf(context.getClickedPos());
 
         Item taken = controller.takeBack();
         if (!taken.isEmpty()) {
-            InventoryUtils.giveOrHold(player, hand, taken);
-            player.swingHand(hand);
+            InventoryUtils.giveOrHold(player, InteractionHand.MAIN_HAND, taken);
+            Objects.requireNonNull(player).swingHand(InteractionHand.MAIN_HAND);
             playSound(level, center, TAKE_SOUND, 1.2f + (float) Math.random() * 0.2f);
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
@@ -157,7 +163,7 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
     }
 
     // 放置原料
-    private InteractionResult handlePlaceRaw(UseOnContext context, ChoppingBoardController controller, Item itemInHand, InteractionHand hand) {
+    private InteractionResult handlePlaceRaw(UseOnContext context, ChoppingBoardController controller, Item itemInHand) {
         if (!controller.isEmpty()) {
             return InteractionResult.PASS;
         }
@@ -167,7 +173,7 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         if (controller.place(itemInHand)) {
             Player player = context.getPlayer();
             InventoryUtils.shrinkHeld(player, itemInHand, 1);
-            player.swingHand(hand);
+            Objects.requireNonNull(player).swingHand(InteractionHand.MAIN_HAND);
             playSound(context.getLevel(), Vec3d.atCenterOf(context.getClickedPos()), PLACE_SOUND, 1.2f);
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
@@ -182,7 +188,7 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
     private void damageHeldKnife(org.bukkit.entity.Player bukkitPlayer, InteractionHand hand) {
         EquipmentSlot slot = hand == InteractionHand.OFF_HAND ? EquipmentSlot.OFF_HAND : EquipmentSlot.HAND;
         ItemStack stack = bukkitPlayer.getInventory().getItem(slot);
-        if (stack == null || stack.getType().getMaxDurability() <= 0) {
+        if (stack.getType().getMaxDurability() <= 0) {
             return;
         }
         bukkitPlayer.getInventory().setItem(slot, stack.damage(1, bukkitPlayer));
