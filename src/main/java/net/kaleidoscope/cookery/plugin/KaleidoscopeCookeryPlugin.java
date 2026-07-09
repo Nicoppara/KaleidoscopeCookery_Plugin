@@ -10,6 +10,7 @@ import net.kaleidoscope.cookery.block.entity.TrashCanController;
 import net.kaleidoscope.cookery.entity.cat.FruitBasketCatListener;
 import net.kaleidoscope.cookery.api.MillstoneAnimals;
 import net.kaleidoscope.cookery.recipe.FoodRecipeManager;
+import net.kaleidoscope.cookery.util.ChainRecipeCompat;
 import net.kaleidoscope.cookery.util.ConsoleMessages;
 import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.momirealms.antigrieflib.AntiGriefLib;
@@ -26,6 +27,13 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
     private AntiGriefLib antiGrief;
     private Metrics metrics;
     private Object placeholderExpansion;
+
+    @Override
+    public void onLoad() {
+        // 早于 CraftEngine 读取配方：按运行版本归一化 shawarma_spit 的链条材料
+        // （MC 1.21.11 起 minecraft:chain 改名为 minecraft:iron_chain）
+        ChainRecipeCompat.apply(this);
+    }
 
     @Override
     public void onEnable() {

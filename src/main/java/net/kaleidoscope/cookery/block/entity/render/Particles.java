@@ -5,13 +5,13 @@ import net.momirealms.craftengine.core.world.CEWorld;
 import org.bukkit.Particle;
 import org.bukkit.World;
 
-// 粒子发包统一走这里 Paper ParticleBuilder 只发给粒子点球形半径内玩家 远处不渲染就不发
-// force 默认 false 客户端按自身粒子设置可丢弃 folia 下需在该坐标所属 region 线程调用
+// 粒子发包统一走这里 走 World#spawnParticle 广播给正在追踪该区块的玩家 由客户端按渲染距离裁剪
+// 必须在该坐标所属 region 线程调用（调用方负责调度）
+// 注意 不能用 ParticleBuilder#receivers(radius, force) folia 下它会触发 getNearbyEntities 的 AABB 查询
+//      该查询范围可能跨越当前 region 未拥有的邻近 region 从而抛 "Cannot getEntities asynchronously"
+//      改用 force(true) 让 spawn() 走 world.spawnParticle 广播 该路径不做跨 region 实体扫描 是 region 安全的
 public final class Particles {
     private Particles() {}
-
-    // 粒子接收半径 格 球形 远于此不发包
-    public static final int RECEIVER_RADIUS = 8;
 
     public static void emit(CEWorld ceWorld, Particle particle, double x, double y, double z,
                             int count, double offsetX, double offsetY, double offsetZ, double speed, Object data) {
@@ -25,7 +25,7 @@ public final class Particles {
                 .count(count)
                 .offset(offsetX, offsetY, offsetZ)
                 .extra(speed)
-                .receivers(RECEIVER_RADIUS, true);
+                .force(true);
         if (data != null) {
             builder.data(data);
         }
