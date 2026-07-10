@@ -133,8 +133,8 @@ public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implemen
         return switch (facing) {
             case NORTH -> x < 0.5;
             case SOUTH -> x > 0.5;
-            case EAST -> z > 0.5;
-            case WEST -> z < 0.5;
+            case EAST -> z < 0.5;
+            case WEST -> z > 0.5;
             default -> x < 0.5;
         };
     }
