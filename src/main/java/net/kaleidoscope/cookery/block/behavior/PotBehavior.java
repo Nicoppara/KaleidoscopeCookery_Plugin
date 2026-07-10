@@ -298,6 +298,10 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
 
     // 投入单个食材
     private InteractionResult handleAddIngredient(UseOnContext context, PotController controller, Player player, InteractionHand hand, Item itemInHand, boolean hasHeatSource) {
+        if (!controller.hasOil()) {
+            player.sendActionBar(Localization.component(msgNeedOilFirst));
+            return InteractionResult.SUCCESS_AND_CANCEL;
+        }
         int preCount = controller.getIngredients().size();
         controller.addIngredient(itemInHand.copyWithCount(1), hasHeatSource, player);
         if (preCount < controller.getIngredients().size()) {
