@@ -119,7 +119,9 @@ tasks.withType(JavaCompile).configureEach {
 nmsVersions.each { sourceSetName, version ->
     if (version.javaVersion != null) {
         tasks.named(sourceSets[sourceSetName].compileJavaTaskName, JavaCompile) {
-            options.release.set(version.javaVersion)
+            // Newer NMS dependencies require their matching JDK to compile, but every
+            // bridge must stay Java 21 bytecode so one shaded jar can load on 1.21.
+            options.release.set(21)
             javaCompiler.set(javaToolchains.compilerFor {
                 languageVersion = JavaLanguageVersion.of(version.javaVersion)
             })

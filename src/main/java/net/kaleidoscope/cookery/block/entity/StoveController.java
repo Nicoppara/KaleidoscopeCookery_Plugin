@@ -83,6 +83,6 @@ public final class StoveController extends BlockEntityController {
             }
             Particles.emit(ceWorld, Particle.SMOKE, sx, sy, sz, count, 0.08, 0.12, 0.08, 0.02, null);
             Particles.emit(ceWorld, Particle.FLAME, fx, fy, fz, count, 0.05, 0.06, 0.05, 0.0, null);
-        }, level, pos.x(), pos.z());
+        }, level, pos.x() >> 4, pos.z() >> 4);
     }
 }

@@ -141,7 +141,7 @@ public class ShawarmaSpitController extends BlockEntityController {
     private Item getRecipeResult(Item input) {
         return FoodRecipeRegistry.instance()
                 .findAccurate(ApplianceType.SHAWARMA, input.id())
-                .map(FoodRecipeResult::item)
+                .map(result -> result.item().copyWithCount(Math.max(1, result.count())))
                 .orElse(input.copy());
     }
 

@@ -21,12 +21,12 @@ public final class MillstoneBehavior extends FurnitureBehaviorTemplate {
     public Key stickItem = ItemKeys.NEW_MILLSTONE_STICK;
     public Key stick2Item = ItemKeys.NEW_MILLSTONE_STICK2;
     public Key stoneItem = ItemKeys.NEW_MILLSTONE_STONE;
-    public String msgAlreadyPushing = "kaleidoscopecookery.message.millstone.already_pushing";
-    public String msgNeedGroundBelow = "kaleidoscopecookery.message.millstone.need_ground_below";
-    public String msgUneven = "kaleidoscopecookery.message.millstone.uneven";
-    public String msgNotSamePlane = "kaleidoscopecookery.message.millstone.not_same_plane";
-    public String msgExitHint = "kaleidoscopecookery.message.millstone.exit_hint";
-    public String msgStopAnimalHint = "kaleidoscopecookery.message.millstone.stop_animal_hint";
+    public String msgAlreadyPushing = "§c你已经在推另一个石磨了";
+    public String msgNeedGroundBelow = "§c起始位置脚下必须有方块";
+    public String msgUneven = "§c起始位置不平整，无法推磨";
+    public String msgNotSamePlane = "§c你与石磨不在同一平面，无法推磨";
+    public String msgExitHint = "§e再次 潜行+右键石磨 退出推磨";
+    public String msgStopAnimalHint = "§e手持剪刀 Shift+右键 石磨可停止生物拉磨";
 
     private MillstoneBehavior(FurnitureDefinition furniture) {
         super(furniture);
