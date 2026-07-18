@@ -41,6 +41,10 @@ public final class ItemKeys {
     public static final Key RECIPE_ITEM_NO_RECIPE = Key.of("kaleidoscopecookery:recipe_item_no_recipe");
     public static final Key RECIPE_ITEM_HAS_RECIPE = Key.of("kaleidoscopecookery:recipe_item_has_recipe");
 
+    public static final Key TRANSMUTATION_LUNCH_BAG = Key.of("kaleidoscopecookery:transmutation_lunch_bag");
+    public static final Key TRANSMUTATION_LUNCH_BAG_EATING = Key.of("kaleidoscopecookery:transmutation_lunch_bag_eating");
+    public static final Key COOKED_BEEF = Key.of("minecraft:cooked_beef");
+
     public static final Key DIAMOND_KITCHEN_KNIFE = Key.of("kaleidoscopecookery:diamond_kitchen_knife");
     public static final Key GOLD_KITCHEN_KNIFE = Key.of("kaleidoscopecookery:gold_kitchen_knife");
     public static final Key IRON_KITCHEN_KNIFE = Key.of("kaleidoscopecookery:iron_kitchen_knife");

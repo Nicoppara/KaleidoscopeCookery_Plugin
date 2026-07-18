@@ -26,7 +26,15 @@ public final class BlockEntityNbt {
         if (!tag.containsKey(key)) {
             return;
         }
-        for (Tag itemTag : tag.getList(key)) {
+        loadItems(tag.getList(key), dataVersion, out);
+    }
+
+    public static void loadItems(ListTag list, int dataVersion, List<Item> out) {
+        out.clear();
+        if (list == null) {
+            return;
+        }
+        for (Tag itemTag : list) {
             out.add(ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(itemTag, dataVersion)));
         }
     }

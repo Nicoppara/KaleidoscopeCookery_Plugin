@@ -793,6 +793,7 @@ public class MillstoneController extends FurnitureController {
             if (isAnimating() && pullingAnimal != null) {
                 stopSpinning(player);
             }
+            player.swingHand(InteractionHand.MAIN_HAND);
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         if (isAnimating()) {
@@ -809,6 +810,7 @@ public class MillstoneController extends FurnitureController {
         if (spin(player)) {
             player.sendActionBar(Component.text(behavior.msgExitHint));
         }
+        player.swingHand(InteractionHand.MAIN_HAND);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
@@ -864,7 +866,8 @@ public class MillstoneController extends FurnitureController {
         );
 
         spinWithAnimal(target, bukkitPlayer, true);
-        player.sendActionBar(Component.text(behavior.msgStopAnimalHint));
+        player.sendActionBar(Localization.component(behavior.msgStopAnimalHint));
+        player.swingHand(InteractionHand.MAIN_HAND);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
@@ -902,6 +905,7 @@ public class MillstoneController extends FurnitureController {
         spinWithAnimal(animal, null, false);
         player.sendActionBar(Component.text(behavior.msgStopAnimalHint));
         InventoryUtils.shrinkHeld(player, eggItem, 1);
+        player.swingHand(InteractionHand.MAIN_HAND);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 

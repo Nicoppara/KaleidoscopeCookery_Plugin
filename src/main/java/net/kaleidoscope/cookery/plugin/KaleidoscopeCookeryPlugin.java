@@ -8,6 +8,7 @@ import net.kaleidoscope.cookery.block.listener.TrashCanListener;
 import net.kaleidoscope.cookery.block.listener.TrashCanRespawnListener;
 import net.kaleidoscope.cookery.block.entity.TrashCanController;
 import net.kaleidoscope.cookery.entity.cat.FruitBasketCatListener;
+import net.kaleidoscope.cookery.item.listener.LunchBagListener;
 import net.kaleidoscope.cookery.api.MillstoneAnimals;
 import net.kaleidoscope.cookery.item.StrawHatListener;
 import net.kaleidoscope.cookery.recipe.FoodRecipeManager;
@@ -41,6 +42,7 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new SteamerFallingBlockListener(), this);
         getServer().getPluginManager().registerEvents(new FruitBasketCatListener(this), this);
         getServer().getPluginManager().registerEvents(new TrashCanListener(), this);
+        getServer().getPluginManager().registerEvents(new LunchBagListener(), this);
         getServer().getPluginManager().registerEvents(new StrawHatListener(), this);
         getServer().getPluginManager().registerEvents(new CraftEngineRegistryCheckListener(this), this);
         if (FoliaUtil.isFolia()) {
