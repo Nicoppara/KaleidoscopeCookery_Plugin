@@ -4,11 +4,13 @@ import net.momirealms.craftengine.core.item.behavior.ItemBehaviorType;
 import net.momirealms.craftengine.core.util.Key;
 import net.kaleidoscope.cookery.item.behavior.DoughPullingBehavior;
 import net.kaleidoscope.cookery.item.behavior.TeapotItemBehavior;
+import net.kaleidoscope.cookery.item.behavior.TransmutationLunchBagBehavior;
 
 // 物品行为注册
 public final class ItemBehaviors {
     public static ItemBehaviorType<DoughPullingBehavior> DOUGH_PULLING;
     public static ItemBehaviorType<TeapotItemBehavior> TEAPOT;
+    public static ItemBehaviorType<TransmutationLunchBagBehavior> TRANSMUTATION_LUNCH_BAG;
 
     private ItemBehaviors() {}
 
@@ -23,6 +25,12 @@ public final class ItemBehaviors {
             TEAPOT = RegistryUtils.registerItemBehavior(
                     Key.of("kaleidoscopecookery:teapot_item"),
                     TeapotItemBehavior.FACTORY
+            );
+        }
+        if (TRANSMUTATION_LUNCH_BAG == null) {
+            TRANSMUTATION_LUNCH_BAG = RegistryUtils.registerItemBehavior(
+                    Key.of("kaleidoscopecookery:transmutation_lunch_bag"),
+                    TransmutationLunchBagBehavior.FACTORY
             );
         }
     }

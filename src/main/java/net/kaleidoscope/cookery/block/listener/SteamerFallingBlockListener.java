@@ -11,6 +11,7 @@ import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.world.CEWorld;
+import net.momirealms.craftengine.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -105,6 +106,6 @@ public class SteamerFallingBlockListener implements Listener {
     }
 
     private static Object getNmsHandle(Entity entity) {
-        return NmsBridgeProvider.bridge().nmsHandle(entity);
+        return CraftEntityProxy.INSTANCE.getEntity(entity);
     }
 }
