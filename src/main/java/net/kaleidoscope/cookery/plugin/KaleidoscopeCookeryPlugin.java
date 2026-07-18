@@ -10,8 +10,8 @@ import net.kaleidoscope.cookery.block.entity.TrashCanController;
 import net.kaleidoscope.cookery.entity.cat.FruitBasketCatListener;
 import net.kaleidoscope.cookery.item.listener.LunchBagListener;
 import net.kaleidoscope.cookery.api.MillstoneAnimals;
+import net.kaleidoscope.cookery.item.StrawHatListener;
 import net.kaleidoscope.cookery.recipe.FoodRecipeManager;
-import net.kaleidoscope.cookery.util.ChainRecipeCompat;
 import net.kaleidoscope.cookery.util.ConsoleMessages;
 import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.momirealms.antigrieflib.AntiGriefLib;
@@ -30,13 +30,6 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
     private Object placeholderExpansion;
 
     @Override
-    public void onLoad() {
-        // 早于 CraftEngine 读取配方：按运行版本归一化 shawarma_spit 的链条材料
-        // （MC 1.21.11 起 minecraft:chain 改名为 minecraft:iron_chain）
-        ChainRecipeCompat.apply(this);
-    }
-
-    @Override
     public void onEnable() {
         instance = this;
         saveDefaultConfig();
@@ -50,6 +43,7 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new FruitBasketCatListener(this), this);
         getServer().getPluginManager().registerEvents(new TrashCanListener(), this);
         getServer().getPluginManager().registerEvents(new LunchBagListener(), this);
+        getServer().getPluginManager().registerEvents(new StrawHatListener(), this);
         getServer().getPluginManager().registerEvents(new CraftEngineRegistryCheckListener(this), this);
         if (FoliaUtil.isFolia()) {
             TrashCanRespawnListener.registerFoliaPackets(this);

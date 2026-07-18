@@ -322,7 +322,7 @@ public class TrashCanController extends FurnitureController {
             if (occupied && player.isOnline() && cam.isValid()) {
                 player.setSpectatorTarget(cam);
             }
-        }, 1L, camLoc);
+        }, null, 1L, player);
 
         element.setItemsHidden(true);
         clearNearbyHostility(player);
@@ -431,6 +431,17 @@ public class TrashCanController extends FurnitureController {
 
     // shutdown=true 为关服路径 只还原玩家关键状态与相机 不做传送和渲染回发 避免关闭阶段的多余/不稳定操作
     private void exit(boolean shutdown) {
+        if (FoliaUtil.isFolia() && occupantId != null) {
+            org.bukkit.entity.Player player = Bukkit.getPlayer(occupantId);
+            if (player != null) {
+                FoliaUtil.runEntity(player, () -> exitOwned(shutdown));
+                return;
+            }
+        }
+        exitOwned(shutdown);
+    }
+
+    private void exitOwned(boolean shutdown) {
         if (!occupied) {
             return;
         }
@@ -520,7 +531,8 @@ public class TrashCanController extends FurnitureController {
             return;
         }
         // 延后一 tick 待重生完成再还原游戏模式 否则可能被重生逻辑盖掉
-        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> restoreIfCrashed(player), 1L, player.getLocation());
+        BukkitCraftEngine.instance().scheduler().platform().runLater(
+                () -> restoreIfCrashed(player), null, 1L, player);
     }
 
     // 只松开占用/相机/拦截 不传送不改模式(交给上面延后的 restoreIfCrashed) 先移除登记再解旁观避免重入
@@ -555,20 +567,56 @@ public class TrashCanController extends FurnitureController {
     }
 
     private void releaseOnFolia() {
-        WorldPosition p = furniture().position();
-        BukkitCraftEngine.instance().scheduler().platform().run(
-                () -> exit(true),
-                p.world(),
-                (int) Math.floor(p.x),
-                (int) Math.floor(p.z)
-        );
+        exit(true);
     }
 
     // 清除附近生物对进入玩家的敌意 仿模组进桶即安全
     private void clearNearbyHostility(org.bukkit.entity.Player player) {
-        for (Entity e : player.getWorld().getNearbyEntities(player.getLocation(), 32, 32, 32)) {
-            if (e instanceof Mob mob && mob.getTarget() == player) {
-                mob.setTarget(null);
+        Location center = player.getLocation();
+        World world = center.getWorld();
+        if (!FoliaUtil.isFolia()) {
+            for (Entity e : world.getNearbyEntities(center, 32, 32, 32)) {
+                if (e instanceof Mob mob && mob.getTarget() == player) {
+                    mob.setTarget(null);
+                }
+            }
+            return;
+        }
+
+        double minX = center.getX() - 32;
+        double maxX = center.getX() + 32;
+        double minY = center.getY() - 32;
+        double maxY = center.getY() + 32;
+        double minZ = center.getZ() - 32;
+        double maxZ = center.getZ() + 32;
+        int minChunkX = ((int) Math.floor(minX)) >> 4;
+        int maxChunkX = ((int) Math.floor(maxX)) >> 4;
+        int minChunkZ = ((int) Math.floor(minZ)) >> 4;
+        int maxChunkZ = ((int) Math.floor(maxZ)) >> 4;
+
+        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                int chunkX = cx;
+                int chunkZ = cz;
+                BukkitCraftEngine.instance().scheduler().platform().run(() -> {
+                    if (!world.isChunkLoaded(chunkX, chunkZ)) {
+                        return;
+                    }
+                    for (Entity entity : world.getChunkAt(chunkX, chunkZ).getEntities()) {
+                        if (!(entity instanceof Mob mob)) {
+                            continue;
+                        }
+                        FoliaUtil.runEntity(mob, () -> {
+                            Location loc = mob.getLocation();
+                            if (loc.getX() >= minX && loc.getX() <= maxX
+                                    && loc.getY() >= minY && loc.getY() <= maxY
+                                    && loc.getZ() >= minZ && loc.getZ() <= maxZ
+                                    && mob.getTarget() == player) {
+                                mob.setTarget(null);
+                            }
+                        });
+                    }
+                }, world, chunkX, chunkZ);
             }
         }
     }

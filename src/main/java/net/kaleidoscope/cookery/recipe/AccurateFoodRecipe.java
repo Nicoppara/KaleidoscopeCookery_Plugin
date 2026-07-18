@@ -12,6 +12,7 @@ import java.util.List;
  * @param id recipe id
  * @param input input item id
  * @param results weighted output item ids
+ * @param resultCount number of items produced
  * @param cook appliance type
  * @param rotations millstone rotations; {@code 0} uses the appliance default
  * @param lore lore lines applied to generated result items
@@ -20,6 +21,7 @@ public record AccurateFoodRecipe(
         Key id,
         Key input,
         List<WeightedResult> results,
+        int resultCount,
         ApplianceType cook,
         int rotations,
         List<String> lore

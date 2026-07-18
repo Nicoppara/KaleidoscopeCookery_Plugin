@@ -132,8 +132,8 @@ public final class PotElement implements BlockEntityElement {
         int stepDuration = 3;
         var platformScheduler = BukkitCraftEngine.instance().scheduler().platform();
         var world = controller.blockEntity().world.world();
-        int px = controller.blockEntity().pos.x;
-        int pz = controller.blockEntity().pos.z;
+        int chunkX = controller.blockEntity().pos.x >> 4;
+        int chunkZ = controller.blockEntity().pos.z >> 4;
 
         for (int step = 1; step <= 8; step++) {
             final int currentStep = step;
@@ -155,12 +155,12 @@ public final class PotElement implements BlockEntityElement {
                 recipients.forEach(p -> p.sendPacket(bundle, false));
             };
             if (delay == 0) phaseRunnable.run();
-            else animationTasks.add(platformScheduler.runLater(phaseRunnable, delay, world, px, pz));
+            else animationTasks.add(platformScheduler.runLater(phaseRunnable, delay, world, chunkX, chunkZ));
         }
         animationTasks.add(platformScheduler.runLater(() -> {
             onComplete.run();
             animationTasks.clear();
-        }, stepDuration * 8L, world, px, pz));
+        }, stepDuration * 8L, world, chunkX, chunkZ));
     }
 
     private float getParabolaHeightForStep(int step, float baseH, float topH, float range) {

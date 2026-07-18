@@ -327,6 +327,8 @@ public final class FoodRecipeManager {
 
             ApplianceType cook = ApplianceType.valueOf(
                     section.getNonNullString("cook").toUpperCase());
+            int resultCount = Math.max(1,
+                    section.getInt(new String[]{"result_count", "result-count"}, 1));
 
             // rotations 产出所需圈数 仅石磨可用 写在其它机型上报错跳过 0 表示用 behavior 默认
             int rotations = 0;
@@ -341,7 +343,7 @@ public final class FoodRecipeManager {
             List<String> lore = section.getStringList("lore");
 
             FoodRecipeRegistry.instance().registerAccurate(
-                    new AccurateFoodRecipe(id, input, results, cook, rotations, lore));
+                    new AccurateFoodRecipe(id, input, results, resultCount, cook, rotations, lore));
             // require 自动放入白名单
             ApplianceFoodRegistry.instance().register(cook, input);
             count++;

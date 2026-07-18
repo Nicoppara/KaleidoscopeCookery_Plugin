@@ -7,13 +7,11 @@ import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.util.Key;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Cat;
-import org.bukkit.entity.Entity;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -22,6 +20,7 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 // 猫趴果篮 AI 扫描附近果篮 寻路过去 趴下
 // 一个果篮同一时间只允许一只猫认领 驯服猫可挤走野猫 驯服猫占着时其它猫不来
@@ -36,6 +35,7 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
     // 趴上去给的生命恢复时长 60 秒 每 60 秒刷一次
     private static final int REGEN_DURATION = 1200;
     private static final int REGEN_AMPLIFIER = 0;
+    private static final long CLAIM_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(10);
     // 水平搜索半径
     private static final int H_RADIUS = 6;
     // 垂直搜索半径 猫与果篮通常同层附近
@@ -49,7 +49,32 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
     // 认领表 果篮位置到认领者 Folia 下方块线程与猫线程可能并发 用并发表
     private static final Map<BasketPos, Claim> CLAIMS = new ConcurrentHashMap<>();
 
-    private record Claim(UUID cat, boolean tamed) {}
+    private static final class Claim {
+        private final UUID cat;
+        private final boolean tamed;
+        private volatile long lastSeenNanos = System.nanoTime();
+
+        private Claim(UUID cat, boolean tamed) {
+            this.cat = cat;
+            this.tamed = tamed;
+        }
+
+        private UUID cat() {
+            return cat;
+        }
+
+        private boolean tamed() {
+            return tamed;
+        }
+
+        private void touch() {
+            lastSeenNanos = System.nanoTime();
+        }
+
+        private boolean expired() {
+            return System.nanoTime() - lastSeenNanos > CLAIM_TIMEOUT_NANOS;
+        }
+    }
 
     // 果篮方块位置作认领表键 用记录而非字符串拼接 避免每次扫描产生 toString 开销
     private record BasketPos(UUID world, int x, int y, int z) {}
@@ -74,7 +99,6 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
     private Location target;
     // 缓存的果篮中心 start 后不变
     private Location targetCenter;
-    private boolean pendingDisplace;
     private boolean lying;
     private int safetyCooldown;
     private double lastHealth;
@@ -96,8 +120,7 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
         if (c == null) {
             return null;
         }
-        Entity e = Bukkit.getEntity(c.cat());
-        if (!(e instanceof Cat) || e.isDead() || !e.isValid()) {
+        if (c.expired()) {
             CLAIMS.remove(k, c);
             return null;
         }
@@ -129,7 +152,6 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
 
         Location best = null;
         double bestSq = Double.MAX_VALUE;
-        boolean bestDisplace = false;
         boolean tamed = cat.isTamed();
         UUID self = cat.getUniqueId();
 
@@ -142,7 +164,6 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
                     }
                     Location bl = b.getLocation();
                     Claim c = resolveClaim(posOf(bl));
-                    boolean displace = false;
                     if (c != null) {
                         if (c.cat().equals(self)) {
                             continue;
@@ -151,13 +172,11 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
                         if (c.tamed() || !tamed) {
                             continue;
                         }
-                        displace = true;
                     }
                     double sq = bl.distanceSquared(base);
                     if (sq < bestSq) {
                         bestSq = sq;
                         best = bl;
-                        bestDisplace = displace;
                     }
                 }
             }
@@ -167,7 +186,6 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
             return false;
         }
         this.target = best;
-        this.pendingDisplace = bestDisplace;
         return true;
     }
 
@@ -177,17 +195,6 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
             return;
         }
         BasketPos k = posOf(target);
-        if (pendingDisplace) {
-            Claim prev = CLAIMS.get(k);
-            if (prev != null) {
-                Entity e = Bukkit.getEntity(prev.cat());
-                if (e instanceof Cat oldCat) {
-                    // 把野猫挤起来 它的 goal 会在 shouldStayActive 里发现失去认领并停止
-                    oldCat.setLyingDown(false);
-                    oldCat.setCollidable(true);
-                }
-            }
-        }
         CLAIMS.put(k, new Claim(cat.getUniqueId(), cat.isTamed()));
         this.targetCenter = center(target);
         cat.getPathfinder().moveTo(targetCenter, SPEED);
@@ -284,7 +291,11 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
             return false;
         }
         Claim c = CLAIMS.get(posOf(target));
-        return c != null && c.cat().equals(cat.getUniqueId());
+        if (c == null || !c.cat().equals(cat.getUniqueId())) {
+            return false;
+        }
+        c.touch();
+        return true;
     }
 
     @Override
