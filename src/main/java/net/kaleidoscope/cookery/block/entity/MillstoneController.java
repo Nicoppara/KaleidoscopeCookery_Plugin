@@ -866,7 +866,7 @@ public class MillstoneController extends FurnitureController {
         );
 
         spinWithAnimal(target, bukkitPlayer, true);
-        player.sendActionBar(Localization.component(behavior.msgStopAnimalHint));
+        player.sendActionBar(Component.text(behavior.msgStopAnimalHint));
         player.swingHand(InteractionHand.MAIN_HAND);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
