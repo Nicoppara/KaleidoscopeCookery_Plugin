@@ -590,6 +590,17 @@ public class TrashCanController extends FurnitureController {
 
     // shutdown=true 为关服路径 只还原玩家关键状态与相机 不做传送和渲染回发 避免关闭阶段的多余/不稳定操作
     private void exit(boolean shutdown) {
+        if (FoliaUtil.isFolia() && occupantId != null) {
+            org.bukkit.entity.Player player = Bukkit.getPlayer(occupantId);
+            if (player != null) {
+                FoliaUtil.runEntity(player, () -> exitOwned(shutdown));
+                return;
+            }
+        }
+        exitOwned(shutdown);
+    }
+
+    private void exitOwned(boolean shutdown) {
         if (!occupied) {
             return;
         }

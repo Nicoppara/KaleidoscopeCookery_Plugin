@@ -1,7 +1,6 @@
 package net.kaleidoscope.cookery.api;
 
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
-import net.kaleidoscope.cookery.util.ConsoleMessages;
 import net.momirealms.craftengine.core.pack.Pack;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
@@ -37,13 +36,6 @@ public final class MillstoneAnimals {
      */
     public record Profile(double secondsPerRevolution, boolean allowed, boolean forceLeash,
                           boolean interactionDisabled, double orbitRadius) {
-        /**
-         * Creates a profile with default interaction and orbit settings.
-         *
-         * @param secondsPerRevolution seconds required for one full revolution
-         * @param allowed whether the entity can pull a millstone
-         * @param forceLeash whether the plugin should force a leash
-         */
         public Profile(double secondsPerRevolution, boolean allowed, boolean forceLeash) {
             this(secondsPerRevolution, allowed, forceLeash, true, DEFAULT_ORBIT_RADIUS);
         }
@@ -53,33 +45,16 @@ public final class MillstoneAnimals {
      * Extension hook for plugins that need dynamic entity profile resolution.
      */
     public interface Provider {
-        /**
-         * Resolves a profile for an entity.
-         *
-         * @param entity the entity being tested
-         * @return a profile to override normal lookup, or {@code null} to fall back
-         */
         Profile resolve(Entity entity);
     }
 
-    /**
-     * CraftEngine loading stage used by the millstone animal parser.
-     */
     public static final LoadingStage MILLSTONE_ANIMALS = new LoadingStage("millstone animals");
 
     /**
      * Default seconds per revolution for player-pulled millstones.
      */
     public static final double PLAYER_SECONDS = 7.5;
-
-    /**
-     * Seconds per revolution used by the temporary boost effect.
-     */
     public static final double BOOST_SECONDS = 6.0;
-
-    /**
-     * Default distance from the millstone center while walking.
-     */
     public static final double DEFAULT_ORBIT_RADIUS = 2.5;
 
     private static final MillstoneAnimals INSTANCE = new MillstoneAnimals();
@@ -91,21 +66,10 @@ public final class MillstoneAnimals {
         loadDefaults();
     }
 
-    /**
-     * Returns the shared registry.
-     *
-     * @return the singleton registry
-     */
     public static MillstoneAnimals instance() {
         return INSTANCE;
     }
 
-    /**
-     * Registers or replaces the profile for a Bukkit entity type.
-     *
-     * @param type entity type
-     * @param profile pull profile
-     */
     public void register(EntityType type, Profile profile) {
         vanilla.put(type, profile);
     }
@@ -174,12 +138,6 @@ public final class MillstoneAnimals {
         return vanilla.get(type);
     }
 
-    /**
-     * Checks whether an entity can pull a millstone.
-     *
-     * @param entity entity to test
-     * @return {@code true} if the resolved profile allows pulling
-     */
     public boolean canPull(Entity entity) {
         if (!isAdult(entity)) {
             return false;
@@ -202,9 +160,6 @@ public final class MillstoneAnimals {
         return (float) (360.0 / (secondsPerRevolution * 20.0));
     }
 
-    /**
-     * Restores the built-in vanilla entity profiles.
-     */
     public void loadDefaults() {
         vanilla.clear();
         register(EntityType.MULE, new Profile(6, true, false));
@@ -220,9 +175,6 @@ public final class MillstoneAnimals {
         register(EntityType.GOAT, new Profile(50, true, false));
     }
 
-    /**
-     * Registers the CraftEngine config parser for millstone animal profiles.
-     */
     public static void registerParser() {
         CraftEngine.instance().packManager().registerConfigSectionParser(new AnimalsParser());
     }
@@ -242,7 +194,7 @@ public final class MillstoneAnimals {
 
         @Override
         public List<LoadingStage> dependencies() {
-            return super.dependencies();
+            return List.of();
         }
 
         @Override
@@ -268,7 +220,7 @@ public final class MillstoneAnimals {
                     type = EntityType.valueOf(typeName.trim().toUpperCase());
                 } catch (IllegalArgumentException e) {
                     KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                            ConsoleMessages.t("millstone.unknown_entity_type", typeName));
+                            "[millstone] 未知生物类型 " + typeName + " 已跳过");
                     continue;
                 }
                 Profile def = INSTANCE.vanilla.getOrDefault(type, new Profile(PLAYER_SECONDS, true, false));

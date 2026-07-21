@@ -21,6 +21,12 @@ public final class ItemBehaviors {
                     SickleRangeHarvestBehavior.FACTORY
             );
         }
+        if (SICKLE_RANGE_HARVEST == null) {
+            SICKLE_RANGE_HARVEST = RegistryUtils.registerItemBehavior(
+                    Key.of("kaleidoscopecookery:sickle_range_harvest"),
+                    SickleRangeHarvestBehavior.FACTORY
+            );
+        }
         if (TEAPOT == null) {
             TEAPOT = RegistryUtils.registerItemBehavior(
                     Key.of("kaleidoscopecookery:teapot_item"),

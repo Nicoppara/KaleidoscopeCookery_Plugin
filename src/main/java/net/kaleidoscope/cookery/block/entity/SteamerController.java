@@ -10,6 +10,7 @@ import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
+import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.block.property.type.SlabType;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
@@ -141,7 +142,7 @@ public class SteamerController extends BlockEntityController {
                 if (belowCustomState.owner().value() == super.blockEntity.blockState.owner().value()) {
                     SteamerBehavior belowBehavior = belowCustomState.behavior().getFirst(SteamerBehavior.class);
                     if (belowBehavior != null) {
-                        SlabType type = belowCustomState.get(belowBehavior.getTypeProperty());
+                        SlabType type = getSlabType(belowCustomState);
 
                         // 下层是双层蒸笼时 火力按层向上递减传导
                         if (type == SlabType.DOUBLE) {
@@ -209,7 +210,7 @@ public class SteamerController extends BlockEntityController {
     }
 
     public int capacity() {
-        SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+        SlabType type = getSlabType(super.blockEntity.blockState);
         return (type == SlabType.DOUBLE) ? SLOTS : SLOTS / 2;
     }
 
@@ -275,7 +276,7 @@ public class SteamerController extends BlockEntityController {
         if (particleTick % behavior.particleInterval != 0) {
             return;
         }
-        SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+        SlabType type = getSlabType(super.blockEntity.blockState);
         double yOffset = (type != SlabType.DOUBLE) ? 0.5 : 1.0;
         double x = super.blockEntity.pos.x + 0.5 + (random.nextDouble() / 2) * (random.nextBoolean() ? 1 : -1);
         double y = super.blockEntity.pos.y + yOffset + random.nextDouble() / 2;
@@ -284,12 +285,17 @@ public class SteamerController extends BlockEntityController {
     }
 
     private void makeRipeParticles() {
-        SlabType type = super.blockEntity.blockState.get(behavior.getTypeProperty());
+        SlabType type = getSlabType(super.blockEntity.blockState);
         double yOffset = (type != SlabType.DOUBLE) ? 0.25 : 0.75;
         double x = super.blockEntity.pos.x + 0.5 + (random.nextDouble() / 1.25) * (random.nextBoolean() ? 1 : -1);
         double y = super.blockEntity.pos.y + yOffset + random.nextDouble() / 2;
         double z = super.blockEntity.pos.z + 0.5 + (random.nextDouble() / 1.25) * (random.nextBoolean() ? 1 : -1);
         Particles.emit(super.blockEntity.world, Particle.CLOUD, x, y, z, behavior.particleCount, 0.05, 0.05, 0.05, 0.05, null);
+    }
+
+    private static SlabType getSlabType(ImmutableBlockState state) {
+        Property<SlabType> property = state.getProperty("type");
+        return property != null ? state.get(property, SlabType.BOTTOM) : SlabType.BOTTOM;
     }
 
     public boolean isCovered() {

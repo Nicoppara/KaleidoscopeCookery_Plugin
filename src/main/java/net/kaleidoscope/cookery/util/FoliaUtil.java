@@ -3,6 +3,8 @@ package net.kaleidoscope.cookery.util;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 
+import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
+
 public final class FoliaUtil {
     private static final boolean FOLIA = detectFolia();
 
@@ -10,6 +12,18 @@ public final class FoliaUtil {
 
     public static boolean isFolia() {
         return FOLIA;
+    }
+
+    public static void runEntity(Entity entity, Runnable task) {
+        runEntity(entity, task, () -> {});
+    }
+
+    public static void runEntity(Entity entity, Runnable task, Runnable retired) {
+        if (FOLIA) {
+            BukkitCraftEngine.instance().scheduler().platform().run(task, retired, entity);
+        } else {
+            task.run();
+        }
     }
 
     public static void teleport(Entity entity, Location location) {

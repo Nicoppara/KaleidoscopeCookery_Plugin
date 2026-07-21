@@ -44,6 +44,7 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new TrashCanListener(), this);
         getServer().getPluginManager().registerEvents(new StrawHatListener(), this);
         getServer().getPluginManager().registerEvents(new LunchBagListener(), this);
+        getServer().getPluginManager().registerEvents(new StrawHatListener(), this);
         getServer().getPluginManager().registerEvents(new CraftEngineRegistryCheckListener(this), this);
         if (FoliaUtil.isFolia()) {
             TrashCanRespawnListener.registerFoliaPackets(this);
