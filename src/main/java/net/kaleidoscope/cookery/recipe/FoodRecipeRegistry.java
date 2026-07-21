@@ -324,7 +324,7 @@ public final class FoodRecipeRegistry {
                                 AdventureHelper.miniMessage().deserialize("<!i>" + l)))
                         .toList());
             }
-            return Optional.of(new FoodRecipeResult(item, 1));
+            return Optional.of(new FoodRecipeResult(item, recipe.resultCount()));
         }
         return Optional.empty();
     }

@@ -39,8 +39,8 @@ public final class NmsBridgeProvider {
         if (version.startsWith("26.1")) return name("v26_1_R1", "NmsV26_1_R1");
 
         return switch (version) {
-            case "1.21.1" -> name("v1_21_R1", "NmsV1_21_R1");
-            case "1.21.3" -> name("v1_21_R2", "NmsV1_21_R2");
+            case "1.21", "1.21.1" -> name("v1_21_R1", "NmsV1_21_R1");
+            case "1.21.2", "1.21.3" -> name("v1_21_R2", "NmsV1_21_R2");
             case "1.21.4" -> name("v1_21_R3", "NmsV1_21_R3");
             case "1.21.5" -> name("v1_21_R4", "NmsV1_21_R4");
             case "1.21.6", "1.21.7", "1.21.8" -> name("v1_21_R5", "NmsV1_21_R5");

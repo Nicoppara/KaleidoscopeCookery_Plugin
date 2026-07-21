@@ -204,7 +204,8 @@ public class SteamerController extends BlockEntityController {
 
     private Item getRecipeResult(Item input) {
         Optional<FoodRecipeResult> result = FoodRecipeRegistry.instance().findAccurate(ApplianceType.STEAMER, input.id());
-        return result.isPresent() ? result.get().item() : input;
+        // 份数由配方的 result_count 决定 只取 item 会把它吞掉
+        return result.map(fr -> fr.item().count(fr.count())).orElse(input);
     }
 
     public int capacity() {

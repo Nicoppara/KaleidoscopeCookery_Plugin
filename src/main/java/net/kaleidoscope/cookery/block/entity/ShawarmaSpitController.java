@@ -149,7 +149,8 @@ public class ShawarmaSpitController extends BlockEntityController {
     private Item getRecipeResult(Item input) {
         return FoodRecipeRegistry.instance()
                 .findAccurate(ApplianceType.SHAWARMA, input.id())
-                .map(FoodRecipeResult::item)
+                // 份数由配方的 result_count 决定 只取 item 会把它吞掉
+                .map(fr -> fr.item().count(fr.count()))
                 .orElse(input.copy());
     }
 
