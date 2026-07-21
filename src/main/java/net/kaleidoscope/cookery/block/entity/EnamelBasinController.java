@@ -14,6 +14,8 @@ import net.kaleidoscope.cookery.util.DropUtils;
 
 public class EnamelBasinController extends BlockEntityController {
     private static final String DATA_KEY = "kaleidoscopecookery:cooking_enamel_basin";
+    private static final String K_OIL_COUNT = "oil_count";
+    private static final String K_CLOSED = "closed";
 
     private int oilCount = 0;
     private boolean closed = true;
@@ -106,8 +108,8 @@ public class EnamelBasinController extends BlockEntityController {
     @Override
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
-        data.putInt("oil_count", oilCount);
-        data.putBoolean("closed", closed);
+        data.putInt(K_OIL_COUNT, oilCount);
+        data.putBoolean(K_CLOSED, closed);
         tag.put(DATA_KEY, data);
     }
 
@@ -115,7 +117,7 @@ public class EnamelBasinController extends BlockEntityController {
     public void loadCustomData(CompoundTag tag) {
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data == null) return;
-        this.oilCount = data.getInt("oil_count", 0);
-        this.closed = data.getBoolean("closed", true);
+        this.oilCount = data.getInt(K_OIL_COUNT, 0);
+        this.closed = data.getBoolean(K_CLOSED, true);
     }
 }

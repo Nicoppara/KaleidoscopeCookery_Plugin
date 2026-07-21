@@ -1,9 +1,15 @@
 package net.kaleidoscope.cookery.item;
 
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
+import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
+import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import net.momirealms.craftengine.core.entity.player.Player;
+import org.bukkit.inventory.ItemStack;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.VersionHelper;
@@ -36,11 +42,13 @@ public final class LunchBagContents {
         return switchForm(eating, ItemKeys.TRANSMUTATION_LUNCH_BAG);
     }
 
+    // 只搬内容物 名称 lore 附魔等不跟随 数量必须带上 否则整摞饭袋会被烧成一个
     private static Item switchForm(Item from, Key targetId) {
         Item target = InventoryUtils.createOrEmpty(targetId);
         if (ItemUtils.isEmpty(target)) {
             return Item.empty();
         }
+        target.count(from.count());
         Tag tag = from.getComponentAsSparrowTag(DataComponentTypes.BUNDLE_CONTENTS);
         if (tag instanceof ListTag list) {
             target.setSparrowTagComponent(DataComponentTypes.BUNDLE_CONTENTS, list);
@@ -53,6 +61,25 @@ public final class LunchBagContents {
         return ItemMatch.is(food, ItemKeys.COOKED_BEEF);
     }
 
+    // 底材是原版 minecraft:bundle 原版有多条塞入路径 逐个事件去拦容易漏
+    // 这里做兜底 把不该在袋里的东西挑出来还给玩家 返回被剔除的物品
+    public static List<Item> stripDisallowed(Item bag) {
+        List<Item> items = read(bag);
+        List<Item> removed = new ArrayList<>();
+        List<Item> kept = new ArrayList<>(items.size());
+        for (Item item : items) {
+            if (canAdd(item)) {
+                kept.add(item);
+            } else {
+                removed.add(item);
+            }
+        }
+        if (!removed.isEmpty()) {
+            write(bag, kept);
+        }
+        return removed;
+    }
+
     public static List<Item> read(Item bag) {
         List<Item> items = new ArrayList<>(MAX_SLOTS);
         if (ItemUtils.isEmpty(bag)) {
@@ -62,22 +89,32 @@ public final class LunchBagContents {
         if (!(tag instanceof ListTag list)) {
             return items;
         }
-        BlockEntityNbt.loadItems(list, VersionHelper.WORLD_VERSION, items);
+        // 传当前版本号会让 CE 的 dataVersion != currentVersion 判定恒不成立 数据修复器永远不执行
+        BlockEntityNbt.loadItems(list, Config.itemDataFixerUpperFallbackVersion(), items);
         items.removeIf(ItemUtils::isEmpty);
         return items;
     }
 
     public static void write(Item bag, List<Item> items) {
-        items.removeIf(ItemUtils::isEmpty);
-        if (items.isEmpty()) {
-            bag.removeComponent(DataComponentTypes.BUNDLE_CONTENTS);
-            return;
+        List<Item> kept = new ArrayList<>(items.size());
+        for (Item item : items) {
+            if (!ItemUtils.isEmpty(item)) {
+                kept.add(item);
+            }
         }
-        bag.setSparrowTagComponent(DataComponentTypes.BUNDLE_CONTENTS, BlockEntityNbt.saveItems(items));
+        // 清空要写空列表 不能用 removeComponent
+        // removeComponent 是把组件标记为显式移除 袋子从此没有 bundle_contents 就不再是个能收纳的收纳袋了
+        bag.setSparrowTagComponent(DataComponentTypes.BUNDLE_CONTENTS,
+                kept.isEmpty() ? new ListTag() : BlockEntityNbt.saveItems(kept));
     }
 
+    // 只看组件 别为了判空把整个列表解析出来
     public static boolean isEmpty(Item bag) {
-        return read(bag).isEmpty();
+        if (ItemUtils.isEmpty(bag)) {
+            return true;
+        }
+        Tag tag = bag.getComponentAsSparrowTag(DataComponentTypes.BUNDLE_CONTENTS);
+        return !(tag instanceof ListTag list) || list.isEmpty();
     }
 
     // 返回实际放入的数量 先并已有堆叠再开新槽
@@ -114,7 +151,22 @@ public final class LunchBagContents {
         return added;
     }
 
-    // 取出第一格的一个 袋空返回 Item.empty
+    // 从末尾扣掉指定数量 供装填失败时回滚
+    public static void remove(Item bag, int amount) {
+        if (amount <= 0) {
+            return;
+        }
+        List<Item> items = read(bag);
+        int remaining = amount;
+        for (int i = items.size() - 1; i >= 0 && remaining > 0; i--) {
+            Item stored = items.get(i);
+            int toRemove = Math.min(stored.count(), remaining);
+            stored.shrink(toRemove);
+            remaining -= toRemove;
+        }
+        write(bag, items);
+    }
+
     public static Item removeOne(Item bag) {
         List<Item> items = read(bag);
         if (items.isEmpty()) {
@@ -131,8 +183,54 @@ public final class LunchBagContents {
     public static List<Item> removeAll(Item bag) {
         List<Item> items = read(bag);
         if (!items.isEmpty()) {
-            bag.removeComponent(DataComponentTypes.BUNDLE_CONTENTS);
+            write(bag, List.of());
         }
         return items;
+    }
+
+    // 底材是原版 minecraft:bundle 右键塞入和取出是同一个操作
+    // 只有"往袋里塞不该收的东西"该拦 光标为空是取出 必须放行 否则玩家取不出自己的牛排
+    public static boolean rejectsInsert(ItemStack incoming) {
+        if (incoming == null || incoming.getType().isAir()) {
+            return false;
+        }
+        return !canAdd(wrap(incoming));
+    }
+
+    // 原版塞入路径不止一条 逐个事件拦容易漏 事后扫一遍把不该在袋里的挑出来还给玩家
+    public static void sanitizeInventory(org.bukkit.entity.Player bukkitPlayer) {
+        if (!bukkitPlayer.isOnline()) {
+            return;
+        }
+        ItemStack[] contents = bukkitPlayer.getInventory().getContents();
+        Player cePlayer = null;
+        for (int slot = 0; slot < contents.length; slot++) {
+            ItemStack stack = contents[slot];
+            if (stack == null || stack.getType().isAir()) {
+                continue;
+            }
+            Item bag = wrap(stack);
+            if (!isLunchBag(bag) && !isEatingForm(bag)) {
+                continue;
+            }
+            List<Item> removed = stripDisallowed(bag);
+            if (removed.isEmpty()) {
+                continue;
+            }
+            bukkitPlayer.getInventory().setItem(slot, ItemStackUtils.getBukkitStack(bag));
+            if (cePlayer == null) {
+                cePlayer = BukkitAdaptor.adapt(bukkitPlayer);
+            }
+            for (Item item : removed) {
+                InventoryUtils.give(cePlayer, item);
+            }
+        }
+    }
+    private static Item wrap(ItemStack stack) {
+        if (stack == null || stack.getType().isAir()) {
+            return Item.empty();
+        }
+        Item item = BukkitItemManager.instance().wrap(stack);
+        return ItemUtils.isEmpty(item) ? Item.empty() : item;
     }
 }

@@ -37,6 +37,9 @@ import java.util.function.Consumer;
 public final class TeacupCoasterController extends BlockEntityController {
     public static final int MAX_CUPS = 4;
     private static final String DATA_KEY = "kaleidoscopecookery:teacup_coaster";
+    private static final String K_CUPS = "cups";
+    private static final String K_ITEM = "item";
+    private static final String K_MODEL = "model";
     private static final Key POUR_SOUND = Key.of("minecraft:block.brewing_stand.brew");
 
     private final TeacupCoasterBehavior behavior;
@@ -210,11 +213,11 @@ public final class TeacupCoasterController extends BlockEntityController {
         ListTag list = new ListTag();
         for (int i = 0; i < cupItems.size(); i++) {
             CompoundTag c = new CompoundTag();
-            c.put("item", ItemStackUtils.saveMinecraftItemStackAsTag(cupItems.get(i).minecraftItem()));
-            c.putString("model", cupModels.get(i).asString());
+            c.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(cupItems.get(i).minecraftItem()));
+            c.putString(K_MODEL, cupModels.get(i).asString());
             list.add(c);
         }
-        data.put("cups", list);
+        data.put(K_CUPS, list);
         tag.put(DATA_KEY, data);
     }
 
@@ -226,15 +229,15 @@ public final class TeacupCoasterController extends BlockEntityController {
         }
         cupItems.clear();
         cupModels.clear();
-        if (data.containsKey("cups")) {
+        if (data.containsKey(K_CUPS)) {
             int version = Config.itemDataFixerUpperFallbackVersion();
-            for (Tag t : data.getList("cups")) {
+            for (Tag t : data.getList(K_CUPS)) {
                 if (!(t instanceof CompoundTag c)) {
                     continue;
                 }
-                Object nms = ItemStackUtils.parseMinecraftItem(c.get("item"), version);
+                Object nms = ItemStackUtils.parseMinecraftItem(c.get(K_ITEM), version);
                 Item item = nms == null ? Item.empty() : ItemStackUtils.wrap(nms);
-                String model = c.getString("model");
+                String model = c.getString(K_MODEL);
                 if (!item.isEmpty() && model != null && !model.isEmpty() && cupItems.size() < MAX_CUPS) {
                     cupItems.add(item);
                     cupModels.add(Key.of(model));

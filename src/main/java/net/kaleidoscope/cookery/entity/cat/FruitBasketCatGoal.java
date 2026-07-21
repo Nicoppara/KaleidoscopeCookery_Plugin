@@ -228,13 +228,15 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
             Location on = new Location(target.getWorld(),
                     target.getBlockX() + 0.5, target.getBlockY() + BASKET_TOP, target.getBlockZ() + 0.5,
                     catLoc.getYaw(), 0f);
-            FoliaUtil.teleport(cat, on);
-            cat.setSitting(false);
-            cat.setLyingDown(true);
-            // 趴在果篮上静音 屏蔽睡觉呼噜声
-            cat.setSilent(true);
-            // 不可被推挤 避免漂离果篮后一直占着认领
-            cat.setCollidable(false);
+            // 趴下姿态必须等传送落地再设 否则 folia 下猫会在旧位置就进入趴下状态
+            FoliaUtil.teleportThen(cat, on, () -> {
+                cat.setSitting(false);
+                cat.setLyingDown(true);
+                // 趴在果篮上静音 屏蔽睡觉呼噜声
+                cat.setSilent(true);
+                // 不可被推挤 避免漂离果篮后一直占着认领
+                cat.setCollidable(false);
+            });
             lying = true;
             applyRegen();
             lastHealth = cat.getHealth();

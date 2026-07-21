@@ -31,6 +31,8 @@ public final class KitchenwareRacksElement implements BlockEntityElement {
     private Object spawnRightPacket;
     private Object changeLeftItemPacket;
     private Object changeRightItemPacket;
+    private boolean leftSpawned;
+    private boolean rightSpawned;
 
     public KitchenwareRacksElement(@NotNull KitchenwareRacksController controller,
                                    @Nullable WorldPosition leftPosition,
@@ -48,9 +50,6 @@ public final class KitchenwareRacksElement implements BlockEntityElement {
                     a.add(leftItemId);
                     a.add(rightItemId);
                 }));
-
-        this.refreshLeftItem(Item.empty());
-        this.refreshRightItem(Item.empty());
 
         if (leftPosition != null && rightPosition != null) {
             this.refreshSpawnPackets(leftPosition, rightPosition);
@@ -91,10 +90,12 @@ public final class KitchenwareRacksElement implements BlockEntityElement {
         if (!controller.getItemLeft().isEmpty()) {
             packets.add(spawnLeftPacket);
             packets.add(changeLeftItemPacket);
+            leftSpawned = true;
         }
         if (!controller.getItemRight().isEmpty()) {
             packets.add(spawnRightPacket);
             packets.add(changeRightItemPacket);
+            rightSpawned = true;
         }
         if (!packets.isEmpty()) {
             player.sendPackets(packets, false);
@@ -104,6 +105,8 @@ public final class KitchenwareRacksElement implements BlockEntityElement {
     @Override
     public void hide(@NotNull Player player) {
         player.sendPacket(despawnAllPacket, false);
+        leftSpawned = false;
+        rightSpawned = false;
     }
 
     @Override
@@ -117,22 +120,31 @@ public final class KitchenwareRacksElement implements BlockEntityElement {
 
         List<Object> packets = new ArrayList<>();
 
-        if (!controller.getItemLeft().isEmpty()) {
-            if (leftChanged) {
-                packets.add(spawnLeftPacket);
+        // 按槽差异分派 空变非空才发 spawn 内容变化只发 meta 重发 spawn 会让客户端重建实体丢插值
+        if (leftChanged) {
+            if (!controller.getItemLeft().isEmpty()) {
+                if (!leftSpawned) {
+                    packets.add(spawnLeftPacket);
+                    leftSpawned = true;
+                }
                 packets.add(changeLeftItemPacket);
+            } else if (leftSpawned) {
+                packets.add(despawnLeftPacket);
+                leftSpawned = false;
             }
-        } else if (leftChanged) {
-            packets.add(despawnLeftPacket);
         }
 
-        if (!controller.getItemRight().isEmpty()) {
-            if (rightChanged) {
-                packets.add(spawnRightPacket);
+        if (rightChanged) {
+            if (!controller.getItemRight().isEmpty()) {
+                if (!rightSpawned) {
+                    packets.add(spawnRightPacket);
+                    rightSpawned = true;
+                }
                 packets.add(changeRightItemPacket);
+            } else if (rightSpawned) {
+                packets.add(despawnRightPacket);
+                rightSpawned = false;
             }
-        } else if (rightChanged) {
-            packets.add(despawnRightPacket);
         }
 
         if (!packets.isEmpty()) {

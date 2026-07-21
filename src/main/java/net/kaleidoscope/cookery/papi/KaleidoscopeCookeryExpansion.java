@@ -39,13 +39,13 @@ public final class KaleidoscopeCookeryExpansion extends PlaceholderExpansion {
 
     @Override
     public String getAuthor() {
-        String authors = String.join(", ", plugin.getDescription().getAuthors());
+        String authors = String.join(", ", plugin.getPluginMeta().getAuthors());
         return authors.isBlank() ? "KaleidoscopeCookery" : authors;
     }
 
     @Override
     public String getVersion() {
-        return plugin.getDescription().getVersion();
+        return plugin.getPluginMeta().getVersion();
     }
 
     @Override
@@ -71,7 +71,7 @@ public final class KaleidoscopeCookeryExpansion extends PlaceholderExpansion {
 
         FoodRecipeRegistry recipes = FoodRecipeRegistry.instance();
         return switch (key) {
-            case "version" -> plugin.getDescription().getVersion();
+            case "version" -> plugin.getPluginMeta().getVersion();
             case "enabled", "loaded" -> Boolean.toString(plugin.isEnabled());
             case "recipes_total", "recipe_total", "total_recipes", "total_recipe" ->
                     Integer.toString(recipes.totalRecipeCount());

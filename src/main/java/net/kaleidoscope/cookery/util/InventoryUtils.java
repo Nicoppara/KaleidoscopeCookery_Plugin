@@ -13,10 +13,16 @@ import org.bukkit.inventory.ItemStack;
 public final class InventoryUtils {
     private InventoryUtils() {}
 
-    // createWrappedItem 对无效 key 返回 null 这里收口成空物品 调用方一律用 isEmpty 判断
+    // 按 key 建物品 无效 key 收口成空物品 调用方一律用 isEmpty 判断
     public static Item createOrEmpty(Key key) {
-        Item item = BukkitItemManager.instance().createWrappedItem(key, null);
-        return item == null ? Item.empty() : item;
+        return createOrEmpty(key, null);
+    }
+
+    // player 参与物品构建上下文 影响名称等占位符解析 无玩家语境传 null
+    public static Item createOrEmpty(Key key, Player player) {
+        return BukkitItemManager.instance().getBuildableItem(key)
+                .map(buildable -> buildable.buildItem(player))
+                .orElse(Item.empty());
     }
 
     // 把物品交给玩家 先并入已有同类堆叠 再填空格 背包满则掉落

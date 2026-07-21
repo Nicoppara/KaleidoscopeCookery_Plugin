@@ -203,7 +203,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         BlockPlaceContext placeContext = new BlockPlaceContext(level, player, hand, itemInHand, hitResult);
         // 叠笼实际放置点是向上 walk 出的新位置 与点击位可能跨领地 放动作前再校验目标位置
         if (!InteractGuard.canInteract(player, level, placePos)) {
-            return InteractionResult.SUCCESS_AND_CANCEL;
+            return InteractionResult.PASS;
         }
 
         ImmutableBlockState targetState = level.getBlock(placePos).customBlockState();
@@ -216,7 +216,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         if (canStackHere) {
             return placeSteamer(placeContext);
         }
-        return InteractionResult.SUCCESS_AND_CANCEL;
+        return InteractionResult.PASS;
     }
 
     private InteractionResult handlePlaceFood(UseOnContext context, World level, CEWorld world, Player player, InteractionHand hand, Item itemInHand) {
@@ -377,7 +377,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     private InteractionResult placeSteamer(BlockPlaceContext context) {
         ImmutableBlockState newState = updateStateForPlacement(context, super.blockDefinition.defaultState());
         if (newState == null) {
-            return InteractionResult.FAIL;
+            return InteractionResult.PASS;
         }
 
         BlockPos pos = context.getClickedPos();

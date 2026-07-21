@@ -23,6 +23,9 @@ import java.util.function.Consumer;
 
 public final class KitchenwareRacksController extends BlockEntityController {
     private static final String DATA_KEY = "kaleidoscopecookery:kitchenware_racks";
+    private static final String K_DATA_VERSION = "data_version";
+    private static final String K_ITEM_LEFT = "item_left";
+    private static final String K_ITEM_RIGHT = "item_right";
 
     private final KitchenwareRacksBehavior behavior;
     private final KitchenwareRacksElement element;
@@ -162,12 +165,12 @@ public final class KitchenwareRacksController extends BlockEntityController {
     @Override
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
-        data.putInt("data_version", VersionHelper.WORLD_VERSION);
+        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
         if (!ItemUtils.isEmpty(itemLeft)) {
-            data.put("item_left", ItemStackUtils.saveMinecraftItemStackAsTag(itemLeft.minecraftItem()));
+            data.put(K_ITEM_LEFT, ItemStackUtils.saveMinecraftItemStackAsTag(itemLeft.minecraftItem()));
         }
         if (!ItemUtils.isEmpty(itemRight)) {
-            data.put("item_right", ItemStackUtils.saveMinecraftItemStackAsTag(itemRight.minecraftItem()));
+            data.put(K_ITEM_RIGHT, ItemStackUtils.saveMinecraftItemStackAsTag(itemRight.minecraftItem()));
         }
         tag.put(DATA_KEY, data);
     }
@@ -182,16 +185,16 @@ public final class KitchenwareRacksController extends BlockEntityController {
             return;
         }
 
-        int dataVersion = dataTag.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
+        int dataVersion = dataTag.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
 
-        Tag leftTag = dataTag.get("item_left");
+        Tag leftTag = dataTag.get(K_ITEM_LEFT);
         if (leftTag != null) {
             this.itemLeft = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(leftTag, dataVersion));
         } else {
             this.itemLeft = Item.empty();
         }
 
-        Tag rightTag = dataTag.get("item_right");
+        Tag rightTag = dataTag.get(K_ITEM_RIGHT);
         if (rightTag != null) {
             this.itemRight = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(rightTag, dataVersion));
         } else {

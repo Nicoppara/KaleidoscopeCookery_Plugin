@@ -159,40 +159,31 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
                 || ItemMatch.is(item, recipeItemHasRecipe);
     }
 
-    // 用碗盛出成品
+    // 用碗盛出成品 有多少碗盛多少份
     private InteractionResult handleExtractDish(UseOnContext context, PotController controller, Player player, InteractionHand hand) {
-        List<Item> results = controller.getResults();
-        if (results.isEmpty()) return InteractionResult.SUCCESS_AND_CANCEL;
+        // 先预览再发事件 事件取消时不能已经扣掉份数
+        Item preview = controller.peekResult();
+        // 锅里没成品 这次右键什么都没做 交回原版
+        if (preview.isEmpty()) return InteractionResult.PASS;
 
         BlockPos pos = context.getClickedPos();
         Location dishLoc = new Location((World) context.getLevel().platformWorld(), pos.x(), pos.y(), pos.z());
-        ItemStack dishStack = ItemStackUtils.getBukkitStack(results.get(0).copyWithCount(1).minecraftItem());
+        ItemStack dishStack = ItemStackUtils.getBukkitStack(preview.minecraftItem());
         PotExtractDishEvent event = new PotExtractDishEvent((org.bukkit.entity.Player) player.platformPlayer(), dishLoc, dishStack);
         if (EventUtils.fireAndCheckCancel(event)) {
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         Item dish = BukkitItemManager.instance().wrap(event.dish());
 
+        int available = controller.resultCount();
         int taken = 0;
-        for (int i = 0; i < results.size(); i++) {
-            Item res = results.get(i);
-            while (res.count() > 0) {
-                if (InventoryUtils.consumeItem(player, bowlItem, 1)) {
-                    InventoryUtils.giveOrHold(player, hand, dish.copyWithCount(1));
-                    res.shrink(1);
-                    taken++;
-                } else {
-                    break;
-                }
-            }
-            if (res.isEmpty()) {
-                results.remove(i);
-                i--;
-            }
+        while (taken < available && InventoryUtils.consumeItem(player, bowlItem, 1)) {
+            InventoryUtils.giveOrHold(player, hand, dish.copyWithCount(1));
+            taken++;
         }
 
         if (taken > 0) {
-            controller.syncIngredientsToResults();
+            controller.consumeResult(taken);
             player.swingHand(hand);
         } else {
             player.sendActionBar(Localization.component(msgNeedBowl));
@@ -259,10 +250,11 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     private InteractionResult handleRecipe(UseOnContext context, PotController controller, Player player, InteractionHand hand, Item itemInHand, boolean hasHeatSource) {
         ItemStack bukkitStack = ItemStackUtils.getBukkitStack(itemInHand.minecraftItem());
         if (RecipeUtils.hasRecipe(bukkitStack)) {
-            if (controller.stage() == PotStage.IDLE && controller.getIngredients().isEmpty()) {
+            if (controller.stage() == PotStage.IDLE && controller.ingredients().isEmpty()) {
                 if (!controller.hasOil()) {
                     player.sendActionBar(Localization.component(msgNeedOilFirst));
-                } else if (!RecipeUtils.tryAutoFill((org.bukkit.entity.Player) player.platformPlayer(), bukkitStack, item -> controller.addIngredient(item, hasHeatSource, player))) {
+                } else if (!RecipeUtils.tryAutoFill((org.bukkit.entity.Player) player.platformPlayer(), bukkitStack,
+                        item -> controller.addIngredient(item, hasHeatSource, player))) {
                     player.sendActionBar(Localization.component(msgNotEnoughIngredients));
                 } else {
                     player.swingHand(hand);
@@ -280,7 +272,7 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
             player.sendActionBar(Localization.component(msgNotDoneYet));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
-        List<Key> ingredientIds = controller.getIngredients().stream().map(Item::id).toList();
+        List<Key> ingredientIds = controller.ingredients().stream().map(Item::id).toList();
         FlexFoodRecipe matchedRecipe = FoodRecipeRegistry.instance().findBestFlexRecipe(ApplianceType.POT, ingredientIds).orElse(null);
         if (matchedRecipe == null) {
             player.sendActionBar(Localization.component(msgMixedNoRecipe));
@@ -298,9 +290,9 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
 
     // 投入单个食材
     private InteractionResult handleAddIngredient(UseOnContext context, PotController controller, Player player, InteractionHand hand, Item itemInHand, boolean hasHeatSource) {
-        int preCount = controller.getIngredients().size();
+        int preCount = controller.ingredients().size();
         controller.addIngredient(itemInHand.copyWithCount(1), hasHeatSource, player);
-        if (preCount < controller.getIngredients().size()) {
+        if (preCount < controller.ingredients().size()) {
             InventoryUtils.shrinkHeld(player, itemInHand, 1);
             context.getLevel().playSound(Vec3d.atCenterOf(context.getClickedPos()), SOUND_ADD_INGREDIENT, DEFAULT_VOLUME, 0.5f, SoundSource.BLOCK);
             player.swingHand(hand);

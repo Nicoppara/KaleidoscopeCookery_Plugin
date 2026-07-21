@@ -2,6 +2,9 @@ package net.kaleidoscope.cookery.block.listener;
 
 import net.kaleidoscope.cookery.api.MillstoneAnimals;
 import net.kaleidoscope.cookery.block.entity.MillstoneController;
+import net.kaleidoscope.cookery.item.ItemKeys;
+import net.kaleidoscope.cookery.item.ItemMatch;
+import net.kaleidoscope.cookery.util.InventoryUtils;
 
 import org.bukkit.GameMode;
 import org.bukkit.Material;
@@ -15,8 +18,13 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityMountEvent;
 import org.bukkit.event.entity.PlayerLeashEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
+import net.momirealms.craftengine.core.entity.player.Player;
+import net.momirealms.craftengine.core.item.Item;
 
 import java.util.UUID;
 
@@ -27,8 +35,9 @@ public class MillstoneAnimalListener implements Listener {
         UUID uuid = event.getEntity().getUniqueId();
         MillstoneController ctrl = MillstoneController.ACTIVE_ANIMAL_PULLERS.get(uuid);
         if (ctrl == null) return;
+        // retired 表示实体已永久移除 只能做纯内存清理 stopSpinning 会写实体状态并掉落拴绳
         BukkitCraftEngine.instance().scheduler().platform().run(
-                ctrl::stopSpinning, ctrl::stopSpinning, event.getEntity());
+                ctrl::stopSpinning, ctrl::releaseAnimalRefs, event.getEntity());
     }
 
     // 禁止玩家骑乘正在拉磨或罢工中的生物
@@ -56,15 +65,16 @@ public class MillstoneAnimalListener implements Listener {
         if (profile == null || !profile.allowed() || !profile.forceLeash()) {
             return;
         }
-        ItemStack hand = event.getPlayer().getInventory().getItem(event.getHand());
-        if (hand == null || hand.getType() != Material.LEAD) {
+        Player cePlayer = BukkitAdaptor.adapt(event.getPlayer());
+        Item lead = cePlayer.getItemInHand(event.getHand() == EquipmentSlot.OFF_HAND
+                ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND);
+        if (!ItemMatch.is(lead, ItemKeys.LEAD)) {
             return;
         }
         // TODO setLeashHolder 对原版不可拴生物可能不稳定 必要时改 NMS setLeashedTo
         living.setLeashHolder(event.getPlayer());
-        if (event.getPlayer().getGameMode() != GameMode.CREATIVE) {
-            hand.setAmount(hand.getAmount() - 1);
-        }
+        // 走轮子 内部已判 canInstabuild 别手写 GameMode 判定 那样会漏掉旁观等情况
+        InventoryUtils.shrinkHeld(cePlayer, lead, 1);
         event.setCancelled(true);
     }
 

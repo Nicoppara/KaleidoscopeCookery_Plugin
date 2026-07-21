@@ -5,7 +5,10 @@ import net.kaleidoscope.cookery.item.LunchBagContents;
 import net.kaleidoscope.cookery.item.LunchBagEating;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
+import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.util.ItemUtils;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
@@ -14,12 +17,16 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.entity.HumanEntity;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+
 
 public class LunchBagListener implements Listener {
 
@@ -82,15 +89,53 @@ public class LunchBagListener implements Listener {
         LunchBagEating.restore(event.getPlayer());
     }
 
-    // 原版收纳袋在背包里右键能塞进任意物品 绕过只收熟牛肉的限制 直接压掉
+    // 底材是原版 minecraft:bundle 原版右键既能往里塞也能往外取 用的是同一个操作
+    // 只能拦"塞入不该收的东西" 不能无差别取消右键 否则玩家连自己的牛排都取不出来
     @EventHandler(ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
-        if (event.getClick() != ClickType.RIGHT) {
+        ItemStack current = event.getCurrentItem();
+        ItemStack cursor = event.getCursor();
+        boolean bagInSlot = isLunchBag(current);
+        boolean bagOnCursor = isLunchBag(cursor);
+        if (!bagInSlot && !bagOnCursor) {
             return;
         }
-        if (isLunchBag(event.getCurrentItem()) || isLunchBag(event.getCursor())) {
+
+        // 光标空 = 从袋里取出 放行 光标有东西 = 往袋里塞 交给领域类判
+        // 手持袋子点别的物品 也是塞入
+        boolean inserting = (bagInSlot && LunchBagContents.rejectsInsert(cursor))
+                || (bagOnCursor && LunchBagContents.rejectsInsert(current));
+        if (event.getClick() == ClickType.RIGHT && inserting) {
             event.setCancelled(true);
+            return;
         }
+        scheduleSanitize(event.getWhoClicked());
+    }
+
+    // 右键拖拽也能往收纳袋里塞
+    @EventHandler(ignoreCancelled = true)
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (isLunchBag(event.getOldCursor()) || isLunchBag(event.getCursor())) {
+            event.setCancelled(true);
+            return;
+        }
+        for (ItemStack slot : event.getNewItems().values()) {
+            if (isLunchBag(slot)) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+        scheduleSanitize(event.getWhoClicked());
+    }
+
+    // 原版塞入路径不止一条 逐个事件拦容易漏 这里事后扫一遍把不该在袋里的挑出来还给玩家
+    // 延后一 tick 等原版把本次改动落到物品上
+    private void scheduleSanitize(HumanEntity human) {
+        if (!(human instanceof org.bukkit.entity.Player bukkitPlayer)) {
+            return;
+        }
+        BukkitCraftEngine.instance().scheduler().platform().runLater(
+                () -> LunchBagContents.sanitizeInventory(bukkitPlayer), null, 1L, bukkitPlayer);
     }
 
     // 潜行左键倒出全部
@@ -104,7 +149,9 @@ public class LunchBagListener implements Listener {
             return;
         }
         org.bukkit.entity.Player bukkitPlayer = event.getPlayer();
-        LunchBagEating.dropContents(bukkitPlayer, BukkitAdaptor.adapt(bukkitPlayer), wrap(event.getItem()));
+        InteractionHand hand = event.getHand() == EquipmentSlot.OFF_HAND
+                ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        LunchBagEating.dropContents(BukkitAdaptor.adapt(bukkitPlayer), hand, wrap(event.getItem()));
     }
 
     private boolean isLunchBag(ItemStack stack) {

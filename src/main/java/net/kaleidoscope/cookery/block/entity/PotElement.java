@@ -17,6 +17,7 @@ import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class PotElement implements BlockEntityElement {
     private static final int SLOTS = 8;
@@ -83,13 +84,13 @@ public final class PotElement implements BlockEntityElement {
     }
 
     public void refreshSlotPacket(int index) {
-        List<Item> items = controller.getIngredients();
+        List<Item> items = controller.ingredients();
         if (index >= items.size()) {
             display.clear(index);
             return;
         }
 
-        Random random = new Random(controller.getSeed() + index);
+        Random random = new Random(controller.seed() + index);
         float stackHeight = index * 0.025f;
         float angle = (float) Math.toRadians(index * 45 + random.nextFloat() * 90);
         this.randomAngles[index] = angle;
@@ -101,7 +102,7 @@ public final class PotElement implements BlockEntityElement {
                 .rotation(angle)
                 .itemTransform((byte) 8);
 
-        if (controller.stage() == PotStage.BURNT) packets.brightness(burntBrightness(controller.getCurrentTick(), controller.burntToCharcoalTime()));
+        if (controller.stage() == PotStage.BURNT) packets.brightness(burntBrightness(controller.currentTick(), controller.burntToCharcoalTime()));
         display.setPackets(index, packets.spawn(display.id(index), display.uuid(index)), packets.meta(display.id(index)));
     }
 
@@ -116,7 +117,7 @@ public final class PotElement implements BlockEntityElement {
 
     public void playStirFryAnimation(Runnable onComplete) {
         CEChunk chunk = controller.blockEntity().world.getChunkAtIfLoaded(controller.blockEntity().pos.x >> 4, controller.blockEntity().pos.z >> 4);
-        int ingredientCount = controller.getIngredients().size();
+        int ingredientCount = controller.ingredients().size();
         if (chunk == null || ingredientCount == 0) {
             onComplete.run();
             return;
@@ -126,7 +127,7 @@ public final class PotElement implements BlockEntityElement {
         // 动画开始时快照一次接收者 整段 8 帧复用 远处玩家不渲染动画就不发
         List<Player> recipients = TrackedPlayers.snapshotInRange(controller.blockEntity(), controller.animChunkRadius());
 
-        Random random = new Random();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
         float[] jumpH = new float[ingredientCount];
         for (int i = 0; i < ingredientCount; i++) jumpH[i] = (i * 0.025f) + (0.3f + random.nextFloat() * 0.6f);
         int stepDuration = 3;

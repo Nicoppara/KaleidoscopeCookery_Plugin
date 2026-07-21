@@ -27,6 +27,11 @@ public final class InteractGuard {
         return test(player, Flag.OPEN_CONTAINER, (org.bukkit.World) pos.world().platformWorld(), pos.x, pos.y, pos.z);
     }
 
+    // 范围破坏方块用 BREAK 权限 逐格校验 别整片一刀切
+    public static boolean canBreak(Player player, World level, int x, int y, int z) {
+        return test(player, Flag.BREAK, (org.bukkit.World) level.platformWorld(), x, y, z);
+    }
+
     private static boolean test(Player player, Flag flag, org.bukkit.World world, double x, double y, double z) {
         if (player == null) {
             return false;
