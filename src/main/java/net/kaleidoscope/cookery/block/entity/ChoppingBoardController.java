@@ -28,6 +28,10 @@ import java.util.function.Consumer;
 
 public class ChoppingBoardController extends BlockEntityController {
     private static final String DATA_KEY = "kaleidoscopecookery:chopping_board";
+    private static final String K_BLOCK_ENTITY_TAG = "BlockEntityTag";
+    private static final String K_DATA_VERSION = "data_version";
+    private static final String K_STAGE = "stage";
+    private static final String K_ITEM = "item";
 
     private final ChoppingBoardBehavior behavior;
     private final ChoppingBoardElement element;
@@ -196,8 +200,8 @@ public class ChoppingBoardController extends BlockEntityController {
     public void loadCustomDataFromItem(Item item) {
         Object nmsItem = item.minecraftItem();
         Tag tag = ItemStackUtils.saveMinecraftItemStackAsTag(nmsItem);
-        if (tag instanceof CompoundTag compoundTag && compoundTag.containsKey("BlockEntityTag")) {
-            loadCustomData(compoundTag.getCompound("BlockEntityTag"));
+        if (tag instanceof CompoundTag compoundTag && compoundTag.containsKey(K_BLOCK_ENTITY_TAG)) {
+            loadCustomData(compoundTag.getCompound(K_BLOCK_ENTITY_TAG));
         }
     }
 
@@ -207,10 +211,10 @@ public class ChoppingBoardController extends BlockEntityController {
             return;
         }
         CompoundTag data = new CompoundTag();
-        data.putInt("data_version", VersionHelper.WORLD_VERSION);
-        data.putInt("stage", currentStage);
+        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
+        data.putInt(K_STAGE, currentStage);
         if (!placedItem.isEmpty()) {
-            data.put("item", ItemStackUtils.saveMinecraftItemStackAsTag(placedItem.minecraftItem()));
+            data.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(placedItem.minecraftItem()));
         }
         tag.put(DATA_KEY, data);
     }
@@ -221,11 +225,11 @@ public class ChoppingBoardController extends BlockEntityController {
         if (data == null) {
             return;
         }
-        this.currentStage = data.getInt("stage", 0);
+        this.currentStage = data.getInt(K_STAGE, 0);
         this.placedItem = Item.empty();
-        Tag itemTag = data.get("item");
+        Tag itemTag = data.get(K_ITEM);
         if (itemTag != null) {
-            int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
+            int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
             Object nmsItem = ItemStackUtils.parseMinecraftItem(itemTag, dataVersion);
             if (nmsItem != null) {
                 this.placedItem = ItemStackUtils.wrap(nmsItem);

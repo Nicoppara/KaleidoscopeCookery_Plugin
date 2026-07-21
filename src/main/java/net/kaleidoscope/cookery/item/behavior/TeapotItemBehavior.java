@@ -4,6 +4,7 @@ import net.kaleidoscope.cookery.block.entity.TeacupCoasterController;
 import net.kaleidoscope.cookery.block.entity.TeapotBar;
 import net.kaleidoscope.cookery.block.entity.TeapotController;
 import net.kaleidoscope.cookery.item.ItemKeys;
+import net.kaleidoscope.cookery.util.InteractGuard;
 import net.momirealms.craftengine.bukkit.block.BukkitBlockManager;
 import net.momirealms.craftengine.bukkit.item.behavior.BlockItemBehavior;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -82,6 +83,9 @@ public class TeapotItemBehavior extends BlockItemBehavior {
         Object nms = ItemStackUtils.parseMinecraftItem(resultTag, version);
         Item tea = nms == null ? Item.empty() : ItemStackUtils.wrap(nms);
         if (tea.isEmpty()) {
+            return false;
+        }
+        if (!InteractGuard.canInteract(player, context.getLevel(), context.getClickedPos())) {
             return false;
         }
         BlockEntity blockEntity = context.getLevel().storageWorld().getBlockEntityAtIfLoaded(context.getClickedPos());

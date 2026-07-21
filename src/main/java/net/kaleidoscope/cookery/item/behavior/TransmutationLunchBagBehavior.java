@@ -25,6 +25,9 @@ import java.nio.file.Path;
 public class TransmutationLunchBagBehavior extends ItemBehavior {
     public static final ItemBehaviorFactory<TransmutationLunchBagBehavior> FACTORY = new Factory();
 
+    private static final float INSERT_VOLUME = 1.0f;
+    private static final float INSERT_PITCH = 1.0f;
+
     @Override
     public InteractionResult use(World world, @Nullable Player player, InteractionHand hand) {
         if (player == null) {
@@ -35,7 +38,7 @@ public class TransmutationLunchBagBehavior extends ItemBehavior {
             return InteractionResult.PASS;
         }
         if (player.isSecondaryUseActive()) {
-            return fill(player, bag);
+            return fill(player, hand, bag);
         }
         if (LunchBagContents.isEmpty(bag)) {
             return InteractionResult.PASS;
@@ -51,7 +54,7 @@ public class TransmutationLunchBagBehavior extends ItemBehavior {
         return use(context.getLevel(), context.getPlayer(), context.getHand());
     }
 
-    private InteractionResult fill(Player player, Item bag) {
+    private InteractionResult fill(Player player, InteractionHand hand, Item bag) {
         int owned = InventoryUtils.countItem(player, ItemKeys.COOKED_BEEF);
         if (owned <= 0) {
             return InteractionResult.PASS;
@@ -64,10 +67,16 @@ public class TransmutationLunchBagBehavior extends ItemBehavior {
         if (added <= 0) {
             return InteractionResult.PASS;
         }
-        InventoryUtils.consumeItem(player, ItemKeys.COOKED_BEEF, added);
+        // 扣失败说明数量对不上 回滚已装入的部分 别让袋里凭空多出货
+        if (!InventoryUtils.consumeItem(player, ItemKeys.COOKED_BEEF, added)) {
+            LunchBagContents.remove(bag, added);
+            return InteractionResult.PASS;
+        }
+        // Item 是包装对象 改完必须写回手上槽位 与 TeapotItemBehavior 的约定一致
+        player.setItemInHand(hand, bag);
         org.bukkit.entity.Player bukkitPlayer = (org.bukkit.entity.Player) player.platformPlayer();
-        bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.ITEM_BUNDLE_INSERT, 1.0f, 1.0f);
-        player.swingHand(InteractionHand.MAIN_HAND);
+        bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.ITEM_BUNDLE_INSERT, INSERT_VOLUME, INSERT_PITCH);
+        player.swingHand(hand);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 

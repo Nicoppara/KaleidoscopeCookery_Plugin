@@ -8,13 +8,20 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.util.Vector;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 
 import java.util.UUID;
 
-// 拉磨者被打时加速 玩家额外取消击退避免被推离磨道
+// 拉磨者状态 被打时加速 玩家额外取消击退避免被推离磨道 以及登录时还原被拉磨关掉的飞行权限
 public class MillstoneDamageListener implements Listener {
+
+    // 硬崩溃兜底 只清掉残留标记 飞行状态交给权限插件和游戏模式各自恢复
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        MillstoneController.clearFlightMarkOnJoin(event.getPlayer());
+    }
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
     public void onPullerDamage(EntityDamageEvent event) {

@@ -16,6 +16,7 @@ import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.sound.SoundSource;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.CEWorld;
@@ -48,9 +49,29 @@ import java.util.stream.Collectors;
 public class StockpotController extends BlockEntityController {
     public static final int MAX_INGREDIENTS = 8;
     private static final int ANIM_INTERVAL = 4;
+    private static final Key[] STOCKPOT_SOUNDS = {
+            Key.of("kaleidoscopecookery:stockpot_0"),
+            Key.of("kaleidoscopecookery:stockpot_1"),
+            Key.of("kaleidoscopecookery:stockpot_2"),
+            Key.of("kaleidoscopecookery:stockpot_3"),
+            Key.of("kaleidoscopecookery:stockpot_4"),
+            Key.of("kaleidoscopecookery:stockpot_5"),
+            Key.of("kaleidoscopecookery:stockpot_6"),
+    };
 
     private static final Key DAMAGE_GENERIC = Key.of("minecraft:generic");
     private static final String DATA_KEY = "kaleidoscopecookery:stockpot";
+    private static final String K_DATA_VERSION = "data_version";
+    private static final String K_STATUS = "status";
+    private static final String K_CURRENT_TICK = "current_tick";
+    private static final String K_TAKEOUT_COUNT = "takeout_count";
+    private static final String K_FINISHED_MAX = "finished_max";
+    private static final String K_LAST_COOKED = "last_cooked";
+    private static final String K_SEED = "seed";
+    private static final String K_SOUP_BASE_ID = "soup_base_id";
+    private static final String K_INGREDIENTS = "ingredients";
+    private static final String K_RESULT = "result";
+    private static final String K_LID_ITEM = "lid_item";
 
     private StockpotStage stage = StockpotStage.PUT_SOUP_BASE;
     private int currentTick = -1;
@@ -71,15 +92,33 @@ public class StockpotController extends BlockEntityController {
 
     private final RenderTracker renderTracker = new RenderTracker();
 
+    // 上一次渲染时的状态快照 只由 controller 写 外部只读
+    // 字段公开可变会让渲染方顺手改掉快照 下次差异比对就失真 该刷新的槽不刷新
     public static final class RenderTracker {
-        public StockpotStage stage = StockpotStage.PUT_SOUP_BASE;
-        public int ingredientCount = 0;
-        public Key soupBaseId = ItemKeys.WATER;
+        private StockpotStage stage = StockpotStage.PUT_SOUP_BASE;
+        private int ingredientCount = 0;
+        private Key soupBaseId = ItemKeys.WATER;
+
+        public StockpotStage stage() {
+            return stage;
+        }
+
+        public int ingredientCount() {
+            return ingredientCount;
+        }
+
+        public Key soupBaseId() {
+            return soupBaseId;
+        }
+
+        void snapshot(StockpotStage stage, int ingredientCount, Key soupBaseId) {
+            this.stage = stage;
+            this.ingredientCount = ingredientCount;
+            this.soupBaseId = soupBaseId;
+        }
 
         void reset() {
-            stage = StockpotStage.PUT_SOUP_BASE;
-            ingredientCount = 0;
-            soupBaseId = ItemKeys.WATER;
+            snapshot(StockpotStage.PUT_SOUP_BASE, 0, ItemKeys.WATER);
         }
     }
 
@@ -104,9 +143,14 @@ public class StockpotController extends BlockEntityController {
         TrackedPlayers.forEach(super.blockEntity, player -> consumer.accept(this.element, player));
     }
 
-    public void refreshAnimation(BiConsumer<StockpotElement, Player> consumer) {
+    // 连续动画只发视距内玩家 远处不渲染插值
+    public void refreshAnimation(int interpDuration) {
+        Object bundle = this.element.buildAnimationBundle(interpDuration);
+        if (bundle == null) {
+            return;
+        }
         for (Player player : TrackedPlayers.snapshotInRange(super.blockEntity, behavior.animChunkRadius)) {
-            consumer.accept(this.element, player);
+            player.sendPacket(bundle, false);
         }
     }
 
@@ -124,17 +168,18 @@ public class StockpotController extends BlockEntityController {
         boolean hasLid = hasLid();
 
         World bWorld = (World) super.blockEntity.world.world().platformWorld();
-        if (bWorld.getGameTime() % 15 == 0) {
+        long gameTime = bWorld.getGameTime();
+        if (gameTime % 15 == 0) {
             float volume = hasLid ? 0.3f : 0.6f;
             float pitch = 0.9f + (float) ThreadLocalRandom.current().nextDouble() * 0.2f;
             super.blockEntity.world.world().playSound(
                     Vec3d.atCenterOf(super.blockEntity.pos),
-                    Key.of("kaleidoscopecookery:stockpot_" + (int) (ThreadLocalRandom.current().nextDouble() * 7)),
+                    STOCKPOT_SOUNDS[ThreadLocalRandom.current().nextInt(STOCKPOT_SOUNDS.length)],
                     volume, pitch, SoundSource.BLOCK);
         }
 
         if (!hasLid) {
-            if (bWorld.getGameTime() % behavior.particleInterval == 0) {
+            if (gameTime % behavior.particleInterval == 0) {
                 double bx = super.blockEntity.pos.x() + 0.3 + ThreadLocalRandom.current().nextDouble() * 0.4;
                 double by = super.blockEntity.pos.y() + 0.4;
                 double bz = super.blockEntity.pos.z() + 0.3 + ThreadLocalRandom.current().nextDouble() * 0.4;
@@ -146,13 +191,13 @@ public class StockpotController extends BlockEntityController {
                     Particles.emit(super.blockEntity.world, Particle.BUBBLE_POP, bx, by, bz, pc, 0.05, 0.0, 0.05, 0.02, null);
                 }
             }
-            if (bWorld.getGameTime() % ANIM_INTERVAL == 0) {
-                refreshAnimation((element, p) -> element.updateAnimation(p, ANIM_INTERVAL));
+            if (gameTime % ANIM_INTERVAL == 0) {
+                refreshAnimation(ANIM_INTERVAL);
             }
             return;
         }
 
-        if (bWorld.getGameTime() % behavior.particleInterval == 0) {
+        if (gameTime % behavior.particleInterval == 0) {
             int pc = behavior.particleCount;
             if (stage == StockpotStage.FINISHED) {
                 double bx = super.blockEntity.pos.x() + 0.5 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6;
@@ -168,7 +213,7 @@ public class StockpotController extends BlockEntityController {
             }
         }
 
-        if (stage == StockpotStage.PUT_INGREDIENT && !ingredients.isEmpty() && bWorld.getGameTime() % 5 == 0) {
+        if (stage == StockpotStage.PUT_INGREDIENT && !ingredients.isEmpty() && gameTime % 5 == 0) {
             stage = StockpotStage.COOKING;
             currentTick = behavior.cookingTime;
             this.refreshRendering();
@@ -205,6 +250,7 @@ public class StockpotController extends BlockEntityController {
             this.ingredients.clear();
             this.refreshRendering();
             refreshDynamicElement(StockpotElement::onFinished);
+            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
         }
     }
 
@@ -264,7 +310,7 @@ public class StockpotController extends BlockEntityController {
         this.soupBaseId = ItemKeys.WATER;
         this.stage = StockpotStage.PUT_SOUP_BASE;
         this.seed = System.currentTimeMillis();
-        this.renderTracker.soupBaseId = this.soupBaseId;
+        this.renderTracker.snapshot(this.stage, this.ingredients.size(), this.soupBaseId);
         updateBlockState();
         this.refreshRendering();
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
@@ -275,9 +321,9 @@ public class StockpotController extends BlockEntityController {
         });
 
         // 汤底物品本身就是对应的桶 取不到时回退到水桶
-        Item bucket = BukkitItemManager.instance().createWrappedItem(soupBaseId, null);
-        return bucket != null ? bucket
-                : BukkitItemManager.instance().createWrappedItem(ItemKeys.WATER_BUCKET, null);
+        // createOrEmpty 无效 key 返回空物品不返回 null 所以只能用 isEmpty 判
+        Item bucket = InventoryUtils.createOrEmpty(soupBaseId);
+        return ItemUtils.isEmpty(bucket) ? InventoryUtils.createOrEmpty(ItemKeys.WATER_BUCKET) : bucket;
     }
 
     private boolean isLavaSoup() {
@@ -291,7 +337,7 @@ public class StockpotController extends BlockEntityController {
         this.soupBaseId = soupBaseId;
         this.stage = StockpotStage.PUT_INGREDIENT;
         this.seed = System.currentTimeMillis();
-        this.renderTracker.soupBaseId = this.soupBaseId;
+        this.renderTracker.snapshot(this.stage, this.ingredients.size(), this.soupBaseId);
         this.refreshRendering();
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
 
@@ -339,6 +385,14 @@ public class StockpotController extends BlockEntityController {
         return extracted;
     }
 
+    // 只看不扣 供调用方在发可取消事件前预览 事件取消时不能已经扣掉份数
+    public Item peekResult() {
+        if (stage != StockpotStage.FINISHED || hasLid() || takeoutCount <= 0 || result.isEmpty()) {
+            return Item.empty();
+        }
+        return result.copyWithCount(1);
+    }
+
     public Item takeOutResult() {
         if (stage != StockpotStage.FINISHED) return Item.empty();
         if (hasLid()) return Item.empty();
@@ -352,6 +406,8 @@ public class StockpotController extends BlockEntityController {
         } else {
             this.refreshRendering();
             refreshDynamicElement(StockpotElement::refreshLiquidLevel);
+            // 不标脏则区块卸载后份数回滚 玩家舀完走开再回来能无限舀
+            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
         }
 
         return toReturn;
@@ -369,6 +425,7 @@ public class StockpotController extends BlockEntityController {
         updateBlockState();
         this.refreshRendering();
         refreshDynamicElement(StockpotElement::clearAll);
+        super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
     }
 
     private void updateBlockState() {
@@ -383,9 +440,7 @@ public class StockpotController extends BlockEntityController {
 
     private void refreshRendering() {
         this.element.refreshPackets();
-        renderTracker.stage = stage;
-        renderTracker.ingredientCount = ingredients.size();
-        renderTracker.soupBaseId = soupBaseId;
+        renderTracker.snapshot(stage, ingredients.size(), soupBaseId);
     }
 
     @Override
@@ -415,25 +470,25 @@ public class StockpotController extends BlockEntityController {
     @Override
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
-        data.putInt("data_version", VersionHelper.WORLD_VERSION);
-        data.putInt("status", this.stage.ordinal());
-        data.putInt("current_tick", this.currentTick);
-        data.putInt("takeout_count", this.takeoutCount);
-        data.putInt("finished_max", this.finishedMax);
+        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
+        data.putInt(K_STATUS, this.stage.ordinal());
+        data.putInt(K_CURRENT_TICK, this.currentTick);
+        data.putInt(K_TAKEOUT_COUNT, this.takeoutCount);
+        data.putInt(K_FINISHED_MAX, this.finishedMax);
         if (!this.lastCookedIngredients.isEmpty()) {
-            data.putString("last_cooked", this.lastCookedIngredients.stream()
+            data.putString(K_LAST_COOKED, this.lastCookedIngredients.stream()
                     .map(Key::asString).collect(Collectors.joining(",")));
         }
-        data.putLong("seed", this.seed);
-        data.putString("soup_base_id", this.soupBaseId.asString());
+        data.putLong(K_SEED, this.seed);
+        data.putString(K_SOUP_BASE_ID, this.soupBaseId.asString());
 
-        data.put("ingredients", BlockEntityNbt.saveItems(ingredients));
+        data.put(K_INGREDIENTS, BlockEntityNbt.saveItems(ingredients));
         if (!result.isEmpty()) {
-            data.put("result", ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
+            data.put(K_RESULT, ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
         }
 
         if (!lidItem.isEmpty()) {
-            data.put("lid_item", ItemStackUtils.saveMinecraftItemStackAsTag(lidItem.minecraftItem()));
+            data.put(K_LID_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(lidItem.minecraftItem()));
         }
         tag.put(DATA_KEY, data);
     }
@@ -443,28 +498,31 @@ public class StockpotController extends BlockEntityController {
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data == null) return;
 
-        int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
+        int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
 
-        this.stage = StockpotStage.fromOrdinal(data.getInt("status", 0));
-        this.currentTick = data.getInt("current_tick", -1);
-        this.takeoutCount = data.getInt("takeout_count", 0);
-        this.finishedMax = data.getInt("finished_max", this.takeoutCount);
+        this.stage = StockpotStage.fromOrdinal(data.getInt(K_STATUS, 0));
+        this.currentTick = data.getInt(K_CURRENT_TICK, -1);
+        this.takeoutCount = data.getInt(K_TAKEOUT_COUNT, 0);
+        this.finishedMax = data.getInt(K_FINISHED_MAX, this.takeoutCount);
         this.lastCookedIngredients.clear();
-        String lc = data.getString("last_cooked", "");
+        String lc = data.getString(K_LAST_COOKED, "");
         if (!lc.isEmpty()) for (String s : lc.split(",")) if (!s.isEmpty()) this.lastCookedIngredients.add(Key.of(s));
-        this.seed = data.getLong("seed", System.currentTimeMillis());
-        this.soupBaseId = Key.of(data.getString("soup_base_id", ItemKeys.WATER.asString()));
+        this.seed = data.getLong(K_SEED, System.currentTimeMillis());
+        this.soupBaseId = Key.of(data.getString(K_SOUP_BASE_ID, ItemKeys.WATER.asString()));
 
-        BlockEntityNbt.loadItems(data, "ingredients", dataVersion, this.ingredients);
+        BlockEntityNbt.loadItems(data, K_INGREDIENTS, dataVersion, this.ingredients);
 
         this.result = Item.empty();
-        if (data.containsKey("result")) {
-            Item r = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(data.getCompound("result"), dataVersion));
+        if (data.containsKey(K_RESULT)) {
+            Item r = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(data.getCompound(K_RESULT), dataVersion));
             if (r != null) this.result = r;
         }
 
-        if (data.containsKey("lid_item")) {
-            this.lidItem = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(data.getCompound("lid_item"), dataVersion));
+        // 存档损坏时 parseMinecraftItem 会返回 null 这里必须收口成空物品 后续到处调 isEmpty
+        this.lidItem = Item.empty();
+        if (data.containsKey(K_LID_ITEM)) {
+            Item lid = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(data.getCompound(K_LID_ITEM), dataVersion));
+            if (lid != null) this.lidItem = lid;
         }
 
         this.refreshRendering();
@@ -474,35 +532,35 @@ public class StockpotController extends BlockEntityController {
         return stage;
     }
 
-    public int getCurrentTick() {
+    public int currentTick() {
         return currentTick;
     }
 
-    public int getTakeoutCount() {
+    public int takeoutCount() {
         return takeoutCount;
     }
 
-    public int getFinishedMax() {
+    public int finishedMax() {
         return finishedMax;
     }
 
-    public List<Key> getLastCookedIngredients() {
+    public List<Key> lastCookedIngredients() {
         return lastCookedIngredientsView;
     }
 
-    public List<Item> getIngredients() {
+    public List<Item> ingredients() {
         return ingredientsView;
     }
 
-    public Key getSoupBaseId() {
+    public Key soupBaseId() {
         return soupBaseId;
     }
 
-    public Item getLidItem() {
+    public Item lidItem() {
         return lidItem;
     }
 
-    public long getSeed() {
+    public long seed() {
         return seed;
     }
 

@@ -45,6 +45,14 @@ import java.util.Random;
 
 public class SteamerController extends BlockEntityController {
     public static final String DATA_KEY = "kaleidoscopecookery:steamer";
+    private static final String K_BLOCK_ENTITY_TAG = "BlockEntityTag";
+    private static final String K_DATA_VERSION = "data_version";
+    private static final String K_SEED = "seed";
+    private static final String K_HAS_LID = "has_lid";
+    private static final String K_LIT_LEVEL = "lit_level";
+    private static final String K_ITEMS = "items";
+    private static final String K_COOKING_PROGRESS = "cooking_progress";
+    private static final String K_COOKING_TIME = "cooking_time";
     private static final int MAX_LIT_LEVEL = 4;
     private static final int SLOTS = 8;
     private final SteamerBehavior behavior;
@@ -197,9 +205,8 @@ public class SteamerController extends BlockEntityController {
 
     private Item getRecipeResult(Item input) {
         Optional<FoodRecipeResult> result = FoodRecipeRegistry.instance().findAccurate(ApplianceType.STEAMER, input.id());
-        return result.isPresent()
-                ? result.get().item().copyWithCount(Math.max(1, result.get().count()))
-                : input;
+        // 份数由配方的 result_count 决定 只取 item 会把它吞掉
+        return result.map(fr -> fr.item().count(fr.count())).orElse(input);
     }
 
     public int capacity() {
@@ -378,25 +385,25 @@ public class SteamerController extends BlockEntityController {
     public void loadCustomDataFromItem(Item item) {
         Object nmsItem = item.minecraftItem();
         Tag tag = ItemStackUtils.saveMinecraftItemStackAsTag(nmsItem);
-        if (tag instanceof CompoundTag compoundTag && compoundTag.containsKey("BlockEntityTag")) {
-            loadCustomData(compoundTag.getCompound("BlockEntityTag"));
+        if (tag instanceof CompoundTag compoundTag && compoundTag.containsKey(K_BLOCK_ENTITY_TAG)) {
+            loadCustomData(compoundTag.getCompound(K_BLOCK_ENTITY_TAG));
         }
     }
 
     @Override
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
-        data.putInt("data_version", VersionHelper.WORLD_VERSION);
-        data.putLong("seed", this.seed);
-        data.putBoolean("has_lid", hasLid);
-        data.putInt("lit_level", litLevel);
+        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
+        data.putLong(K_SEED, this.seed);
+        data.putBoolean(K_HAS_LID, hasLid);
+        data.putInt(K_LIT_LEVEL, litLevel);
         ListTag itemsTag = new ListTag();
         for (int i = 0; i < itemCount; i++) {
             itemsTag.add(ItemStackUtils.saveMinecraftItemStackAsTag(items[i].minecraftItem()));
         }
-        data.put("items", itemsTag);
-        data.putIntArray("cooking_progress", cookingProgress);
-        data.putIntArray("cooking_time", cookingTime);
+        data.put(K_ITEMS, itemsTag);
+        data.putIntArray(K_COOKING_PROGRESS, cookingProgress);
+        data.putIntArray(K_COOKING_TIME, cookingTime);
         tag.put(DATA_KEY, data);
     }
 
@@ -404,14 +411,14 @@ public class SteamerController extends BlockEntityController {
     public void loadCustomData(CompoundTag tag) {
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data != null) {
-            this.seed = data.getLong("seed", System.currentTimeMillis());
-            this.hasLid = data.getBoolean("has_lid", false);
-            this.litLevel = data.getInt("lit_level", 0);
-            ListTag itemsTag = data.getList("items");
+            this.seed = data.getLong(K_SEED, System.currentTimeMillis());
+            this.hasLid = data.getBoolean(K_HAS_LID, false);
+            this.litLevel = data.getInt(K_LIT_LEVEL, 0);
+            ListTag itemsTag = data.getList(K_ITEMS);
             Arrays.fill(this.items, Item.empty());
             this.itemCount = 0;
             if (itemsTag != null) {
-                int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
+                int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
                 for (Tag itemTag : itemsTag) {
                     if (this.itemCount >= SLOTS) {
                         break;
@@ -423,11 +430,11 @@ public class SteamerController extends BlockEntityController {
                     }
                 }
             }
-            int[] progress = data.getIntArray("cooking_progress");
+            int[] progress = data.getIntArray(K_COOKING_PROGRESS);
             if (progress != null && progress.length == SLOTS) {
                 System.arraycopy(progress, 0, this.cookingProgress, 0, SLOTS);
             }
-            int[] time = data.getIntArray("cooking_time");
+            int[] time = data.getIntArray(K_COOKING_TIME);
             if (time != null && time.length == SLOTS) {
                 System.arraycopy(time, 0, this.cookingTime, 0, SLOTS);
             }
@@ -464,7 +471,7 @@ public class SteamerController extends BlockEntityController {
         return litLevel;
     }
 
-    public long getSeed() {
+    public long seed() {
         return seed;
     }
 }

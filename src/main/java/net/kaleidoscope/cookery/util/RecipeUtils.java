@@ -7,6 +7,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.util.AdventureHelper;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
@@ -28,7 +29,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 // 菜谱物品工具 读写菜谱 NBT 标记 写入 lore 并把背包食材一键投入炒锅
@@ -56,8 +57,11 @@ public final class RecipeUtils {
         return stack.getItemMeta().getPersistentDataContainer().has(HAS_RECIPE_KEY, PersistentDataType.BYTE);
     }
 
+    // 炒锅与高汤锅的食材上限都是 8 食谱记录再长也没意义 上限同时防伪造 PDC 撑爆循环
+    private static final int MAX_AUTO_FILL_INGREDIENTS = 8;
+
     public static boolean tryAutoFill(Player player, ItemStack recipeStack,
-                                      Consumer<Item> addIngredient) {
+                                      Predicate<Item> addIngredient) {
         ItemMeta meta = recipeStack.getItemMeta();
         if (meta == null) {
             return false;
@@ -68,22 +72,42 @@ public final class RecipeUtils {
         if (ingStr == null || ingStr.isEmpty()) {
             return false;
         }
-        List<Key> needed = Arrays.stream(ingStr.split(","))
-                .map(Key::of)
-                .toList();
+        // PDC 可被玩家伪造 必须限长并容忍非法段 否则一次右键能触发几十万次背包扫描
+        List<Key> needed = new ArrayList<>();
+        for (String segment : ingStr.split(",")) {
+            if (needed.size() >= MAX_AUTO_FILL_INGREDIENTS) {
+                break;
+            }
+            if (segment.isBlank()) {
+                continue;
+            }
+            try {
+                needed.add(Key.of(segment));
+            } catch (Exception ignored) {
+                // 伪造的段直接跳过 别让整次交互抛异常
+            }
+        }
 
         boolean creative = player.getGameMode() == GameMode.CREATIVE;
         boolean any = false;
         for (Key ingredientKey : needed) {
             ItemStack found = findInInventory(player, ingredientKey);
-            if (found != null) {
-                if (!creative) {
-                    found.setAmount(found.getAmount() - 1);
-                }
-                Item ceItem = BukkitItemManager.instance().createWrappedItem(ingredientKey, null);
-                addIngredient.accept(ceItem);
-                any = true;
+            if (found == null) {
+                continue;
             }
+            // 先建物品再扣材料 食谱记录的 id 因资源包改动失效时不能把材料吞掉
+            Item ceItem = InventoryUtils.createOrEmpty(ingredientKey);
+            if (ItemUtils.isEmpty(ceItem)) {
+                continue;
+            }
+            // 厨具可能拒收(满了/状态不对/不是该厨具的食材) 收下了才扣材料
+            if (!addIngredient.test(ceItem)) {
+                continue;
+            }
+            if (!creative) {
+                found.setAmount(found.getAmount() - 1);
+            }
+            any = true;
         }
         return any;
     }

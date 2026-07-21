@@ -3,7 +3,6 @@ package net.kaleidoscope.cookery.block.entity;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
-import net.momirealms.craftengine.bukkit.entity.data.DisplayData;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.KeyUtils;
 import net.momirealms.craftengine.bukkit.util.RegistryUtils;
@@ -25,17 +24,20 @@ import net.momirealms.craftengine.proxy.minecraft.world.entity.ai.attributes.Att
 import net.momirealms.craftengine.proxy.minecraft.world.entity.ai.attributes.AttributesProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
 import org.joml.Quaternionf;
-import org.joml.Vector3f;
 import net.kaleidoscope.cookery.block.entity.render.ItemDisplayPackets;
 import net.kaleidoscope.cookery.block.entity.render.ItemDisplaySet;
 import net.kaleidoscope.cookery.block.entity.render.PacketBundles;
 import net.kaleidoscope.cookery.entity.data.PufferfishData;
+import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.SoupBaseRegistry;
 
 import java.util.*;
 
 public final class StockpotElement implements BlockEntityElement {
+    private static final byte ITEM_TRANSFORM_HEAD = 5;
+    private static final int LIQUID_INTERPOLATION = 5;
+
     private final StockpotController controller;
     private final WorldPosition basePos;
 
@@ -52,14 +54,14 @@ public final class StockpotElement implements BlockEntityElement {
 
     private Key currentLiquidModel() {
         if (controller.stage() == StockpotStage.FINISHED) return ItemKeys.STOVE_FINISHED;
-        return SoupBaseRegistry.instance().showModel(controller.getSoupBaseId());
+        return SoupBaseRegistry.instance().showModel(controller.soupBaseId());
     }
 
     // FINISHED 时液面随剩余份数下降 高度比例最低 0.1
     private float liquidYOffset() {
         if (controller.stage() != StockpotStage.FINISHED) return 0f;
-        int max = Math.max(1, controller.getFinishedMax());
-        float fraction = Math.max(0.1f, (float) controller.getTakeoutCount() / max);
+        int max = Math.max(1, controller.finishedMax());
+        float fraction = Math.max(0.1f, (float) controller.takeoutCount() / max);
         return -(1f - fraction) * 0.3f;
     }
 
@@ -108,7 +110,7 @@ public final class StockpotElement implements BlockEntityElement {
     }
 
     public void refreshPackets() {
-        List<Item> ingredients = controller.getIngredients();
+        List<Item> ingredients = controller.ingredients();
 
         for (int i = 0; i < StockpotController.MAX_INGREDIENTS; i++) {
             if (i < ingredients.size()) {
@@ -123,27 +125,29 @@ public final class StockpotElement implements BlockEntityElement {
     }
 
     // interpDuration 与控制器的发送间隔一致 客户端两次发包之间正好插值衔接 浮动才连续
-    public void updateAnimation(Player player, int interpDuration) {
-        if (controller.hasLid()) return;
+    // 包内容不含玩家相关数据 整段建一次 bundle 给所有收件人复用 别按玩家重复构建
+    public Object buildAnimationBundle(int interpDuration) {
+        if (controller.hasLid()) return null;
 
-        List<Item> ingredients = controller.getIngredients();
+        List<Item> ingredients = controller.ingredients();
         long time = System.currentTimeMillis();
+        List<Object> packets = new ArrayList<>();
 
         for (int i = 0; i < ingredients.size(); i++) {
             if (display.spawn(i) != null) {
                 int itemHash = ingredients.get(i).minecraftItem().hashCode();
                 float animY = ingredientAnimY(itemHash, time);
-                Object metaPacket = ItemDisplayPackets.builder()
+                packets.add(ItemDisplayPackets.builder()
                         .translation(ingredientX(itemHash), ingredientY(itemHash) + animY, ingredientZ(itemHash))
                         .interpolation(interpDuration, 0)
-                        .meta(display.id(i));
-                player.sendPacket(metaPacket, false);
+                        .meta(display.id(i)));
             }
         }
+        return packets.isEmpty() ? null : PacketBundles.of(packets);
     }
 
     private void refreshLiquidAndFishPackets() {
-        String id = controller.getSoupBaseId().asString();
+        String id = controller.soupBaseId().asString();
 
         boolean hasSoupBase = currentLiquidModel() != null;
 
@@ -157,7 +161,7 @@ public final class StockpotElement implements BlockEntityElement {
             this.liquidSpawnPacket = null;
         }
 
-        Object fishType = controller.stage() == StockpotStage.FINISHED ? null : getFishEntityType(id);
+        Object fishType = controller.stage() == StockpotStage.FINISHED ? null : FISH_TYPE_BY_BUCKET.get(id);
         if (fishType != null) {
             this.fishSpawnPacket = ClientboundAddEntityPacketProxy.INSTANCE.newInstance(
                     fishEntityId, fishUuid,
@@ -169,8 +173,7 @@ public final class StockpotElement implements BlockEntityElement {
             BaseEntityData.NoGravity.addEntityData(true, fishData);
             BaseEntityData.Silent.addEntityData(true, fishData);
 
-            Object pufferfishType = getEntityTypeByKey("minecraft:pufferfish");
-            if (fishType.equals(pufferfishType)) {
+            if (fishType.equals(PUFFERFISH_TYPE)) {
                 PufferfishData.PuffState.addEntityData(1, fishData);
             }
 
@@ -184,33 +187,34 @@ public final class StockpotElement implements BlockEntityElement {
     private Object createLiquidMetaPacket(Player player) {
         Key model = currentLiquidModel();
         if (model == null) return null;
-        Item item = BukkitItemManager.instance().createWrappedItem(model, player);
+        Item item = InventoryUtils.createOrEmpty(model, player);
         if (item == null) return null;
         item = BukkitItemManager.instance().s2c(item, player).orElse(item);
 
-        List<Object> dataValues = new ArrayList<>();
-        if (VersionHelper.isOrAbove1_20_2) {
-            DisplayData.ItemDisplayData.TransformationInterpolationDelay.addEntityData(0, dataValues);
-            DisplayData.ItemDisplayData.TransformationInterpolationDuration.addEntityData(5, dataValues);
-        }
-        DisplayData.ItemDisplayData.ItemStack.addEntityData(item.minecraftItem(), dataValues);
-        DisplayData.ItemDisplayData.Scale.addEntityData(new Vector3f(1f, 1f, 1f), dataValues);
-        DisplayData.ItemDisplayData.Translation.addEntityData(new Vector3f(0f, liquidYOffset(), 0f), dataValues);
-        DisplayData.ItemDisplayData.ItemTransform.addEntityData((byte) 5, dataValues);
-        return ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(liquidEntityId, dataValues);
+        // interpolation 5 是盛出时液面下降的一次性平滑 不是连续动画 不受动画视距 gate
+        return ItemDisplayPackets.builder()
+                .interpolation(LIQUID_INTERPOLATION, 0)
+                .item(item)
+                .scale(1f)
+                .translation(0f, liquidYOffset(), 0f)
+                .itemTransform(ITEM_TRANSFORM_HEAD)
+                .meta(liquidEntityId);
     }
 
-    // 根据桶物品 ID 返回对应的 NMS EntityType
-    private static Object getFishEntityType(String bucketId) {
-        return switch (bucketId) {
-            case "minecraft:cod_bucket" -> getEntityTypeByKey("minecraft:cod");
-            case "minecraft:salmon_bucket" -> getEntityTypeByKey("minecraft:salmon");
-            case "minecraft:tropical_fish_bucket" -> getEntityTypeByKey("minecraft:tropical_fish");
-            case "minecraft:pufferfish_bucket" -> getEntityTypeByKey("minecraft:pufferfish");
-            case "minecraft:axolotl_bucket" -> getEntityTypeByKey("minecraft:axolotl");
-            case "minecraft:tadpole_bucket" -> getEntityTypeByKey("minecraft:frog");
-            default -> null;
-        };
+    // 注册表查找恒定 启动时算一次 别每次刷新都查
+    private static final Map<String, Object> FISH_TYPE_BY_BUCKET = buildFishTypes();
+    private static final Object PUFFERFISH_TYPE = getEntityTypeByKey("minecraft:pufferfish");
+
+    private static Map<String, Object> buildFishTypes() {
+        Map<String, Object> types = new HashMap<>();
+        types.put("minecraft:cod_bucket", getEntityTypeByKey("minecraft:cod"));
+        types.put("minecraft:salmon_bucket", getEntityTypeByKey("minecraft:salmon"));
+        types.put("minecraft:tropical_fish_bucket", getEntityTypeByKey("minecraft:tropical_fish"));
+        types.put("minecraft:pufferfish_bucket", getEntityTypeByKey("minecraft:pufferfish"));
+        types.put("minecraft:axolotl_bucket", getEntityTypeByKey("minecraft:axolotl"));
+        types.put("minecraft:tadpole_bucket", getEntityTypeByKey("minecraft:frog"));
+        types.values().removeIf(java.util.Objects::isNull);
+        return Map.copyOf(types);
     }
 
     private static Object getEntityTypeByKey(String key) {
@@ -244,7 +248,7 @@ public final class StockpotElement implements BlockEntityElement {
     }
 
     public void forceShow(Player player) {
-        List<Item> ingredients = controller.getIngredients();
+        List<Item> ingredients = controller.ingredients();
         long time = System.currentTimeMillis();
 
         for (int i = 0; i < StockpotController.MAX_INGREDIENTS; i++) {
@@ -288,10 +292,10 @@ public final class StockpotElement implements BlockEntityElement {
 
         StockpotController.RenderTracker tracker = controller.renderTracker();
         StockpotStage stage = controller.stage();
-        StockpotStage lastStage = tracker.stage;
-        int lastIngredientCount = tracker.ingredientCount;
-        List<Item> ingredients = controller.getIngredients();
-        boolean soupBaseChanged = !controller.getSoupBaseId().equals(tracker.soupBaseId);
+        StockpotStage lastStage = tracker.stage();
+        int lastIngredientCount = tracker.ingredientCount();
+        List<Item> ingredients = controller.ingredients();
+        boolean soupBaseChanged = !controller.soupBaseId().equals(tracker.soupBaseId());
 
         if (lastStage == stage && lastIngredientCount == ingredients.size() && !soupBaseChanged) {
             return;
@@ -343,7 +347,7 @@ public final class StockpotElement implements BlockEntityElement {
         if (controller.hasLid()) return;
         if (index >= StockpotController.MAX_INGREDIENTS || display.spawn(index) == null) return;
 
-        List<Item> ingredients = controller.getIngredients();
+        List<Item> ingredients = controller.ingredients();
         if (index >= ingredients.size()) return;
 
         int itemHash = ingredients.get(index).minecraftItem().hashCode();

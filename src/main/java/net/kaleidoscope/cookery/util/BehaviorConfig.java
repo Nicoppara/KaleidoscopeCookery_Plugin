@@ -2,6 +2,8 @@ package net.kaleidoscope.cookery.util;
 
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 
+import java.util.List;
+
 // 统一从 CE 的 ConfigSection 读取带默认值 支持多写法 key 的配置项
 public final class BehaviorConfig {
     private BehaviorConfig() {}
@@ -20,5 +22,9 @@ public final class BehaviorConfig {
 
     public static double getDouble(ConfigSection section, double def, String... keys) {
         return section.getDouble(keys, def);
+    }
+
+    public static List<String> getStringList(ConfigSection section, List<String> def, String... keys) {
+        return section.getStringList(keys, def);
     }
 }

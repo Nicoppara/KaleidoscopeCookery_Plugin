@@ -1,4 +1,6 @@
 package net.kaleidoscope.cookery.block.behavior;
+import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import java.util.logging.Level;
 import net.kaleidoscope.cookery.block.entity.StockpotController;
 import net.kaleidoscope.cookery.block.entity.StockpotStage;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
@@ -33,7 +35,7 @@ import net.momirealms.craftengine.proxy.minecraft.world.level.block.SupportTypeP
 import net.momirealms.craftengine.proxy.minecraft.world.level.block.state.BlockBehaviourProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
 import org.bukkit.Location;
-import org.bukkit.entity.Player;
+import net.momirealms.craftengine.core.entity.player.Player;
 import org.bukkit.inventory.ItemStack;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.util.SupportStateUtils;
@@ -56,6 +58,9 @@ import net.kaleidoscope.cookery.util.EventUtils;
 import java.util.List;
 
 public final class StockpotBehavior extends BukkitBlockBehavior implements EntityBlock {
+
+    // 反射代理探测失败只报一次
+    private static boolean chainSupportWarned;
     public static final BlockBehaviorFactory<StockpotBehavior> FACTORY = new Factory();
     private int controllerId;
     private Property<Boolean> hasLidProperty;
@@ -83,7 +88,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
     @Override
     public InteractionResult useOnBlock(UseOnContext context, ImmutableBlockState state) {
-        net.momirealms.craftengine.core.entity.player.Player player = context.getPlayer();
+        Player player = context.getPlayer();
         if (player == null) {
             return InteractionResult.PASS;
         }
@@ -167,14 +172,14 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
     // 盖上锅盖
     private InteractionResult handleAddLid(UseOnContext context, ImmutableBlockState state, StockpotController controller,
-                                           net.momirealms.craftengine.core.entity.player.Player player,
+                                           Player player,
                                            InteractionHand hand, Item itemInHand) {
         if (ItemMatch.is(itemInHand, lidItem) && !state.get(hasLidProperty)) {
             if (controller.addLid(itemInHand)) {
                 InventoryUtils.shrinkHeld(player, itemInHand, 1);
                 updateLidState(context, state, true);
                 player.swingHand(hand);
-                if (controller.stage() == StockpotStage.PUT_INGREDIENT && !controller.getIngredients().isEmpty()) {
+                if (controller.stage() == StockpotStage.PUT_INGREDIENT && !controller.ingredients().isEmpty()) {
                     player.sendActionBar(Localization.component(msgStartStewing));
                 }
                 return InteractionResult.SUCCESS_AND_CANCEL;
@@ -185,7 +190,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
     // 取下锅盖
     private InteractionResult handleRemoveLid(UseOnContext context, ImmutableBlockState state, StockpotController controller,
-                                              net.momirealms.craftengine.core.entity.player.Player player,
+                                              Player player,
                                               InteractionHand hand, Item itemInHand) {
         if (itemInHand.isEmpty() && state.get(hasLidProperty)) {
             Item lid = controller.removeLid();
@@ -201,7 +206,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
     // 放入/舀出汤底
     private InteractionResult handleSoupBase(UseOnContext context, StockpotController controller,
-                                             net.momirealms.craftengine.core.entity.player.Player player,
+                                             Player player,
                                              InteractionHand hand, Item itemInHand) {
         // 放入汤底
         if (SoupBaseRegistry.instance().isSoupBase(itemInHand.id())) {
@@ -215,7 +220,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
         // 舀出汤底
         if (ItemMatch.is(itemInHand, ItemKeys.BUCKET)) {
-            if (controller.stage() == StockpotStage.PUT_INGREDIENT && controller.getIngredients().isEmpty()) {
+            if (controller.stage() == StockpotStage.PUT_INGREDIENT && controller.ingredients().isEmpty()) {
                 Item extractedSoup = controller.extractSoupBase();
                 if (extractedSoup != null) {
                     InventoryUtils.shrinkHeld(player, itemInHand, 1);
@@ -232,7 +237,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
     // 食谱 一键投料 / 记录食谱
     private InteractionResult handleRecipe(StockpotController controller,
-                                           net.momirealms.craftengine.core.entity.player.Player player,
+                                           Player player,
                                            InteractionHand hand, Item itemInHand) {
         if (!ItemMatch.is(itemInHand, recipeItemNoRecipe) && !ItemMatch.is(itemInHand, recipeItemHasRecipe)) {
             return InteractionResult.PASS;
@@ -242,9 +247,9 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
         if (RecipeUtils.hasRecipe(bukkitStack)) {
             // 一键投料
-            if (controller.stage() == StockpotStage.PUT_INGREDIENT && controller.getIngredients().isEmpty()) {
+            if (controller.stage() == StockpotStage.PUT_INGREDIENT && controller.ingredients().isEmpty()) {
                 boolean filled = RecipeUtils.tryAutoFill(
-                        (Player) player.platformPlayer(),
+                        (org.bukkit.entity.Player) player.platformPlayer(),
                         bukkitStack,
                         controller::addIngredient
                 );
@@ -260,42 +265,43 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
         // 记录食谱
         List<Key> ingredientIds = null;
-        if (!controller.getIngredients().isEmpty()
+        if (!controller.ingredients().isEmpty()
                 && controller.stage() == StockpotStage.PUT_INGREDIENT) {
-            ingredientIds = controller.getIngredients().stream().map(Item::id).toList();
+            ingredientIds = controller.ingredients().stream().map(Item::id).toList();
         } else if (controller.stage() == StockpotStage.FINISHED
-                && !controller.getLastCookedIngredients().isEmpty()) {
-            ingredientIds = controller.getLastCookedIngredients();
+                && !controller.lastCookedIngredients().isEmpty()) {
+            ingredientIds = controller.lastCookedIngredients();
         }
-        if (ingredientIds != null) {
-            FlexFoodRecipe matchedRecipe = FoodRecipeRegistry.instance()
-                    .findBestFlexRecipe(ApplianceType.STOCKPOT, ingredientIds)
-                    .orElse(null);
-            if (matchedRecipe == null) {
-                player.sendActionBar(Localization.component(msgNoRecipe));
-                return InteractionResult.SUCCESS_AND_CANCEL;
-            }
-            Item hasRecipeItem = InventoryUtils.createOrEmpty(recipeItemHasRecipe);
-            ItemStack recorded = ItemStackUtils.getBukkitStack(hasRecipeItem.minecraftItem());
-            RecipeUtils.setRecipeItem(recorded, matchedRecipe.id(), "flex", ingredientIds, controller.getSoupBaseId());
-            InventoryUtils.shrinkHeld(player, itemInHand, 1);
-            Item ceRecorded = BukkitItemManager.instance().wrap(recorded);
-            InventoryUtils.giveOrHold(player, hand, ceRecorded);
-            player.swingHand(hand);
-            player.sendActionBar(Localization.component(msgRecipeSaved));
+        // 锅里没料也没有上一次的记录 什么都没发生 交回原版
+        if (ingredientIds == null) {
+            return InteractionResult.PASS;
+        }
+        FlexFoodRecipe matchedRecipe = FoodRecipeRegistry.instance()
+                .findBestFlexRecipe(ApplianceType.STOCKPOT, ingredientIds)
+                .orElse(null);
+        if (matchedRecipe == null) {
+            player.sendActionBar(Localization.component(msgNoRecipe));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
+        Item hasRecipeItem = InventoryUtils.createOrEmpty(recipeItemHasRecipe);
+        ItemStack recorded = ItemStackUtils.getBukkitStack(hasRecipeItem.minecraftItem());
+        RecipeUtils.setRecipeItem(recorded, matchedRecipe.id(), "flex", ingredientIds, controller.soupBaseId());
+        InventoryUtils.shrinkHeld(player, itemInHand, 1);
+        Item ceRecorded = BukkitItemManager.instance().wrap(recorded);
+        InventoryUtils.giveOrHold(player, hand, ceRecorded);
+        player.swingHand(hand);
+        player.sendActionBar(Localization.component(msgRecipeSaved));
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
     // 加入/取出食材
     private InteractionResult handleIngredient(StockpotController controller,
-                                               net.momirealms.craftengine.core.entity.player.Player player,
+                                               Player player,
                                                InteractionHand hand, Item itemInHand) {
         // 加入食材
         if (!itemInHand.isEmpty()
                 && FoodCategoryRegistry.instance().isRegistered(ApplianceType.STOCKPOT, itemInHand.id())
-                && controller.getIngredients().size() < StockpotController.MAX_INGREDIENTS) {
+                && controller.ingredients().size() < StockpotController.MAX_INGREDIENTS) {
             if (controller.addIngredient(itemInHand.copyWithCount(1))) {
                 InventoryUtils.shrinkHeld(player, itemInHand, 1);
                 player.swingHand(hand);
@@ -318,33 +324,35 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
 
     // 盛出成品
     private InteractionResult handleExtractDish(ImmutableBlockState state, StockpotController controller,
-                                                net.momirealms.craftengine.core.entity.player.Player player,
-                                                InteractionHand hand, Item itemInHand,
+                                                Player player, InteractionHand hand, Item itemInHand,
                                                 BlockPos pos, CEWorld world) {
-        if (controller.stage() == StockpotStage.FINISHED && !state.get(hasLidProperty)) {
-            if (ItemMatch.is(itemInHand, bowlItem)) {
-                Item result = controller.takeOutResult();
-                if (!result.isEmpty()) {
-                    // 触发 StockpotExtractDishEvent 可改写/取消
-                    ItemStack dish = ItemStackUtils.getBukkitStack(result.minecraftItem());
-                    Location loc = new Location((org.bukkit.World) world.world().platformWorld(), pos.x, pos.y, pos.z);
-                    StockpotExtractDishEvent event = new StockpotExtractDishEvent(
-                            (Player) player.platformPlayer(), loc, dish);
-                    if (EventUtils.fireAndCheckCancel(event)) {
-                        return InteractionResult.SUCCESS_AND_CANCEL;
-                    }
-                    Item finalResult = BukkitItemManager.instance().wrap(event.dish());
-                    InventoryUtils.shrinkHeld(player, itemInHand, 1);
-                    InventoryUtils.giveOrHold(player, hand, finalResult);
-                    player.swingHand(hand);
-                    return InteractionResult.SUCCESS_AND_CANCEL;
-                }
-            } else {
-                player.sendActionBar(Localization.component(msgUseBowl));
-                return InteractionResult.SUCCESS_AND_CANCEL;
-            }
+        if (controller.stage() != StockpotStage.FINISHED || state.get(hasLidProperty)) {
+            return InteractionResult.PASS;
         }
-        return InteractionResult.PASS;
+        if (!ItemMatch.is(itemInHand, bowlItem)) {
+            player.sendActionBar(Localization.component(msgUseBowl));
+            return InteractionResult.SUCCESS_AND_CANCEL;
+        }
+        // 先预览再发事件 事件取消时不能已经扣掉份数 否则监听器一取消这份汤就没了
+        Item preview = controller.peekResult();
+        if (preview.isEmpty()) {
+            return InteractionResult.PASS;
+        }
+
+        ItemStack dish = ItemStackUtils.getBukkitStack(preview.minecraftItem());
+        Location loc = new Location((org.bukkit.World) world.world().platformWorld(), pos.x, pos.y, pos.z);
+        StockpotExtractDishEvent event = new StockpotExtractDishEvent(
+                (org.bukkit.entity.Player) player.platformPlayer(), loc, dish);
+        if (EventUtils.fireAndCheckCancel(event)) {
+            return InteractionResult.SUCCESS_AND_CANCEL;
+        }
+        // 事件已经发出去了 监听器可能已有副作用 这里不能再返回 PASS 让原版接管
+        controller.takeOutResult();
+        Item finalResult = BukkitItemManager.instance().wrap(event.dish());
+        InventoryUtils.shrinkHeld(player, itemInHand, 1);
+        InventoryUtils.giveOrHold(player, hand, finalResult);
+        player.swingHand(hand);
+        return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
     private void updateLidState(UseOnContext context, ImmutableBlockState state, boolean hasLid) {
@@ -427,6 +435,12 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
             return BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.isFaceSturdy(
                     aboveState, level, abovePos, DirectionProxy.DOWN, SupportTypeProxy.CENTER);
         } catch (Exception e) {
+            // 反射代理在不同 MC 版本上可能对不上 挂链子只是外观 失败按不能挂处理即可
+            // 这方法每次邻居更新都会调 只在首次失败时报一次 否则会刷满控制台
+            if (chainSupportWarned) return false;
+            chainSupportWarned = true;
+            KaleidoscopeCookeryPlugin.instance().getLogger().log(Level.WARNING,
+                    "无法检查方块能否挂链子 汤锅链子外观将不显示", e);
             return false;
         }
     }

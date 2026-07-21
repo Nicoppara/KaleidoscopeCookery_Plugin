@@ -27,20 +27,24 @@ public final class FoliaUtil {
     }
 
     public static void teleport(Entity entity, Location location) {
-        teleport(entity, location, () -> {});
+        teleportThen(entity, location, null);
     }
 
-    public static void teleport(Entity entity, Location location, Runnable afterTeleport) {
+    // 传送后依赖新位置的状态设置必须走 after folia 下 teleportAsync 是异步的
+    // 直接写在调用点后面会在传送落地前就执行 被随后到达的传送覆盖
+    // 在 folia 下运行于目标 region 线程 传送被拒绝时不执行
+    public static void teleportThen(Entity entity, Location location, Runnable after) {
         if (FOLIA) {
-            runEntity(entity, () -> entity.teleportAsync(location).thenAccept(success -> {
-                if (success) {
-                    runEntity(entity, afterTeleport);
+            entity.teleportAsync(location).thenAccept(success -> {
+                if (success && after != null) {
+                    after.run();
                 }
-            }));
-        } else {
-            if (entity.teleport(location)) {
-                afterTeleport.run();
-            }
+            });
+            return;
+        }
+        entity.teleport(location);
+        if (after != null) {
+            after.run();
         }
     }
 

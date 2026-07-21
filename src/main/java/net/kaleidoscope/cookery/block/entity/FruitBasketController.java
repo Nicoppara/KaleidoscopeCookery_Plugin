@@ -34,6 +34,10 @@ import java.util.function.Consumer;
 public final class FruitBasketController extends BlockEntityController {
     private static final int SLOTS = 8;
     private static final String DATA_KEY = "kaleidoscopecookery:fruit_basket";
+    private static final String K_DATA_VERSION = "data_version";
+    private static final String K_ITEMS = "items";
+    private static final String K_SLOT = "slot";
+    private static final String K_ITEM = "item";
 
     private final FruitBasketBehavior behavior;
     private final Item[] items = new Item[SLOTS];
@@ -177,14 +181,14 @@ public final class FruitBasketController extends BlockEntityController {
     @Override
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
-        data.putInt("data_version", VersionHelper.WORLD_VERSION);
+        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
         ListTag list = new ListTag();
         for (Item item : items) {
             if (!item.isEmpty()) {
                 list.add(ItemStackUtils.saveMinecraftItemStackAsTag(item.minecraftItem()));
             }
         }
-        data.put("items", list);
+        data.put(K_ITEMS, list);
         tag.put(DATA_KEY, data);
     }
 
@@ -193,8 +197,8 @@ public final class FruitBasketController extends BlockEntityController {
         Arrays.fill(items, Item.empty());
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data != null) {
-            int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
-            ListTag list = data.getList("items");
+            int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
+            ListTag list = data.getList(K_ITEMS);
             if (list != null) {
                 int i = 0;
                 for (Tag t : list) {
@@ -224,8 +228,8 @@ public final class FruitBasketController extends BlockEntityController {
                 if (!(entry instanceof CompoundTag c)) {
                     continue;
                 }
-                int slot = c.getInt("slot", -1);
-                Tag itemTag = c.get("item");
+                int slot = c.getInt(K_SLOT, -1);
+                Tag itemTag = c.get(K_ITEM);
                 if (slot < 0 || slot >= SLOTS || itemTag == null) {
                     continue;
                 }

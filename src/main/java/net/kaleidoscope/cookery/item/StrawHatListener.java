@@ -1,5 +1,6 @@
 package net.kaleidoscope.cookery.item;
 
+import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.item.Item;
@@ -15,11 +16,13 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Adds the original mod's seed drops when a player breaks short grass while wearing a straw hat. */
+// 戴草帽打草掉种子 对应原模组的草帽效果
 public final class StrawHatListener implements Listener {
     private static final Key STRAW_HAT = Key.of("kaleidoscopecookery:straw_hat");
     private static final Key STRAW_HAT_FLOWER = Key.of("kaleidoscopecookery:straw_hat_flower");
 
+    // 每种种子各自掷一次骰子 命中的进候选池 最后从候选池里随机取一个
+    // 所以一次打草最多掉一种 而不是所有命中的都掉
     private static final SeedDrop[] SEED_DROPS = {
             new SeedDrop(Key.of("kaleidoscopecookery:tomato_seed"), 0.125f),
             new SeedDrop(Key.of("kaleidoscopecookery:chili_seed"), 0.125f),
@@ -35,9 +38,7 @@ public final class StrawHatListener implements Listener {
         if (!event.isDropItems() || event.getBlock().getType() != Material.SHORT_GRASS) {
             return;
         }
-
-        ItemStack helmet = event.getPlayer().getInventory().getHelmet();
-        if (!isStrawHat(helmet)) {
+        if (!isStrawHat(event.getPlayer().getInventory().getHelmet())) {
             return;
         }
 
@@ -53,19 +54,20 @@ public final class StrawHatListener implements Listener {
             return;
         }
 
-        SeedDrop selected = eligible[random.nextInt(eligibleCount)];
+        Item item = InventoryUtils.createOrEmpty(eligible[random.nextInt(eligibleCount)].item());
+        if (ItemUtils.isEmpty(item)) {
+            return;
+        }
+
+        // 时运提高掉落数量 与原模组一致
         int fortune = event.getPlayer().getInventory().getItemInMainHand()
                 .getEnchantmentLevel(Enchantment.FORTUNE);
         int amount = 1 + random.nextInt(fortune * 2 + 1);
 
-        Item item = BukkitItemManager.instance().createWrappedItem(selected.item(), null);
-        if (ItemUtils.isEmpty(item)) {
-            return;
-        }
+        // BlockBreakEvent 跑在方块所属 region 上 就地掉落无需再调度
         event.getBlock().getWorld().dropItemNaturally(
                 event.getBlock().getLocation().add(0.5, 0.5, 0.5),
-                ItemStackUtils.getBukkitStack(item.copyWithCount(amount))
-        );
+                ItemStackUtils.getBukkitStack(item.copyWithCount(amount)));
     }
 
     private static boolean isStrawHat(ItemStack helmet) {

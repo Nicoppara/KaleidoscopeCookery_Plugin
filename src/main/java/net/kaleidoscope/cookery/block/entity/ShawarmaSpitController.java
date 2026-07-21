@@ -40,6 +40,14 @@ public class ShawarmaSpitController extends BlockEntityController {
     // 每层槽数
     public static final int SLOTS = 8;
     private static final String DATA_KEY = "kaleidoscopecookery:shawarma_spit";
+    private static final String K_DATA_VERSION = "data_version";
+    private static final String K_ITEMS = "items";
+    private static final String K_LAYER = "layer";
+    private static final String K_SLOT = "slot";
+    private static final String K_ITEM = "item";
+    private static final String K_PROGRESS = "progress";
+    private static final String K_TIME = "time";
+    private static final String K_CURRENT_ROTATION = "current_rotation";
 
     private final ShawarmaSpitBehavior behavior;
     private final boolean lower;
@@ -141,7 +149,8 @@ public class ShawarmaSpitController extends BlockEntityController {
     private Item getRecipeResult(Item input) {
         return FoodRecipeRegistry.instance()
                 .findAccurate(ApplianceType.SHAWARMA, input.id())
-                .map(result -> result.item().copyWithCount(Math.max(1, result.count())))
+                // 份数由配方的 result_count 决定 只取 item 会把它吞掉
+                .map(fr -> fr.item().count(fr.count()))
                 .orElse(input.copy());
     }
 
@@ -303,7 +312,7 @@ public class ShawarmaSpitController extends BlockEntityController {
             return;
         }
         CompoundTag data = new CompoundTag();
-        data.putInt("data_version", VersionHelper.WORLD_VERSION);
+        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
         ListTag itemsTag = new ListTag();
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
@@ -311,16 +320,16 @@ public class ShawarmaSpitController extends BlockEntityController {
                     continue;
                 }
                 CompoundTag entry = new CompoundTag();
-                entry.putInt("layer", l);
-                entry.putInt("slot", s);
-                entry.put("item", ItemStackUtils.saveMinecraftItemStackAsTag(items[l][s].minecraftItem()));
-                entry.putInt("progress", cookingProgress[l][s]);
-                entry.putInt("time", cookingTime[l][s]);
+                entry.putInt(K_LAYER, l);
+                entry.putInt(K_SLOT, s);
+                entry.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(items[l][s].minecraftItem()));
+                entry.putInt(K_PROGRESS, cookingProgress[l][s]);
+                entry.putInt(K_TIME, cookingTime[l][s]);
                 itemsTag.add(entry);
             }
         }
-        data.put("items", itemsTag);
-        data.putFloat("current_rotation", currentRotation);
+        data.put(K_ITEMS, itemsTag);
+        data.putFloat(K_CURRENT_ROTATION, currentRotation);
         tag.put(DATA_KEY, data);
     }
 
@@ -337,28 +346,28 @@ public class ShawarmaSpitController extends BlockEntityController {
 
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data == null) return;
-        int dataVersion = data.getInt("data_version", Config.itemDataFixerUpperFallbackVersion());
+        int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
 
-        ListTag itemsTag = data.getList("items");
+        ListTag itemsTag = data.getList(K_ITEMS);
         if (itemsTag != null) {
             for (Tag t : itemsTag) {
                 if (!(t instanceof CompoundTag entry)) {
                     continue;
                 }
-                int l = entry.getInt("layer", 0);
-                int s = entry.getInt("slot", -1);
+                int l = entry.getInt(K_LAYER, 0);
+                int s = entry.getInt(K_SLOT, -1);
                 if (l < 0 || l >= LAYERS || s < 0 || s >= SLOTS) {
                     continue;
                 }
-                Object nms = ItemStackUtils.parseMinecraftItem(entry.getCompound("item"), dataVersion);
+                Object nms = ItemStackUtils.parseMinecraftItem(entry.getCompound(K_ITEM), dataVersion);
                 if (nms != null) {
                     items[l][s] = ItemStackUtils.wrap(nms);
-                    cookingProgress[l][s] = entry.getInt("progress", 0);
-                    cookingTime[l][s] = entry.getInt("time", behavior.grillTime);
+                    cookingProgress[l][s] = entry.getInt(K_PROGRESS, 0);
+                    cookingTime[l][s] = entry.getInt(K_TIME, behavior.grillTime);
                 }
             }
         }
-        currentRotation = data.getFloat("current_rotation", 0f);
+        currentRotation = data.getFloat(K_CURRENT_ROTATION, 0f);
 
         element.refreshAllItems();
     }

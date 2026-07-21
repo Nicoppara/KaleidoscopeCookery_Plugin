@@ -3,6 +3,7 @@ package net.kaleidoscope.cookery.recipe;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.util.AdventureHelper;
+import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemNames;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
@@ -12,12 +13,8 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * Runtime registry for Kaleidoscope Cookery recipes loaded from CraftEngine configs.
- *
- * <p>External plugins can query existing recipes or register additional recipe
- * objects during their enable phase.</p>
- */
+// 配方运行期注册表 数据来自 CraftEngine 配置加载
+// 外部插件追加注册须在自身 enable 阶段完成 之后配置重载会清空并重新填充
 @SuppressWarnings("unused")
 public final class FoodRecipeRegistry {
     private static final String TEXT_FLEX_DISH_NAMED = "item.kaleidoscopecookery.flex_dish.named";
@@ -35,30 +32,14 @@ public final class FoodRecipeRegistry {
     private FoodRecipeRegistry() {
     }
 
-    /**
-     * Returns the shared registry.
-     *
-     * @return the singleton registry
-     */
     public static FoodRecipeRegistry instance() {
         return INSTANCE;
     }
 
-    /**
-     * Counts all registered cookery recipes.
-     *
-     * @return total recipe count
-     */
     public int totalRecipeCount() {
         return flexRecipeCount() + accurateRecipeCount() + choppingRecipeCount() + teapotRecipeCount();
     }
 
-    /**
-     * Counts recipes for one appliance type.
-     *
-     * @param cook appliance type
-     * @return matching recipe count
-     */
     public int recipeCount(ApplianceType cook) {
         int count = flexRecipeCount(cook) + accurateRecipeCount(cook);
         if (cook == ApplianceType.CHOPPING_BOARD) {
@@ -69,21 +50,10 @@ public final class FoodRecipeRegistry {
         return count;
     }
 
-    /**
-     * Counts all flexible pot/stockpot recipes.
-     *
-     * @return flexible recipe count
-     */
     public int flexRecipeCount() {
         return flexRecipes.size();
     }
 
-    /**
-     * Counts flexible recipes for one appliance type.
-     *
-     * @param cook appliance type
-     * @return matching flexible recipe count
-     */
     public int flexRecipeCount(ApplianceType cook) {
         int count = 0;
         for (FlexFoodRecipe recipe : flexRecipes) {
@@ -94,21 +64,10 @@ public final class FoodRecipeRegistry {
         return count;
     }
 
-    /**
-     * Counts all accurate one-input recipes.
-     *
-     * @return accurate recipe count
-     */
     public int accurateRecipeCount() {
         return accurateRecipes.size();
     }
 
-    /**
-     * Counts accurate recipes for one appliance type.
-     *
-     * @param cook appliance type
-     * @return matching accurate recipe count
-     */
     public int accurateRecipeCount(ApplianceType cook) {
         int count = 0;
         for (AccurateFoodRecipe recipe : accurateRecipes) {
@@ -119,113 +78,54 @@ public final class FoodRecipeRegistry {
         return count;
     }
 
-    /**
-     * Counts chopping board recipes.
-     *
-     * @return chopping board recipe count
-     */
     public int choppingRecipeCount() {
         return choppingRecipes.size();
     }
 
-    /**
-     * Counts teapot recipes.
-     *
-     * @return teapot recipe count
-     */
     public int teapotRecipeCount() {
         return teapotRecipes.size();
     }
 
-    /**
-     * Counts registered teapot liquids.
-     *
-     * @return teapot liquid count
-     */
     public int teapotLiquidCount() {
         return teapotLiquids.size();
     }
 
-    /**
-     * Counts registered tea cup display definitions.
-     *
-     * @return tea cup definition count
-     */
     public int teaCupCount() {
         return teaCups.size();
     }
 
-    /**
-     * Registers a flexible pot or stockpot recipe.
-     *
-     * @param r recipe to register
-     */
     public void registerFlex(FlexFoodRecipe r) {
         flexRecipes.add(r);
     }
 
-    /**
-     * Registers an accurate one-input recipe.
-     *
-     * @param r recipe to register
-     */
     public void registerAccurate(AccurateFoodRecipe r) {
         accurateRecipes.add(r);
     }
 
-    /**
-     * Registers a chopping board recipe.
-     *
-     * @param r recipe to register
-     */
     public void registerChopping(ChoppingBoardRecipe r) {
         choppingRecipes.add(r);
     }
 
-    /**
-     * Clears flexible recipes for one appliance type.
-     *
-     * @param cook appliance type
-     */
     public void clearFlex(ApplianceType cook) {
         flexRecipes.removeIf(r -> r.cook() == cook);
     }
 
-    /**
-     * Clears all accurate recipes.
-     */
     public void clearAccurate() {
         accurateRecipes.clear();
     }
 
-    /**
-     * Clears all chopping board recipes.
-     */
     public void clearChopping() {
         choppingRecipes.clear();
     }
 
-    /**
-     * Registers a teapot recipe.
-     *
-     * @param r recipe to register
-     */
     public void registerTeapot(TeapotRecipe r) {
         teapotRecipes.add(r);
     }
 
-    /**
-     * Clears all teapot recipes.
-     */
     public void clearTeapot() {
         teapotRecipes.clear();
     }
 
-    /**
-     * Registers a teapot liquid type.
-     *
-     * @param l liquid definition
-     */
     public void registerTeapotLiquid(TeapotLiquid l) {
         teapotLiquids.put(l.fluid(), l);
         if (defaultLiquid == null) {
@@ -233,150 +133,68 @@ public final class FoodRecipeRegistry {
         }
     }
 
-    /**
-     * Clears all teapot liquid types.
-     */
     public void clearTeapotLiquid() {
         teapotLiquids.clear();
         defaultLiquid = null;
     }
 
-    /**
-     * Gets a teapot liquid by fluid id.
-     *
-     * @param fluid fluid id
-     * @return liquid definition, or {@code null}
-     */
     public TeapotLiquid getTeapotLiquid(Key fluid) {
         return teapotLiquids.get(fluid);
     }
 
-    /**
-     * Gets a teapot liquid by fluid id.
-     *
-     * @param fluid fluid id such as {@code minecraft:water}
-     * @return liquid definition, or {@code null}
-     */
     public TeapotLiquid getTeapotLiquid(String fluid) {
         return getTeapotLiquid(Key.of(fluid));
     }
 
-    /**
-     * Checks whether a teapot liquid is registered.
-     *
-     * @param fluid fluid id
-     * @return {@code true} if registered
-     */
     public boolean hasTeapotLiquid(Key fluid) {
         return teapotLiquids.containsKey(fluid);
     }
 
-    /**
-     * Checks whether a teapot liquid is registered.
-     *
-     * @param fluid fluid id such as {@code minecraft:water}
-     * @return {@code true} if registered
-     */
     public boolean hasTeapotLiquid(String fluid) {
         return hasTeapotLiquid(Key.of(fluid));
     }
 
     // 空壶液体条用首个注册液体的左右空格字形
-    /**
-     * Returns the first registered teapot liquid.
-     *
-     * @return default liquid, or {@code null} if none is registered
-     */
     public TeapotLiquid defaultTeapotLiquid() {
         return defaultLiquid;
     }
 
-    /**
-     * Registers a tea cup display definition.
-     *
-     * @param c tea cup definition
-     */
     public void registerTeaCup(TeaCup c) {
         teaCups.put(c.tea(), c);
         teaCupsByItem.put(c.item(), c);
     }
 
-    /**
-     * Clears all tea cup definitions.
-     */
     public void clearTeaCup() {
         teaCups.clear();
         teaCupsByItem.clear();
     }
 
-    /**
-     * Checks whether a tea cup is registered by tea id.
-     *
-     * @param tea tea id
-     * @return {@code true} if registered
-     */
     public boolean hasTeaCup(Key tea) {
         return teaCups.containsKey(tea);
     }
 
-    /**
-     * Checks whether a tea cup is registered by tea id.
-     *
-     * @param tea tea id such as {@code otherplugin:jasmine_tea}
-     * @return {@code true} if registered
-     */
     public boolean hasTeaCup(String tea) {
         return hasTeaCup(Key.of(tea));
     }
 
-    /**
-     * Gets a tea cup definition by tea id.
-     *
-     * @param tea tea id
-     * @return tea cup definition, or {@code null}
-     */
     public TeaCup getTeaCup(Key tea) {
         return teaCups.get(tea);
     }
 
-    /**
-     * Gets a tea cup definition by tea id.
-     *
-     * @param tea tea id such as {@code otherplugin:jasmine_tea}
-     * @return tea cup definition, or {@code null}
-     */
     public TeaCup getTeaCup(String tea) {
         return getTeaCup(Key.of(tea));
     }
 
     // 按手持物品 id 找茶杯 用于直接放置茶到杯垫
-    /**
-     * Gets a tea cup definition by the held item id that places the tea.
-     *
-     * @param itemId item id
-     * @return tea cup definition, or {@code null}
-     */
     public TeaCup getTeaCupByItem(Key itemId) {
         return teaCupsByItem.get(itemId);
     }
 
-    /**
-     * Gets a tea cup definition by the held item id that places the tea.
-     *
-     * @param itemId item id such as {@code otherplugin:jasmine_cup}
-     * @return tea cup definition, or {@code null}
-     */
     public TeaCup getTeaCupByItem(String itemId) {
         return getTeaCupByItem(Key.of(itemId));
     }
 
     // 茶杯成品随机取一个展示模型 无则返回 null
-    /**
-     * Picks a random display model for a tea cup.
-     *
-     * @param tea tea id
-     * @return model item id, or {@code null} if no model is registered
-     */
     public Key pickTeaModel(Key tea) {
         TeaCup c = teaCups.get(tea);
         if (c == null || c.displayModels().isEmpty()) {
@@ -386,24 +204,11 @@ public final class FoodRecipeRegistry {
         return models.get(ThreadLocalRandom.current().nextInt(models.size()));
     }
 
-    /**
-     * Picks a random display model for a tea cup.
-     *
-     * @param tea tea id such as {@code otherplugin:jasmine_tea}
-     * @return model item id, or {@code null} if no model is registered
-     */
     public Key pickTeaModel(String tea) {
         return pickTeaModel(Key.of(tea));
     }
 
     // 液体类型与原料共同匹配茶壶配方
-    /**
-     * Finds a teapot recipe by liquid and input item.
-     *
-     * @param fluid liquid id
-     * @param input input item id
-     * @return matching recipe, or {@code null}
-     */
     public TeapotRecipe findTeapot(Key fluid, Key input) {
         for (TeapotRecipe r : teapotRecipes) {
             if (r.fluid().equals(fluid) && r.input().equals(input)) {
@@ -413,23 +218,10 @@ public final class FoodRecipeRegistry {
         return null;
     }
 
-    /**
-     * Finds a teapot recipe by liquid and input item.
-     *
-     * @param fluid liquid id such as {@code minecraft:water}
-     * @param input input item id
-     * @return matching recipe, or {@code null}
-     */
     public TeapotRecipe findTeapot(String fluid, String input) {
         return findTeapot(Key.of(fluid), Key.of(input));
     }
 
-    /**
-     * Finds a chopping board recipe by input item.
-     *
-     * @param input input item id
-     * @return matching recipe, or {@code null}
-     */
     public ChoppingBoardRecipe findChoppingByInput(Key input) {
         for (ChoppingBoardRecipe r : choppingRecipes) {
             if (r.input().equals(input)) {
@@ -439,23 +231,11 @@ public final class FoodRecipeRegistry {
         return null;
     }
 
-    /**
-     * Finds a chopping board recipe by input item.
-     *
-     * @param input input item id such as {@code minecraft:carrot}
-     * @return matching recipe, or {@code null}
-     */
     public ChoppingBoardRecipe findChoppingByInput(String input) {
         return findChoppingByInput(Key.of(input));
     }
 
     // 按配方模式产出成品 切完调用 返回需要掉落的物品列表 空列表表示无产出
-    /**
-     * Rolls the output items for a completed chopping board recipe.
-     *
-     * @param recipe chopping recipe
-     * @return item stacks to drop or give; empty when no result was rolled
-     */
     public List<Item> rollChoppingResults(ChoppingBoardRecipe recipe) {
         List<ChoppingResult> results = recipe.results();
         if (results.isEmpty()) {
@@ -519,19 +299,12 @@ public final class FoodRecipeRegistry {
     }
 
     private void addChoppingItem(List<Item> out, ChoppingResult result) {
-        Item item = BukkitItemManager.instance().createWrappedItem(result.key(), null);
+        Item item = InventoryUtils.createOrEmpty(result.key());
         if (item != null) {
             out.add(item.copyWithCount(Math.max(1, result.count())));
         }
     }
 
-    /**
-     * Finds and rolls an accurate one-input recipe result.
-     *
-     * @param type appliance type
-     * @param inputItem input item id
-     * @return rolled result if a matching recipe exists
-     */
     public Optional<FoodRecipeResult> findAccurate(ApplianceType type, Key inputItem) {
         for (AccurateFoodRecipe recipe : accurateRecipes) {
             if (recipe.cook() != type || !recipe.input().equals(inputItem)) {
@@ -541,7 +314,7 @@ public final class FoodRecipeRegistry {
             if (chosen == null) {
                 continue;
             }
-            Item item = BukkitItemManager.instance().createWrappedItem(chosen, null);
+            Item item = InventoryUtils.createOrEmpty(chosen);
             if (item == null) {
                 continue;
             }
@@ -556,25 +329,11 @@ public final class FoodRecipeRegistry {
         return Optional.empty();
     }
 
-    /**
-     * Finds and rolls an accurate one-input recipe result.
-     *
-     * @param type appliance type
-     * @param inputItem input item id such as {@code minecraft:wheat}
-     * @return rolled result if a matching recipe exists
-     */
     public Optional<FoodRecipeResult> findAccurate(ApplianceType type, String inputItem) {
         return findAccurate(type, Key.of(inputItem));
     }
 
     // 石磨研磨该输入所需圈数 配方未指定圈数或无对应配方时用传入的默认值
-    /**
-     * Finds the required millstone rotations for an input item.
-     *
-     * @param inputItem input item id
-     * @param defaultRotations value returned when no recipe-specific value exists
-     * @return required rotations
-     */
     public int findGrindRotations(Key inputItem, int defaultRotations) {
         for (AccurateFoodRecipe recipe : accurateRecipes) {
             if (recipe.cook() == ApplianceType.MILLSTONE && recipe.input().equals(inputItem)) {
@@ -584,39 +343,17 @@ public final class FoodRecipeRegistry {
         return defaultRotations;
     }
 
-    /**
-     * Finds the required millstone rotations for an input item.
-     *
-     * @param inputItem input item id such as {@code minecraft:wheat}
-     * @param defaultRotations value returned when no recipe-specific value exists
-     * @return required rotations
-     */
     public int findGrindRotations(String inputItem, int defaultRotations) {
         return findGrindRotations(Key.of(inputItem), defaultRotations);
     }
 
     // 烹饪一道菜 匹配配方里优先选消耗食材最多的 再依次以 unpreferred 种类数 lore 命中数
     // 最早主料位置打破平局 产出 count 份成品 已套用名称与 lore 多余食材丢弃 无匹配返回空
-    /**
-     * Cooks a flexible recipe without a soup base filter.
-     *
-     * @param type appliance type
-     * @param ingredientIds ingredient item ids
-     * @return cooked result if a matching recipe exists
-     */
     public Optional<FoodRecipeResult> cookFlex(ApplianceType type, List<Key> ingredientIds) {
         return cookFlex(type, ingredientIds, null);
     }
 
     // 同上 但按当前汤底桶 id 过滤 配方声明 liquids 时当前汤底须命中其一 炒锅传 null 即可
-    /**
-     * Cooks a flexible recipe, optionally filtered by current soup base.
-     *
-     * @param type appliance type
-     * @param ingredientIds ingredient item ids
-     * @param liquid current soup base id, or {@code null}
-     * @return cooked result if a matching recipe exists
-     */
     public Optional<FoodRecipeResult> cookFlex(ApplianceType type, List<Key> ingredientIds, Key liquid) {
         if (ingredientIds == null || ingredientIds.isEmpty()) {
             return Optional.empty();
@@ -751,7 +488,7 @@ public final class FoodRecipeRegistry {
 
     // 套用名称与 lore unpreferred 存在则覆盖 preferred 底味
     private Item buildDish(FlexFoodRecipe r, Map<Key, Integer> counts) {
-        Item item = BukkitItemManager.instance().createWrappedItem(r.result(), null);
+        Item item = InventoryUtils.createOrEmpty(r.result());
         if (item == null) {
             return null;
         }
@@ -913,13 +650,6 @@ public final class FoodRecipeRegistry {
         return candidates.getFirst();
     }
 
-    /**
-     * Finds the best flexible recipe for a set of ingredients.
-     *
-     * @param type appliance type
-     * @param ingredientIds ingredient item ids
-     * @return best matching recipe, if any
-     */
     public Optional<FlexFoodRecipe> findBestFlexRecipe(ApplianceType type, List<Key> ingredientIds) {
         return Optional.ofNullable(findBestSingleMatch(type, ingredientIds));
     }
@@ -978,12 +708,6 @@ public final class FoodRecipeRegistry {
         return results.getLast().key();
     }
 
-    /**
-     * Finds an accurate recipe by recipe id.
-     *
-     * @param id recipe id
-     * @return matching recipe, or {@code null}
-     */
     public AccurateFoodRecipe findAccurateById(Key id) {
         for (AccurateFoodRecipe r : accurateRecipes) {
             if (r.id().equals(id)) {
@@ -993,22 +717,10 @@ public final class FoodRecipeRegistry {
         return null;
     }
 
-    /**
-     * Finds an accurate recipe by recipe id.
-     *
-     * @param id recipe id such as {@code otherplugin:recipe_name}
-     * @return matching recipe, or {@code null}
-     */
     public AccurateFoodRecipe findAccurateById(String id) {
         return findAccurateById(Key.of(id));
     }
 
-    /**
-     * Finds a flexible recipe by recipe id.
-     *
-     * @param id recipe id
-     * @return matching recipe, or {@code null}
-     */
     public FlexFoodRecipe findFlexById(Key id) {
         for (FlexFoodRecipe r : flexRecipes) {
             if (r.id().equals(id)) {
@@ -1018,12 +730,6 @@ public final class FoodRecipeRegistry {
         return null;
     }
 
-    /**
-     * Finds a flexible recipe by recipe id.
-     *
-     * @param id recipe id such as {@code otherplugin:recipe_name}
-     * @return matching recipe, or {@code null}
-     */
     public FlexFoodRecipe findFlexById(String id) {
         return findFlexById(Key.of(id));
     }

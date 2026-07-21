@@ -77,6 +77,7 @@ public final class StoveController extends BlockEntityController {
 
         CEWorld ceWorld = super.blockEntity.world();
         int count = behavior.particleCount;
+        // 末两参是区块坐标 会原样喂给 Bukkit.getRegionScheduler() 传方块坐标会调度到错误的 region
         BukkitCraftEngine.instance().scheduler().platform().run(() -> {
             if (crackle) {
                 level.playSound(new Vec3d(x, y, z), CRACKLE, volume, pitch, SoundSource.BLOCK);

@@ -75,7 +75,7 @@ public final class MillstoneElement implements FurnitureElement {
         this.spawnPacket2 = model.spawn(basePos, stick2Id, stick2Uuid);
         this.spawnPacket3 = model.spawn(basePos, stoneId, stoneUuid);
 
-        float angle = controller.getCurrentAngle();
+        float angle = controller.currentAngle();
         this.metaPacket1 = model.stick1Meta(stick1Id, baseYawRad(), angle, 0);
         this.metaPacket2 = model.stick2Meta(stick2Id, baseYawRad(), angle, 0);
         this.metaPacket3 = model.stoneMeta(stoneId, baseYawRad(), angle, 0);
@@ -122,10 +122,9 @@ public final class MillstoneElement implements FurnitureElement {
     }
 
     private void sendAllGrind(Player p) {
-        Item[] items = controller.getGrindItems();
         List<Object> all = new ArrayList<>();
         for (int i = 0; i < GRIND_SLOTS; i++) {
-            if (!items[i].isEmpty() && grindDisplay.spawn(i) != null) {
+            if (!controller.grindItem(i).isEmpty() && grindDisplay.spawn(i) != null) {
                 all.add(grindDisplay.spawn(i));
                 all.add(grindDisplay.meta(i));
                 if (grindRot[i] != null) {
@@ -153,20 +152,24 @@ public final class MillstoneElement implements FurnitureElement {
         grindRot[slot] = null;
     }
 
+    // 按槽差异分派 别整体 removeAll 再重建 那会把未变化槽的旋转插值一并清零
     public void refreshAllGrind() {
-        for (Player p : controller.furniture().getTrackedBy()) {
-            grindDisplay.removeAll(p);
-        }
-        Item[] items = controller.getGrindItems();
         for (int i = 0; i < GRIND_SLOTS; i++) {
-            grindDisplay.clear(i);
-            grindRot[i] = null;
-            if (!items[i].isEmpty()) {
-                buildGrindSlotPackets(i, items[i]);
+            boolean spawned = grindDisplay.spawn(i) != null;
+            if (controller.grindItem(i).isEmpty()) {
+                if (spawned) {
+                    removeGrindSlot(i);
+                }
+                continue;
             }
-        }
-        for (Player p : controller.furniture().getTrackedBy()) {
-            sendAllGrind(p);
+            buildGrindSlotPackets(i, controller.grindItem(i));
+            for (Player p : controller.furniture().getTrackedBy()) {
+                if (spawned) {
+                    p.sendPacket(grindDisplay.meta(i), false);
+                } else {
+                    sendGrindSlot(p, i);
+                }
+            }
         }
     }
 

@@ -2,13 +2,11 @@ package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.block.behavior.ShawarmaSpitBehavior;
 
-import net.momirealms.craftengine.bukkit.entity.data.DisplayData;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy;
-import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Quaternionf;
@@ -25,6 +23,8 @@ public final class ShawarmaSpitElement implements BlockEntityElement {
     private static final int LAYERS = ShawarmaSpitController.LAYERS;
     private static final int SLOTS = ShawarmaSpitController.SLOTS;
     private static final int TOTAL = LAYERS * SLOTS;
+    private static final float ITEM_SCALE = 0.65f;
+    private static final byte ITEM_TRANSFORM_FIXED = 8;
 
     private final ShawarmaSpitController controller;
     private final ShawarmaSpitBehavior behavior;
@@ -46,11 +46,11 @@ public final class ShawarmaSpitElement implements BlockEntityElement {
     }
 
     private Object buildItemMeta(int id, Item item) {
-        List<Object> dv = new ArrayList<>();
-        DisplayData.ItemDisplayData.ItemStack.addEntityData(item.minecraftItem(), dv);
-        DisplayData.ItemDisplayData.Scale.addEntityData(new Vector3f(0.65f, 0.65f, 0.65f), dv);
-        DisplayData.ItemDisplayData.ItemTransform.addEntityData((byte) 8, dv);
-        return ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(id, dv);
+        return ItemDisplayPackets.builder()
+                .item(item)
+                .scale(ITEM_SCALE)
+                .itemTransform(ITEM_TRANSFORM_FIXED)
+                .meta(id);
     }
 
     private Object buildRotation(int slot, int id, int interpDuration) {

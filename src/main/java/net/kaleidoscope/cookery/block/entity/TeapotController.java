@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.block.behavior.TeapotBehavior;
+import net.kaleidoscope.cookery.block.entity.render.PacketBundles;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.item.ItemKeys;
@@ -49,8 +50,16 @@ public final class TeapotController extends BlockEntityController {
     public static final int FINISHED = 2;
 
     private static final String DATA_KEY = "kaleidoscopecookery:teapot";
+    private static final String K_STATUS = "status";
+    private static final String K_CURRENT_TICK = "current_tick";
+    private static final String K_FLUID = "fluid";
+    private static final String K_INPUT = "input";
+    private static final String K_RESULT = "result";
+    private static final String K_SERVINGS = "servings";
     private static final int INGREDIENT_TIME = 200;
     private static final int CHECK_INTERVAL = 23;
+    // 热源判定要读相邻方块状态 缓存周期
+    private static final int HEAT_CHECK_INTERVAL = 20;
     private static final int FINISH_INTERVAL = 11;
     private static final int ANIM_INTERVAL = 3;
     private static final float LID_RISE = 0.5f;
@@ -58,7 +67,13 @@ public final class TeapotController extends BlockEntityController {
     private static final Key CRACKLE = Key.of("minecraft:block.fire.extinguish");
     private static final Key BUCKET_EMPTY = Key.of("minecraft:item.bucket.empty");
     private static final Key BUCKET_EMPTY_LAVA = Key.of("minecraft:item.bucket.empty_lava");
-    private static final int TEAPOT_SOUND_COUNT = 5;
+    private static final Key[] TEAPOT_SOUNDS = {
+            Key.of("kaleidoscopecookery:teapot_0"),
+            Key.of("kaleidoscopecookery:teapot_1"),
+            Key.of("kaleidoscopecookery:teapot_2"),
+            Key.of("kaleidoscopecookery:teapot_3"),
+            Key.of("kaleidoscopecookery:teapot_4"),
+    };
 
     private final TeapotBehavior behavior;
     private final TeapotElement element;
@@ -72,6 +87,8 @@ public final class TeapotController extends BlockEntityController {
 
     private boolean boilFlip;
     private int animTick;
+    private boolean heatedCache;
+    private int heatCheckTick;
     private boolean textShown;
     private boolean creativeBreak;
     private boolean pickedUp;
@@ -212,7 +229,12 @@ public final class TeapotController extends BlockEntityController {
 
     private void tick() {
         long gameTime = ((World) blockEntity.world.world().platformWorld()).getGameTime();
-        boolean heated = heated();
+        // 热源判定要读相邻方块状态 缓存 20 tick
+        if (heatCheckTick == 0) {
+            heatedCache = heated();
+        }
+        heatCheckTick = (heatCheckTick + 1) % HEAT_CHECK_INTERVAL;
+        boolean heated = heatedCache;
 
         if (heated && fluid != null && gameTime % behavior.particleInterval == 0) {
             emitSteam(behavior.particleCount);
@@ -286,8 +308,9 @@ public final class TeapotController extends BlockEntityController {
         if (!heated) {
             if (animTick != 0) {
                 animTick = 0;
-                broadcast(element.lidBounceMeta(0f, ANIM_INTERVAL));
-                broadcast(element.bodyBounceMeta(0f, ANIM_INTERVAL));
+                // 熄火复位是一次性终态 必须发给全部追踪玩家 只发视距内会让远处茶壶永远卡在抖动中位
+                broadcastAll(element.lidBounceMeta(0f, ANIM_INTERVAL));
+                broadcastAll(element.bodyBounceMeta(0f, ANIM_INTERVAL));
             }
             return;
         }
@@ -295,13 +318,16 @@ public final class TeapotController extends BlockEntityController {
             return;
         }
         boilFlip = !boilFlip;
-        broadcast(element.lidBounceMeta(boilFlip ? LID_RISE : 0f, ANIM_INTERVAL));
-        broadcast(element.bodyBounceMeta(boilFlip ? 0f : BODY_RISE, ANIM_INTERVAL));
+        // 两个包合批发送 快照也只取一次 别每个包各算一遍收件人
+        Object bundle = PacketBundles.of(List.of(
+                element.lidBounceMeta(boilFlip ? LID_RISE : 0f, ANIM_INTERVAL),
+                element.bodyBounceMeta(boilFlip ? 0f : BODY_RISE, ANIM_INTERVAL)));
+        broadcast(bundle);
     }
 
-    private void broadcast(Object meta) {
+    private void broadcast(Object packet) {
         for (Player p : TrackedPlayers.snapshotInRange(blockEntity, behavior.animChunkRadius)) {
-            p.sendPacket(meta, false);
+            p.sendPacket(packet, false);
         }
     }
 
@@ -310,7 +336,7 @@ public final class TeapotController extends BlockEntityController {
     }
 
     private Item makeResult(TeapotRecipe recipe) {
-        Item item = BukkitItemManager.instance().createWrappedItem(recipe.result(), null);
+        Item item = InventoryUtils.createOrEmpty(recipe.result());
         if (item == null) {
             return Item.empty();
         }
@@ -341,7 +367,7 @@ public final class TeapotController extends BlockEntityController {
 
 
     private void onProcessingEffects() {
-        playSound(Key.of("kaleidoscopecookery:teapot_" + ThreadLocalRandom.current().nextInt(TEAPOT_SOUND_COUNT)), 0.6f);
+        playSound(TEAPOT_SOUNDS[ThreadLocalRandom.current().nextInt(TEAPOT_SOUNDS.length)], 0.6f);
     }
 
     private void onBoilingEffects() {
@@ -471,13 +497,13 @@ public final class TeapotController extends BlockEntityController {
         }
         CompoundTag data = new CompoundTag();
         if (status != PROCESSING && fluid != null) {
-            data.putString("fluid", fluid.asString());
+            data.putString(K_FLUID, fluid.asString());
         }
         String barStr;
         if (status == FINISHED && !result.isEmpty()) {
-            data.putInt("status", FINISHED);
-            data.put("result", ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
-            data.putInt("servings", servings);
+            data.putInt(K_STATUS, FINISHED);
+            data.put(K_RESULT, ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
+            data.putInt(K_SERVINGS, servings);
             barStr = TeapotBar.build(fluid, servings);
         } else if (status != PROCESSING && fluid != null) {
             barStr = TeapotBar.build(fluid);
@@ -494,11 +520,11 @@ public final class TeapotController extends BlockEntityController {
     public void loadCustomDataFromItem(Item item) {
         Tag tag = item.getSparrowTag(TeapotBar.ITEM_DATA_KEY);
         if (tag instanceof CompoundTag data) {
-            String fluidStr = data.getString("fluid");
+            String fluidStr = data.getString(K_FLUID);
             fluid = (fluidStr == null || fluidStr.isEmpty()) ? null : Key.of(fluidStr);
-            status = data.getInt("status", PUT_INGREDIENT);
-            servings = data.getInt("servings", 0);
-            Tag resultTag = data.get("result");
+            status = data.getInt(K_STATUS, PUT_INGREDIENT);
+            servings = data.getInt(K_SERVINGS, 0);
+            Tag resultTag = data.get(K_RESULT);
             if (resultTag != null) {
                 Object nms = ItemStackUtils.parseMinecraftItem(resultTag, Config.itemDataFixerUpperFallbackVersion());
                 result = nms == null ? Item.empty() : ItemStackUtils.wrap(nms);
@@ -510,18 +536,18 @@ public final class TeapotController extends BlockEntityController {
     @Override
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
-        data.putInt("status", status);
-        data.putInt("current_tick", currentTick);
+        data.putInt(K_STATUS, status);
+        data.putInt(K_CURRENT_TICK, currentTick);
         if (fluid != null) {
-            data.putString("fluid", fluid.asString());
+            data.putString(K_FLUID, fluid.asString());
         }
         if (!input.isEmpty()) {
-            data.put("input", ItemStackUtils.saveMinecraftItemStackAsTag(input.minecraftItem()));
+            data.put(K_INPUT, ItemStackUtils.saveMinecraftItemStackAsTag(input.minecraftItem()));
         }
         if (!result.isEmpty()) {
-            data.put("result", ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
+            data.put(K_RESULT, ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
         }
-        data.putInt("servings", servings);
+        data.putInt(K_SERVINGS, servings);
         tag.put(DATA_KEY, data);
     }
 
@@ -531,14 +557,14 @@ public final class TeapotController extends BlockEntityController {
         if (data == null) {
             return;
         }
-        status = data.getInt("status", PUT_INGREDIENT);
-        currentTick = data.getInt("current_tick", -1);
-        String fluidStr = data.getString("fluid");
+        status = data.getInt(K_STATUS, PUT_INGREDIENT);
+        currentTick = data.getInt(K_CURRENT_TICK, -1);
+        String fluidStr = data.getString(K_FLUID);
         fluid = (fluidStr == null || fluidStr.isEmpty()) ? null : Key.of(fluidStr);
-        servings = data.getInt("servings", 0);
+        servings = data.getInt(K_SERVINGS, 0);
         int version = Config.itemDataFixerUpperFallbackVersion();
-        input = loadItem(data, "input", version);
-        result = loadItem(data, "result", version);
+        input = loadItem(data, K_INPUT, version);
+        result = loadItem(data, K_RESULT, version);
         initDisplay();
     }
 
