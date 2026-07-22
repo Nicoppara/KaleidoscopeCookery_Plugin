@@ -282,7 +282,7 @@ public class StockpotController extends BlockEntityController {
         BukkitCraftEngine.instance().scheduler().platform()
                 .runLater(() -> refreshDynamicElement(StockpotElement::hide),
                         2L, super.blockEntity.world.world(),
-                        super.blockEntity.pos.x, super.blockEntity.pos.z);
+                        super.blockEntity.pos.x >> 4, super.blockEntity.pos.z >> 4);
         return true;
     }
 

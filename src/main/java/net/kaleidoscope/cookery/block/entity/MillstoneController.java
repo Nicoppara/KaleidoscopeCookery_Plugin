@@ -33,8 +33,6 @@ import net.kaleidoscope.cookery.util.EventUtils;
 import net.kaleidoscope.cookery.util.Hands;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
-import net.kaleidoscope.cookery.util.FoliaUtil;
-import net.kaleidoscope.cookery.util.Localization;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
@@ -717,7 +715,7 @@ public class MillstoneController extends FurnitureController {
         if (animating) return false;
 
         if (ACTIVE_PUSHERS.containsKey(player.uuid())) {
-            player.sendActionBar(Localization.component(behavior.msgAlreadyPushing));
+            player.sendActionBar(Component.text(behavior.msgAlreadyPushing));
             return false;
         }
 
@@ -732,12 +730,12 @@ public class MillstoneController extends FurnitureController {
         double startZ = furniture().position().z() + startOffset.z;
 
         if (!hasSolidBlockUnderneath(startX, furniture().position().y(), startZ)) {
-            player.sendActionBar(Localization.component(behavior.msgNeedGroundBelow));
+            player.sendActionBar(Component.text(behavior.msgNeedGroundBelow));
             return false;
         }
 
         if (isUnevenStandingPoint(startX, furniture().position().y(), startZ)) {
-            player.sendActionBar(Localization.component(behavior.msgUneven));
+            player.sendActionBar(Component.text(behavior.msgUneven));
             return false;
         }
 
@@ -810,7 +808,7 @@ public class MillstoneController extends FurnitureController {
             loc.setX(furniture().position().x() + startOffset.x);
             loc.setY(furniture().position().y());
             loc.setZ(furniture().position().z() + startOffset.z);
-            FoliaUtil.teleport(animal, loc);
+            animal.teleport(loc);
         }
 
         playMillstoneSound(1.0f, 0.8f);
@@ -910,7 +908,7 @@ public class MillstoneController extends FurnitureController {
         }
         double sneakHeightDiff = Math.abs(player.y() - furniture().position().y);
         if (sneakHeightDiff > 0.1) {
-            player.sendActionBar(Localization.component(behavior.msgNotSamePlane));
+            player.sendActionBar(Component.text(behavior.msgNotSamePlane));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         if (!spin(player)) {
@@ -984,7 +982,7 @@ public class MillstoneController extends FurnitureController {
         );
 
         spinWithAnimal(target, bukkitPlayer, true);
-        player.sendActionBar(Localization.component(behavior.msgStopAnimalHint));
+        player.sendActionBar(Component.text(behavior.msgStopAnimalHint));
         player.swingHand(InteractionHand.MAIN_HAND);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
@@ -1119,7 +1117,7 @@ public class MillstoneController extends FurnitureController {
             loc.setX(furniture().position().x() + targetOffset.x);
             loc.setY(furniture().position().y());
             loc.setZ(furniture().position().z() + targetOffset.z);
-            FoliaUtil.teleport(living, loc);
+            living.teleport(loc);
         } else {
             this.animating = false;
             furniture().setUnsaved();

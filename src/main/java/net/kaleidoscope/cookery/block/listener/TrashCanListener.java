@@ -36,7 +36,7 @@ public class TrashCanListener implements Listener {
             if (!ctrl.isOccupied() && !ctrl.isAnimating() && player.isOnline()) {
                 ctrl.enter(player);
             }
-        }, 1L, player.getLocation());
+        }, null, 1L, player);
     }
 
     // 玩家停止旁观相机 死亡触发的停止旁观交给重生处理 不在此处退出(避免传送/切模式死人)

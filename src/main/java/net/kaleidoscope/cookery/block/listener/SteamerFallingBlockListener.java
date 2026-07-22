@@ -93,7 +93,7 @@ public class SteamerFallingBlockListener implements Listener {
             if (SteamerBehavior.pendingData.containsKey(nmsEntity)) {
                 SteamerBehavior.dropPendingSteamer(level, blockPos, nmsEntity);
             }
-        }, 1L, ceWorld.world(), loc.getBlockX(), loc.getBlockZ());
+        }, 1L, ceWorld.world(), loc.getBlockX() >> 4, loc.getBlockZ() >> 4);
     }
 
     private boolean isLandingSupported(Object level, Object belowPos, BlockDefinition steamerDef) {
