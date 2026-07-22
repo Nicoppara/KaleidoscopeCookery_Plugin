@@ -95,7 +95,7 @@ public final class KitchenwareRacksController extends BlockEntityController {
     public void putLeft(Item item) {
         ensurePositionsInitialized();
         this.itemLeft = item;
-        this.element.refreshLeftItem(item);
+        this.element.refreshLeftItem(item, getCurrentFacing());
         this.refreshElement();
         this.updateLastState();
     }
@@ -103,7 +103,7 @@ public final class KitchenwareRacksController extends BlockEntityController {
     public void putRight(Item item) {
         ensurePositionsInitialized();
         this.itemRight = item;
-        this.element.refreshRightItem(item);
+        this.element.refreshRightItem(item, getCurrentFacing());
         this.refreshElement();
         this.updateLastState();
     }
@@ -162,6 +162,12 @@ public final class KitchenwareRacksController extends BlockEntityController {
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
     }
 
+    private Direction getCurrentFacing() {
+        return behavior.getFacingProperty() != null
+                ? blockEntity.blockState.get(behavior.getFacingProperty())
+                : Direction.NORTH;
+    }
+
     @Override
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
@@ -201,8 +207,8 @@ public final class KitchenwareRacksController extends BlockEntityController {
             this.itemRight = Item.empty();
         }
 
-        this.element.refreshLeftItem(this.itemLeft);
-        this.element.refreshRightItem(this.itemRight);
+        this.element.refreshLeftItem(this.itemLeft, getCurrentFacing());
+        this.element.refreshRightItem(this.itemRight, getCurrentFacing());
         this.updateLastState();
     }
 

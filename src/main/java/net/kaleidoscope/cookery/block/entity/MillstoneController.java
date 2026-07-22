@@ -667,31 +667,18 @@ public class MillstoneController extends FurnitureController {
 
     // 生物拉磨移动；返回 false 表示已停止
     private boolean moveAnimal() {
-        if (!pullingAnimal.isValid() || pullingAnimal.isDead()) {
-            stopSpinning();
-            return false;
-        }
+        if (!pullingAnimal.isValid() || pullingAnimal.isDead()) { stopSpinning(); return false; }
 
         double heightDiff = Math.abs(pullingAnimal.getLocation().getY() - furniture().position().y);
-        if (heightDiff > 1.0) {
-            stopSpinning();
-            return false;
-        }
+        if (heightDiff > 1.0) { stopSpinning(); return false; }
 
         Vector3f targetOffset = orbitOffset();
         org.bukkit.Location currentLoc = pullingAnimal.getLocation();
         double targetX = furniture().position().x + targetOffset.x;
         double targetZ = furniture().position().z + targetOffset.z;
 
-        if (!isPassable(targetX, currentLoc.getY(), targetZ)) {
-            stopSpinning();
-            return false;
-        }
-
-        if (!hasSolidBlockUnderneath(targetX, currentLoc.getY(), targetZ)) {
-            stopSpinning();
-            return false;
-        }
+        if (!isPassable(targetX, currentLoc.getY(), targetZ)) { stopSpinning(); return false; }
+        if (!hasSolidBlockUnderneath(targetX, currentLoc.getY(), targetZ)) { stopSpinning(); return false; }
 
         double dx = targetX - currentLoc.getX();
         double dz = targetZ - currentLoc.getZ();
@@ -699,19 +686,15 @@ public class MillstoneController extends FurnitureController {
                 ? (float) Math.toDegrees(Math.atan2(-dx, dz))
                 : currentLoc.getYaw();
 
+        // 直接位置更新，不走 setVelocity
+        Vector step = clampStep(dx, dz);
         LivingEntity animal = pullingAnimal;
-        // 只在偏离过大时才传送 平时走速度推进
-        // 每 tick 对实体调 teleportAsync 在 folia 上是崩溃模式 且跨区域后 NMS 实例会被替换 长期持有的引用失效
-        if (dx * dx + dz * dz > TELEPORT_SNAP_DIST_SQ) {
-            currentLoc.setX(targetX);
-            currentLoc.setZ(targetZ);
-            currentLoc.setYaw(yaw);
-            FoliaUtil.teleportThen(animal, currentLoc,
-                    () -> animal.setRotation(currentLoc.getYaw(), currentLoc.getPitch()));
-            return true;
-        }
-        animal.setVelocity(clampStep(dx, dz));
-        animal.setRotation(yaw, currentLoc.getPitch());
+        org.bukkit.Location newLoc = currentLoc.clone();
+        newLoc.setX(currentLoc.getX() + step.getX());
+        newLoc.setZ(currentLoc.getZ() + step.getZ());
+        newLoc.setYaw(yaw);
+        FoliaUtil.teleportThen(animal, newLoc,
+                () -> animal.setRotation(newLoc.getYaw(), newLoc.getPitch()));
         return true;
     }
 

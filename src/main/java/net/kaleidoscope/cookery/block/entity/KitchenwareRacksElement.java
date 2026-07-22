@@ -4,6 +4,7 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy;
@@ -56,22 +57,40 @@ public final class KitchenwareRacksElement implements BlockEntityElement {
         }
     }
 
-    public void refreshLeftItem(Item item) {
+    public void refreshLeftItem(Item item, Direction facing) {
+        float yOffset = facingToYOffset(facing);
         this.changeLeftItemPacket = ItemDisplayPackets.builder()
                 .item(item)
                 .scale(0.75f)
-                .leftRotation(new Quaternionf().rotateY((float) Math.toRadians(25)).rotateX((float) Math.toRadians(-180)).rotateZ((float) Math.toRadians(45)))
+                .leftRotation(new Quaternionf()
+                        .rotateY(yOffset + (float) Math.toRadians(25))
+                        .rotateX((float) Math.toRadians(-180))
+                        .rotateZ((float) Math.toRadians(45)))
                 .itemTransform((byte) 8)
                 .meta(leftItemId);
     }
 
-    public void refreshRightItem(Item item) {
+    public void refreshRightItem(Item item, Direction facing) {
+        float yOffset = facingToYOffset(facing);
         this.changeRightItemPacket = ItemDisplayPackets.builder()
                 .item(item)
                 .scale(0.75f)
-                .leftRotation(new Quaternionf().rotateY((float) Math.toRadians(25)).rotateX((float) Math.toRadians(-180)).rotateZ((float) Math.toRadians(45)))
+                .leftRotation(new Quaternionf()
+                        .rotateY(yOffset + (float) Math.toRadians(25))
+                        .rotateX((float) Math.toRadians(-180))
+                        .rotateZ((float) Math.toRadians(45)))
                 .itemTransform((byte) 8)
                 .meta(rightItemId);
+    }
+
+    private static float facingToYOffset(Direction facing) {
+        return switch (facing) {
+            case NORTH -> 0f;
+            case WEST  -> (float) Math.toRadians(90);
+            case SOUTH -> (float) Math.toRadians(180);
+            case EAST  -> (float) Math.toRadians(270);
+            default    -> 0f;
+        };
     }
 
     public void refreshSpawnPackets(WorldPosition leftPosition, WorldPosition rightPosition) {
