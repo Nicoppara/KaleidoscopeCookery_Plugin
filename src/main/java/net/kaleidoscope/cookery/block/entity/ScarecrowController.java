@@ -288,7 +288,9 @@ public final class ScarecrowController extends FurnitureController {
         if (parrot == null) {
             return;
         }
-        FoliaUtil.runEntity(parrot, () -> perch(world, position, parrot));
+        // 家具 ticker 跑在本家具的实体调度器上 鹦鹉又限定在同一区块 两者必然同 region
+        // 再往实体调度器投递会推迟一 tick 期间鹦鹉可能飞进别的 region perchUuid 就成了跨线程写
+        perch(world, position, parrot);
     }
 
     // 只扫稻草人自己所在的区块 区块必然完整属于一个 region 不会撞 getEntities 的跨 region 检查
@@ -319,14 +321,15 @@ public final class ScarecrowController extends FurnitureController {
 
     // 不落盘的隐形载具 崩服重启后自然消失 鹦鹉掉下来即可 不需要崩溃恢复快照
     private void perch(World world, WorldPosition position, Parrot parrot) {
-        if (parrot.isDead() || parrot.isInsideVehicle()) {
-            return;
-        }
         float yaw = (float) Math.toRadians(-position.yRot());
         Location seat = new Location(world,
                 position.x + Math.cos(yaw) * this.behavior.shoulderOffset.x,
                 position.y + this.behavior.shoulderOffset.y,
                 position.z - Math.sin(yaw) * this.behavior.shoulderOffset.x);
+        // 肩膀位可能落进邻区块 不归本 region 时生成会抛 下次扫描再试
+        if (!Bukkit.isOwnedByCurrentRegion(seat)) {
+            return;
+        }
         ArmorStand anchor = world.spawn(seat, ArmorStand.class, stand -> {
             stand.setMarker(true);
             stand.setInvisible(true);

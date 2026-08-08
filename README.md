@@ -1055,12 +1055,12 @@ behaviors:
 
 ### 🌾 稻草人 `kaleidoscopecookery:scarecrow`
 
-家具行为。驱赶怪物、鹦鹉停肩、三个装备槽（头 / 主手 / 副手）。
+家具行为。范围内耕地不被踩坏、鹦鹉停肩、三个装备槽（头 / 主手 / 副手）。
 
 ```yaml
 behaviors:
   - type: kaleidoscopecookery:scarecrow
-    protection_radius: 16        # 驱赶半径
+    protection_radius: 16        # 耕地保护半径
     parrot_perch: true           # 是否允许鹦鹉停在肩上
     parrot_scan_interval: 40     # 多少 tick 扫一次附近鹦鹉
     parrot_pickup_range: 2.0     # 鹦鹉被吸附上肩的距离
