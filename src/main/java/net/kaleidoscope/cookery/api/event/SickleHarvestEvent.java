@@ -7,8 +7,12 @@ import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 import org.bukkit.inventory.ItemStack;
 
-// 镰刀范围收割时对每个候选方块触发一次 取消则该方块不走默认收割
-// 想接管自定义作物就取消本事件并自行处理 再按需 setCostDurability(true) 让这次仍算耐久
+/**
+ * Fired once per candidate block while a sickle sweeps an area.
+ * Cancelling skips the built-in harvest for that block, which is how a plugin
+ * takes over a custom crop: cancel, harvest it yourself, then call
+ * {@link #setCostDurability(boolean)} so the swing still wears the sickle down.
+ */
 public class SickleHarvestEvent extends Event implements Cancellable {
     private static final HandlerList HANDLER_LIST = new HandlerList();
     private final Player player;
@@ -17,29 +21,48 @@ public class SickleHarvestEvent extends Event implements Cancellable {
     private boolean costDurability;
     private boolean cancelled;
 
+    /**
+     * @param player the sweeping player
+     * @param sickle the sickle in hand
+     * @param block the block about to be harvested
+     */
     public SickleHarvestEvent(Player player, ItemStack sickle, Block block) {
         this.player = player;
         this.sickle = sickle;
         this.block = block;
     }
 
+    /**
+     * @return the sweeping player
+     */
     public Player player() {
         return this.player;
     }
 
+    /**
+     * @return the sickle in hand
+     */
     public ItemStack sickle() {
         return this.sickle;
     }
 
+    /**
+     * @return the block about to be harvested
+     */
     public Block block() {
         return this.block;
     }
 
-    /** @return 取消后这次是否仍计入镰刀耐久消耗 默认不计 */
+    /**
+     * @return whether a cancelled block still costs sickle durability, false by default
+     */
     public boolean costDurability() {
         return this.costDurability;
     }
 
+    /**
+     * @param costDurability whether this cancelled block still wears the sickle
+     */
     public void setCostDurability(boolean costDurability) {
         this.costDurability = costDurability;
     }

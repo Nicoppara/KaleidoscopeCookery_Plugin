@@ -1,6 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
@@ -131,7 +131,6 @@ public final class PotElement implements BlockEntityElement {
         float[] jumpH = new float[ingredientCount];
         for (int i = 0; i < ingredientCount; i++) jumpH[i] = (i * 0.025f) + (0.3f + random.nextFloat() * 0.6f);
         int stepDuration = 3;
-        var platformScheduler = BukkitCraftEngine.instance().scheduler().platform();
         var world = controller.blockEntity().world.world();
         int chunkX = controller.blockEntity().pos.x >> 4;
         int chunkZ = controller.blockEntity().pos.z >> 4;
@@ -156,9 +155,9 @@ public final class PotElement implements BlockEntityElement {
                 recipients.forEach(p -> p.sendPacket(bundle, false));
             };
             if (delay == 0) phaseRunnable.run();
-            else animationTasks.add(platformScheduler.runLater(phaseRunnable, delay, world, chunkX, chunkZ));
+            else animationTasks.add(FoliaUtil.runLater(phaseRunnable, delay, world, chunkX, chunkZ));
         }
-        animationTasks.add(platformScheduler.runLater(() -> {
+        animationTasks.add(FoliaUtil.runLater(() -> {
             onComplete.run();
             animationTasks.clear();
         }, stepDuration * 8L, world, chunkX, chunkZ));

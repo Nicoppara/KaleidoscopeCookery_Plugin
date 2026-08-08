@@ -11,14 +11,20 @@ import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStages;
 import net.momirealms.craftengine.core.util.Key;
 import org.jetbrains.annotations.NotNull;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import net.kaleidoscope.cookery.recipe.edit.RecipeSourceIndex;
 import net.kaleidoscope.cookery.util.ConsoleMessages;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 
 // 食谱系统管理器 注册各类配方的配置解析器
 public final class FoodRecipeManager {
+
+    // 空手盛出的哨兵值 配置里写 minecraft:air 等同于不写 carrier
+    private static final Key AIR = Key.of("minecraft:air");
 
     public static final LoadingStage POT_FOOD_RAW = new LoadingStage("pot food raw");
     public static final LoadingStage STOCK_FOOD_RAW = new LoadingStage("stock food raw");
@@ -51,22 +57,34 @@ public final class FoodRecipeManager {
         return new ItemRequirement(Key.of(parts[0]), count);
     }
 
-    static final class PotFoodRawParser extends SectionConfigParser {
+    // 下面两个基类只是把段名 stage 依赖 计数这套样板收口
+    // CE 的 SectionConfigParser 与 IdSectionConfigParser 是两条继承线 只能各写一份
+    private abstract static class CookerySectionParser extends SectionConfigParser {
+        private final LoadingStage stage;
+        private final List<LoadingStage> dependencies;
+        private final String[] sectionIds;
         private int count;
 
+        CookerySectionParser(LoadingStage stage, List<LoadingStage> dependencies, String... sectionIds) {
+            this.stage = stage;
+            this.dependencies = dependencies;
+            this.sectionIds = sectionIds;
+        }
+
+        // CE 只在注册与注销时遍历读取 不留引用也不改内容 直接返字段不必拷贝
         @Override
         public String[] sectionId() {
-            return new String[]{"pot_food_raw", "pot-food-raw"};
+            return sectionIds;
         }
 
         @Override
         public LoadingStage loadingStage() {
-            return POT_FOOD_RAW;
+            return stage;
         }
 
         @Override
         public List<LoadingStage> dependencies() {
-            return List.of(LoadingStages.ITEM);
+            return dependencies;
         }
 
         @Override
@@ -77,230 +95,234 @@ public final class FoodRecipeManager {
         @Override
         public void preProcess() {
             count = 0;
-            FoodCategoryRegistry.instance().clear(ApplianceType.POT);
+            reset();
         }
 
         @Override
-        protected void parseSection(Pack pack, Path path, ConfigSection section) {
-            for (String category : section.keySet()) {
-                for (String itemStr : section.getStringList(category)) {
-                    FoodCategoryRegistry.instance().register(ApplianceType.POT, category, Key.of(itemStr));
-                    count++;
-                }
-            }
+        protected final void parseSection(Pack pack, Path path, ConfigSection section) {
+            count += parseAndCount(pack, path, section);
+        }
+
+        // 每轮解析前清空本 parser 负责的注册表
+        protected abstract void reset();
+
+        // 返回本段登记了几条
+        protected abstract int parseAndCount(Pack pack, Path path, ConfigSection section);
+    }
+
+    private abstract static class CookeryIdParser extends IdSectionConfigParser {
+        private final LoadingStage stage;
+        private final List<LoadingStage> dependencies;
+        private final String[] sectionIds;
+        private int count;
+
+        CookeryIdParser(LoadingStage stage, List<LoadingStage> dependencies, String... sectionIds) {
+            this.stage = stage;
+            this.dependencies = dependencies;
+            this.sectionIds = sectionIds;
+        }
+
+        // CE 只在注册与注销时遍历读取 不留引用也不改内容 直接返字段不必拷贝
+        @Override
+        public String[] sectionId() {
+            return sectionIds;
+        }
+
+        @Override
+        public LoadingStage loadingStage() {
+            return stage;
+        }
+
+        @Override
+        public List<LoadingStage> dependencies() {
+            return dependencies;
+        }
+
+        @Override
+        public int count() {
+            return count;
+        }
+
+        @Override
+        public void preProcess() {
+            count = 0;
+            reset();
+        }
+
+        @Override
+        protected final void parseSection(@NotNull Pack pack, @NotNull Path path,
+                                          @NotNull Key id, @NotNull ConfigSection section) {
+            count += parseAndCount(pack, path, id, section);
+        }
+
+        protected abstract void reset();
+
+        // 返回 1 表示该配方登记成功 校验不过返 0
+        protected abstract int parseAndCount(Pack pack, Path path, Key id, ConfigSection section);
+    }
+
+    static final class PotFoodRawParser extends CookerySectionParser {
+        PotFoodRawParser() {
+            super(POT_FOOD_RAW, List.of(LoadingStages.ITEM), "pot_food_raw", "pot-food-raw");
+        }
+
+        @Override
+        protected void reset() {
+            ApplianceFoodRegistry.instance().clear(ApplianceType.POT);
+        }
+
+        @Override
+        protected int parseAndCount(Pack pack, Path path, ConfigSection section) {
+            return registerRaw(section, ApplianceType.POT, null);
         }
     }
 
-    static final class StockFoodRawParser extends SectionConfigParser {
-        private int count;
-
-        @Override
-        public String[] sectionId() {
-            return new String[]{"stock_food_raw", "stock-food-raw"};
+    static final class StockFoodRawParser extends CookerySectionParser {
+        StockFoodRawParser() {
+            super(STOCK_FOOD_RAW, List.of(LoadingStages.ITEM), "stock_food_raw", "stock-food-raw");
         }
 
         @Override
-        public LoadingStage loadingStage() {
-            return STOCK_FOOD_RAW;
-        }
-
-        @Override
-        public List<LoadingStage> dependencies() {
-            return List.of(LoadingStages.ITEM);
-        }
-
-        @Override
-        public int count() {
-            return count;
-        }
-
-        @Override
-        public void preProcess() {
-            count = 0;
-            FoodCategoryRegistry.instance().clear(ApplianceType.STOCKPOT);
+        protected void reset() {
+            ApplianceFoodRegistry.instance().clear(ApplianceType.STOCKPOT);
             SoupBaseRegistry.instance().clear();
         }
 
         @Override
-        protected void parseSection(Pack pack, Path path, ConfigSection section) {
-            for (String category : section.keySet()) {
-                if (category.equals("liquid")) {
-                    continue;
-                }
-                for (String itemStr : section.getStringList(category)) {
-                    FoodCategoryRegistry.instance().register(ApplianceType.STOCKPOT, category, Key.of(itemStr));
-                    count++;
-                }
-            }
-            section.getSectionList("liquid", s -> {
+        protected int parseAndCount(Pack pack, Path path, ConfigSection section) {
+            int raws = registerRaw(section, ApplianceType.STOCKPOT, "liquid");
+            // getSectionList 的返回值用不上 这里借它的元素数当汤底计数
+            return raws + section.getSectionList("liquid", s -> {
+                // show 可以不写 不写就画成水 只有岩浆这类才必须自己指定
+                String show = s.getString(new String[]{"show"}, (String) null);
                 SoupBaseRegistry.instance().register(
-                        s.getNonNullIdentifier("item"), s.getNonNullIdentifier("show"));
-                count++;
+                        s.getNonNullIdentifier("item"),
+                        show == null || show.isBlank()
+                                ? SoupBaseRegistry.DEFAULT_SHOW : Key.of(show));
                 return s;
-            });
+            }).size();
         }
     }
 
-    // 解析并注册一条模糊配方 pot 与 stock 共用 require 超过 raw min 视为非法 告警跳过 返回是否注册成功
-    private static boolean parseFlexRecipe(Key id, ConfigSection section, ApplianceType cook, List<Key> liquids) {
+    // 下锅白名单 只关心并集里有哪些 id 分组键名当注释用 平铺或分组都收
+    // skip 是该段里不属于白名单的子键 高汤锅的 liquid 走汤底表
+    private static int registerRaw(ConfigSection section, ApplianceType cook, String skip) {
+        int count = 0;
+        for (String key : section.keySet()) {
+            if (key.equals(skip)) {
+                continue;
+            }
+            for (String itemStr : section.getStringList(key)) {
+                ApplianceFoodRegistry.instance().register(cook, Key.of(itemStr));
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static boolean parseFlexRecipe(Key id, Path path, ConfigSection section,
+                                           ApplianceType cook, List<Key> liquids) {
         Key result = section.getNonNullIdentifier("result");
 
-        // require 格式 minecraft:beef 2 得到 beef 数量 2 省略数量默认 1
-        List<ItemRequirement> require = section.getStringList("require").stream()
-                .map(FoodRecipeManager::parseAmount).toList();
-
-        // raw 格式 meat 1 得到类别 meat 最少 1
-        List<RawRequirement> raw = section.getStringList("raw").stream()
-                .map(s -> {
-                    String[] parts = s.trim().split("\\s+", 2);
-                    int min = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
-                    return new RawRequirement(parts[0], min);
-                })
-                .toList();
-
-        List<Key> preferred = section.getList("preferred", ConfigValue::getAsIdentifier);
-        List<Key> unpreferred = section.getList("unpreferred", ConfigValue::getAsIdentifier);
-
-        // lore 条件 扁平写法 require 加 data 或块式写法 when 列表 加 unpreferred 加 data 列表
-        List<LoreCondition> loreConditions = section.getSectionList("lore", s -> {
-            List<ItemRequirement> when = new ArrayList<>();
-            Boolean unpref = null;
-            List<String> data;
-            if (s.keySet().contains("when")) {
-                when = s.getSectionList("when", w -> parseAmount(w.getNonNullString("require")));
-                if (s.keySet().contains("unpreferred")) {
-                    unpref = s.getBoolean("unpreferred", false);
+        Map<Key, Integer> perfect = new LinkedHashMap<>();
+        ConfigSection perfectSection = section.getSection("perfect");
+        if (perfectSection != null) {
+            for (String itemStr : perfectSection.keySet()) {
+                int weight = perfectSection.getInt(itemStr, 1);
+                if (weight > 0) {
+                    perfect.put(Key.of(itemStr), weight);
                 }
-                data = s.getStringList("data");
-            } else {
-                when.add(parseAmount(s.getNonNullString("require")));
-                data = List.of(s.getNonNullString("data"));
             }
-            return new LoreCondition(when, unpref, data);
-        });
-
-        // 校验 require 的数量不能超过它所属 raw 类别的 min
-        FoodCategoryRegistry cat = FoodCategoryRegistry.instance();
-        for (ItemRequirement req : require) {
-            for (RawRequirement r : raw) {
-                if (r.min() > 0 && cat.isInCategory(cook, req.item(), r.category()) && r.min() < req.count()) {
-                    KaleidoscopeCookeryPlugin.instance().getLogger().warning(
-                            ConsoleMessages.t("food.flex.require_exceeds_min",
-                                    id.asString(), req.item().asString(), req.count(), r.category(), r.min()));
-                    return false;
-                }
+        } else {
+            // 兼容写法 perfect 也可以写成 minecraft:beef 2 这样的字符串列表
+            for (String raw : section.getStringList("perfect")) {
+                ItemRequirement req = parseAmount(raw);
+                perfect.put(req.item(), req.count());
             }
         }
 
-        FoodRecipeRegistry.instance().registerFlex(
-                new FlexFoodRecipe(id, result, cook, require, raw,
-                        preferred, unpreferred, loreConditions, liquids));
+        if (perfect.isEmpty()) {
+            KaleidoscopeCookeryPlugin.instance().getLogger().warning(
+                    ConsoleMessages.t("food.flex.empty_perfect", id.asString()));
+            return false;
+        }
+
+        // carrier 省略表示空手取 写 minecraft:bowl 就是要碗 花盆之类同理
+        // 模板没法条件性省略键 所以用 minecraft:air 表示空手盛出
+        String carrierId = section.getString("carrier", (String) null);
+        Key carrier = carrierId == null || carrierId.isEmpty() || AIR.asString().equals(carrierId)
+                ? null : Key.of(carrierId);
+        FlexFoodRecipe recipe = FlexFoodRecipe.of(id, result, cook, perfect, liquids, carrier);
+        // 余弦是尺度无关的 方向相同的两道菜会永远打平 加载期就报出来
+        FlexFoodRecipe clash = FoodRecipeRegistry.instance().findSameDirection(recipe);
+        if (clash != null) {
+            KaleidoscopeCookeryPlugin.instance().getLogger().warning(
+                    ConsoleMessages.t("food.flex.duplicate_perfect", id.asString(), clash.id().asString()));
+            return false;
+        }
+        FoodRecipeRegistry.instance().registerFlex(recipe);
+        RecipeSourceIndex.instance().put(id, path);
+        // 能配出菜的料就该能下锅 白名单直接从 perfect 反推
+        for (Key ingredient : perfect.keySet()) {
+            ApplianceFoodRegistry.instance().register(cook, ingredient);
+        }
         return true;
     }
 
-    static final class PotFlexFoodsParser extends IdSectionConfigParser {
-        private int count;
+    // 清空某器具的模糊配方前先摘掉它们的来源登记 避免重载后残留指向旧文件
+    private static void dropFlexSources(ApplianceType cook) {
+        for (FlexFoodRecipe r : FoodRecipeRegistry.instance().flexRecipes(cook)) {
+            RecipeSourceIndex.instance().remove(r.id());
+        }
+    }
 
-        @Override
-        public String[] sectionId() {
-            return new String[]{"pot_flex_foods", "pot-flex-foods"};
+    static final class PotFlexFoodsParser extends CookeryIdParser {
+        PotFlexFoodsParser() {
+            super(POT_FLEX_FOODS, List.of(POT_FOOD_RAW), "pot_flex_foods", "pot-flex-foods");
         }
 
         @Override
-        public LoadingStage loadingStage() {
-            return POT_FLEX_FOODS;
-        }
-
-        @Override
-        public List<LoadingStage> dependencies() {
-            return List.of(POT_FOOD_RAW);
-        }
-
-        @Override
-        public int count() {
-            return count;
-        }
-
-        @Override
-        public void preProcess() {
-            count = 0;
+        protected void reset() {
+            dropFlexSources(ApplianceType.POT);
             FoodRecipeRegistry.instance().clearFlex(ApplianceType.POT);
         }
 
         @Override
-        protected void parseSection(@NotNull Pack pack, @NotNull Path path,
-                                    @NotNull Key id, @NotNull ConfigSection section) {
-            if (parseFlexRecipe(id, section, ApplianceType.POT, List.of())) {
-                count++;
-            }
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
+            return parseFlexRecipe(id, path, section, ApplianceType.POT, List.of()) ? 1 : 0;
         }
     }
 
-    static final class StockFlexFoodsParser extends IdSectionConfigParser {
-        private int count;
-
-        @Override
-        public String[] sectionId() {
-            return new String[]{"stock_flex_foods", "stock-flex-foods"};
+    static final class StockFlexFoodsParser extends CookeryIdParser {
+        StockFlexFoodsParser() {
+            super(STOCK_FLEX_FOODS, List.of(STOCK_FOOD_RAW), "stock_flex_foods", "stock-flex-foods");
         }
 
         @Override
-        public LoadingStage loadingStage() {
-            return STOCK_FLEX_FOODS;
-        }
-
-        @Override
-        public List<LoadingStage> dependencies() {
-            return List.of(STOCK_FOOD_RAW);
-        }
-
-        @Override
-        public int count() {
-            return count;
-        }
-
-        @Override
-        public void preProcess() {
-            count = 0;
+        protected void reset() {
+            dropFlexSources(ApplianceType.STOCKPOT);
             FoodRecipeRegistry.instance().clearFlex(ApplianceType.STOCKPOT);
         }
 
         @Override
-        protected void parseSection(@NotNull Pack pack, @NotNull Path path,
-                                    @NotNull Key id, @NotNull ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
             List<Key> liquids = section.getStringList("liquid").stream().map(Key::of).toList();
-            if (parseFlexRecipe(id, section, ApplianceType.STOCKPOT, liquids)) {
-                count++;
-            }
+            return parseFlexRecipe(id, path, section, ApplianceType.STOCKPOT, liquids) ? 1 : 0;
         }
     }
 
-    static final class AccurateFoodsParser extends IdSectionConfigParser {
-        private int count;
-
-        @Override
-        public String[] sectionId() {
-            return new String[]{"accurate_foods", "accurate-foods"};
+    static final class AccurateFoodsParser extends CookeryIdParser {
+        AccurateFoodsParser() {
+            super(ACCURATE_FOODS, List.of(LoadingStages.ITEM), "accurate_foods", "accurate-foods");
         }
 
         @Override
-        public LoadingStage loadingStage() {
-            return ACCURATE_FOODS;
-        }
-
-        @Override
-        public List<LoadingStage> dependencies() {
-            return List.of(LoadingStages.ITEM);
-        }
-
-        @Override
-        public int count() {
-            return count;
-        }
-
-        @Override
-        public void preProcess() {
-            count = 0;
+        protected void reset() {
+            for (ApplianceType cook : ApplianceType.values()) {
+                for (AccurateFoodRecipe r : FoodRecipeRegistry.instance().accurateRecipes(cook)) {
+                    RecipeSourceIndex.instance().remove(r.id());
+                }
+            }
             FoodRecipeRegistry.instance().clearAccurate();
             ApplianceFoodRegistry.instance().clear(ApplianceType.STEAMER);
             ApplianceFoodRegistry.instance().clear(ApplianceType.SHAWARMA);
@@ -308,8 +330,7 @@ public final class FoodRecipeManager {
         }
 
         @Override
-        protected void parseSection(@NotNull Pack pack, @NotNull Path path,
-                                    @NotNull Key id, @NotNull ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
             Key input = section.getNonNullIdentifier("require");
 
             // result 列表写法 每项 物品 权重 扁平标量则单成品满概率 1 比 1
@@ -336,54 +357,35 @@ public final class FoodRecipeManager {
                 if (cook != ApplianceType.MILLSTONE) {
                     KaleidoscopeCookeryPlugin.instance().getLogger().warning(
                             ConsoleMessages.t("food.accurate.rotations_millstone_only", id.asString()));
-                    return;
+                    return 0;
                 }
                 rotations = section.getInt("rotations", 0);
             }
             // 单次产出份数 不配或配非法值都归一到 1
-            int resultCount = Math.max(1, section.getInt("result_count", 1));
             List<String> lore = section.getStringList("lore");
 
             FoodRecipeRegistry.instance().registerAccurate(
                     new AccurateFoodRecipe(id, input, results, cook, rotations, resultCount, lore));
+            RecipeSourceIndex.instance().put(id, path);
             // require 自动放入白名单
             ApplianceFoodRegistry.instance().register(cook, input);
-            count++;
+            return 1;
         }
     }
 
-    // teapot_liquid 每个液体 id 下配 bar_left bar_right bar_empty 与满格字形(bar_water/bar_lava/bar_xxx) 字形为完整 image id
-    static final class TeapotLiquidParser extends SectionConfigParser {
-        private int count;
-
-        @Override
-        public String[] sectionId() {
-            return new String[]{"teapot_liquid", "teapot-liquid"};
+    static final class TeapotLiquidParser extends CookerySectionParser {
+        TeapotLiquidParser() {
+            super(TEAPOT_LIQUID, List.of(LoadingStages.ITEM), "teapot_liquid", "teapot-liquid");
         }
 
         @Override
-        public LoadingStage loadingStage() {
-            return TEAPOT_LIQUID;
-        }
-
-        @Override
-        public List<LoadingStage> dependencies() {
-            return List.of(LoadingStages.ITEM);
-        }
-
-        @Override
-        public int count() {
-            return count;
-        }
-
-        @Override
-        public void preProcess() {
-            count = 0;
+        protected void reset() {
             FoodRecipeRegistry.instance().clearTeapotLiquid();
         }
 
         @Override
-        protected void parseSection(Pack pack, Path path, ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, ConfigSection section) {
+            int count = 0;
             for (String fluidStr : section.keySet()) {
                 ConfigSection sub = section.getSection(fluidStr);
                 if (sub == null) {
@@ -398,6 +400,7 @@ public final class FoodRecipeManager {
                         new TeapotLiquid(Key.of(fluidStr), name, left, right, empty, full));
                 count++;
             }
+            return count;
         }
 
         // 满格字形键名随液体而变(bar_water/bar_lava/bar_xxx) 取除左右空格外的首个 bar_ 键值
@@ -419,37 +422,19 @@ public final class FoodRecipeManager {
     }
 
     // tea_cup 每个茶(成品)id 下配 display_model 扁平或列表 成形时随机取一个 模型需在 items 定义
-    static final class TeaCupParser extends SectionConfigParser {
-        private int count;
-
-        @Override
-        public String[] sectionId() {
-            return new String[]{"tea_cup", "tea-cup"};
+    static final class TeaCupParser extends CookerySectionParser {
+        TeaCupParser() {
+            super(TEA_CUP, List.of(LoadingStages.ITEM), "tea_cup", "tea-cup");
         }
 
         @Override
-        public LoadingStage loadingStage() {
-            return TEA_CUP;
-        }
-
-        @Override
-        public List<LoadingStage> dependencies() {
-            return List.of(LoadingStages.ITEM);
-        }
-
-        @Override
-        public int count() {
-            return count;
-        }
-
-        @Override
-        public void preProcess() {
-            count = 0;
+        protected void reset() {
             FoodRecipeRegistry.instance().clearTeaCup();
         }
 
         @Override
-        protected void parseSection(Pack pack, Path path, ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, ConfigSection section) {
+            int count = 0;
             for (String teaStr : section.keySet()) {
                 ConfigSection sub = section.getSection(teaStr);
                 if (sub == null) {
@@ -476,48 +461,30 @@ public final class FoodRecipeManager {
                 FoodRecipeRegistry.instance().registerTeaCup(new TeaCup(tea, item, models));
                 count++;
             }
+            return count;
         }
     }
 
-    static final class TeapotResultParser extends IdSectionConfigParser {
-        private int count;
-
-        @Override
-        public String[] sectionId() {
-            return new String[]{"teapot_result", "teapot-result"};
+    static final class TeapotResultParser extends CookeryIdParser {
+        TeapotResultParser() {
+            super(TEAPOT_RESULT, List.of(LoadingStages.ITEM, TEAPOT_LIQUID, TEA_CUP),
+                    "teapot_result", "teapot-result");
         }
 
         @Override
-        public LoadingStage loadingStage() {
-            return TEAPOT_RESULT;
-        }
-
-        @Override
-        public List<LoadingStage> dependencies() {
-            return List.of(LoadingStages.ITEM, TEAPOT_LIQUID, TEA_CUP);
-        }
-
-        @Override
-        public int count() {
-            return count;
-        }
-
-        @Override
-        public void preProcess() {
-            count = 0;
+        protected void reset() {
             FoodRecipeRegistry.instance().clearTeapot();
             ApplianceFoodRegistry.instance().clear(ApplianceType.TEAPOT);
         }
 
         // fluid 液体类型(如 minecraft:water) require 原料 数量(消耗) result 产物 数量 time 处理 tick
         @Override
-        protected void parseSection(@NotNull Pack pack, @NotNull Path path,
-                                    @NotNull Key id, @NotNull ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
             Key fluid = section.getNonNullIdentifier("fluid");
             if (!FoodRecipeRegistry.instance().hasTeapotLiquid(fluid)) {
                 KaleidoscopeCookeryPlugin.instance().getLogger().warning(
                         ConsoleMessages.t("food.teapot.unregistered_liquid", id.asString(), fluid.asString()));
-                return;
+                return 0;
             }
             ItemRequirement ingredient = parseAmount(section.getNonNullString("require"));
             ItemRequirement result = parseAmount(section.getNonNullString("result"));
@@ -525,63 +492,47 @@ public final class FoodRecipeManager {
             if (!FoodRecipeRegistry.instance().hasTeaCup(result.item())) {
                 KaleidoscopeCookeryPlugin.instance().getLogger().warning(
                         ConsoleMessages.t("food.teapot.missing_tea_cup", id.asString(), result.item().asString()));
-                return;
+                return 0;
             }
             int time = section.getInt("time", 200);
 
             FoodRecipeRegistry.instance().registerTeapot(new TeapotRecipe(
                     id, fluid, ingredient.item(), ingredient.count(), result.item(), result.count(), time));
             ApplianceFoodRegistry.instance().register(ApplianceType.TEAPOT, ingredient.item());
-            count++;
+            return 1;
         }
     }
 
-    static final class ChoppingBoardRawsParser extends IdSectionConfigParser {
-        private int count;
-
-        @Override
-        public String[] sectionId() {
-            return new String[]{"chopping_board_raws", "chopping-board-raws"};
+    static final class ChoppingBoardRawsParser extends CookeryIdParser {
+        ChoppingBoardRawsParser() {
+            super(CHOPPING_BOARD_RAWS, List.of(LoadingStages.ITEM),
+                    "chopping_board_raws", "chopping-board-raws");
         }
 
         @Override
-        public LoadingStage loadingStage() {
-            return CHOPPING_BOARD_RAWS;
-        }
-
-        @Override
-        public List<LoadingStage> dependencies() {
-            return List.of(LoadingStages.ITEM);
-        }
-
-        @Override
-        public int count() {
-            return count;
-        }
-
-        @Override
-        public void preProcess() {
-            count = 0;
+        protected void reset() {
             FoodRecipeRegistry.instance().clearChopping();
             ApplianceFoodRegistry.instance().clear(ApplianceType.CHOPPING_BOARD);
         }
 
         @Override
-        protected void parseSection(@NotNull Pack pack, @NotNull Path path,
-                                    @NotNull Key id, @NotNull ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
             Key input = section.getNonNullIdentifier("require");
             int stage = section.getInt("stage", 1);
 
             // values 为模型 id 前缀 按 stage 派生各阶段模型 prefix/0 到 prefix/ stage 减 1
-            String prefix = section.getNonNullString("values");
-            List<String> values = new ArrayList<>(stage);
-            for (int i = 0; i < stage; i++) {
-                values.add(prefix + "/" + i);
+            // 省略则不做分阶段模型 砧板上直接展示放上去的东西本身 切的次数与产出照常
+            String prefix = section.getString("values", (String) null);
+            List<String> values = new ArrayList<>(prefix == null ? 0 : stage);
+            if (prefix != null && !prefix.isEmpty()) {
+                for (int i = 0; i < stage; i++) {
+                    values.add(prefix + "/" + i);
+                }
             }
 
             // 校验实际模型数量与 stage 是否一致 仅后台提示 不阻断注册
-            int modelCount = 0;
-            for (int i = 0; i < stage + 16; i++) {
+            int modelCount = values.isEmpty() ? stage : 0;
+            for (int i = 0; !values.isEmpty() && i < stage + 16; i++) {
                 if (CraftEngine.instance().itemManager().getItemDefinition(Key.of(prefix + "/" + i)).isPresent()) {
                     modelCount++;
                 } else {
@@ -604,13 +555,13 @@ public final class FoodRecipeManager {
                 KaleidoscopeCookeryPlugin.instance().getLogger().warning(
                         ConsoleMessages.t("food.chopping.single_result_too_many",
                                 id.asString(), mode, results.size()));
-                return;
+                return 0;
             }
 
             FoodRecipeRegistry.instance().registerChopping(
                     new ChoppingBoardRecipe(id, input, stage, values, mode, results, extras));
             ApplianceFoodRegistry.instance().register(ApplianceType.CHOPPING_BOARD, input);
-            count++;
+            return 1;
         }
 
         // 标量或列表都解析成产物列表

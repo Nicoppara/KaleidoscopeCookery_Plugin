@@ -59,6 +59,18 @@ public final class FruitBasketElement implements BlockEntityElement {
         }
     }
 
+    // 区块激活时登记进果篮索引 关服不算 停用时注销 这对钩子是成对且确定的
+    // 比等玩家追踪才登记可靠 猫在没人追踪的区块里也能找到果篮
+    @Override
+    public void activate() {
+        controller.ensurePositionsInitialized();
+    }
+
+    @Override
+    public void deactivate() {
+        controller.unregisterFromIndex();
+    }
+
     @Override
     public void show(@NotNull Player player) {
         controller.ensurePositionsInitialized();

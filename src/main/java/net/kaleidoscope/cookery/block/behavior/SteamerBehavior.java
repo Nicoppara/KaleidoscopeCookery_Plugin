@@ -60,6 +60,7 @@ import net.kaleidoscope.cookery.util.BehaviorConfig;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.Localization;
+import net.kaleidoscope.cookery.util.MessageKeys;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
 import java.util.ArrayList;
@@ -87,9 +88,6 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     public int cookingTime = 200;
     public int particleInterval = 20;
     public int particleCount = 3;
-    public String msgMaxLayers = "kaleidoscopecookery.message.steamer.max_layers";
-    public String msgFull = "kaleidoscopecookery.message.steamer.full";
-    public String msgNeedStove = "kaleidoscopecookery.message.steamer.need_stove";
 
     private int controllerId;
     private Property<SlabType> typeProperty;
@@ -182,7 +180,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     private InteractionResult handleStackSteamer(UseOnContext context, ImmutableBlockState state, World level, Player player, InteractionHand hand, Item itemInHand) {
         int cap = stackHeightCap(level, context.getClickedPos());
         if (stackLayerCount(level, context.getClickedPos()) >= cap) {
-            player.sendActionBar(Localization.componentWithReplacement(msgMaxLayers, "{max}", String.valueOf(cap)));
+            player.sendActionBar(Localization.componentWithReplacement(MessageKeys.STEAMER_MAX_LAYERS, "{max}", String.valueOf(cap)));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
 
@@ -202,7 +200,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         BlockHitResult hitResult = new BlockHitResult(context.getClickedLocation(), Direction.UP, placePos, false);
         BlockPlaceContext placeContext = new BlockPlaceContext(level, player, hand, itemInHand, hitResult);
         // 叠笼实际放置点是向上 walk 出的新位置 与点击位可能跨领地 放动作前再校验目标位置
-        if (!InteractGuard.canInteract(player, level, placePos)) {
+        if (!InteractGuard.canPlace(player, level, placePos)) {
             return InteractionResult.PASS;
         }
 
@@ -263,6 +261,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         if (!stack.get(0).canSteam(food)) {
             return 0;
         }
+        // 一次只填一格 从下往上找第一个有空位的 整摞一次填满会让上层没受热就塞满
+        // 一格是一个大蒸笼 由两个小蒸笼组成 所以 capacity 给 8 半格的小蒸笼给 4
         int remaining = food.count();
         int placed = 0;
         for (SteamerController c : stack) {
@@ -270,12 +270,12 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
                 remaining--;
                 placed++;
             }
-            if (remaining == 0) {
+            if (placed > 0) {
                 break;
             }
         }
         if (placed == 0) {
-            player.sendActionBar(Localization.component(msgFull));
+            player.sendActionBar(Localization.component(MessageKeys.STEAMER_FULL));
             return -1;
         }
         return placed;
@@ -572,7 +572,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         Object belowPos = LocationUtils.below(LocationUtils.toBlockPos(clickedPos));
         if (!HeatSourceUtils.isHeatSource(level, belowPos)) {
             if (context.getPlayer() != null) {
-                context.getPlayer().sendActionBar(Localization.component(msgNeedStove));
+                context.getPlayer().sendActionBar(Localization.component(MessageKeys.STEAMER_NEED_STOVE));
             }
             return null;
         }
@@ -716,10 +716,12 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
             behavior.stoveStackHeight = BehaviorConfig.getInt(section, behavior.stoveStackHeight, "stove_stack_height", "stove-stack-height");
             behavior.particleInterval = BehaviorConfig.getInt(section, behavior.particleInterval, "particle_interval", "particle-interval");
             behavior.particleCount = BehaviorConfig.getInt(section, behavior.particleCount, "particle_count", "particle-count");
-            behavior.msgMaxLayers = BehaviorConfig.getString(section, behavior.msgMaxLayers, "msg_max_layers", "msg-max-layers");
-            behavior.msgFull = BehaviorConfig.getString(section, behavior.msgFull, "msg_full", "msg-full");
-            behavior.msgNeedStove = BehaviorConfig.getString(section, behavior.msgNeedStove, "msg_need_stove", "msg-need-stove");
             return behavior;
         }
+    }
+
+    // pendingData 握着 NMS 实体的强引用 关服时 runLater 不会再跑 必须显式清
+    public static void clearAll() {
+        pendingData.clear();
     }
 }

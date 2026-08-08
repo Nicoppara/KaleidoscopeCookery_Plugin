@@ -40,15 +40,18 @@ import net.kaleidoscope.cookery.util.Hands;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.Localization;
+import net.kaleidoscope.cookery.util.MessageKeys;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
+import net.kaleidoscope.cookery.item.ItemNames;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
-import net.kaleidoscope.cookery.recipe.FoodCategoryRegistry;
+import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.util.RecipeUtils;
 import net.kaleidoscope.cookery.util.EventUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
+import net.kaleidoscope.cookery.api.PotCookConditions;
 import net.kaleidoscope.cookery.api.event.PotExtractDishEvent;
 
 import java.util.List;
@@ -73,24 +76,13 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
 
     public Key shovelNoOilItem = ItemKeys.KITCHEN_SHOVEL_NO_OIL;
     public Key shovelHasOilItem = ItemKeys.KITCHEN_SHOVEL_HAS_OIL;
+    // 油壶 一壶多次 耐久即剩余油量 倒空换成空壶
+    public Key oilPotItem = ItemKeys.OIL_POT;
+    public Key oilPotEmptyItem = ItemKeys.OIL_POT_EMPTY;
     public Key recipeItemNoRecipe = ItemKeys.RECIPE_ITEM_NO_RECIPE;
     public Key recipeItemHasRecipe = ItemKeys.RECIPE_ITEM_HAS_RECIPE;
 
     public Key bowlItem = ItemKeys.BOWL;
-    public String msgNeedBowl = "kaleidoscopecookery.message.pot.need_bowl";
-    public String msgHasOil = "kaleidoscopecookery.message.pot.has_oil";
-    public String msgPotOccupied = "kaleidoscopecookery.message.pot.occupied";
-    public String msgNeedHeat = "kaleidoscopecookery.message.pot.need_heat";
-    public String msgNeedOilFirst = "kaleidoscopecookery.message.pot.need_oil_first";
-    public String msgNotEnoughIngredients = "kaleidoscopecookery.message.pot.not_enough_ingredients";
-    public String msgBurntNoRecipe = "kaleidoscopecookery.message.pot.burnt_no_recipe";
-    public String msgNotDoneYet = "kaleidoscopecookery.message.pot.not_done_yet";
-    public String msgMixedNoRecipe = "kaleidoscopecookery.message.pot.mixed_no_recipe";
-    public String msgRecipeSaved = "kaleidoscopecookery.message.pot.recipe_saved";
-    public String msgStartCooking = "kaleidoscopecookery.message.pot.start_cooking";
-    public String msgDishReady = "kaleidoscopecookery.message.pot.dish_ready";
-    public String msgAllBurnt = "kaleidoscopecookery.message.pot.all_burnt";
-    public String msgNotIngredient = "kaleidoscopecookery.message.pot.not_ingredient";
 
     public PotBehavior(BlockDefinition blockDefinition) {
         super(blockDefinition);
@@ -125,6 +117,8 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         InteractionResult toolResult = InteractionResult.PASS;
         if (ItemMatch.is(toolItem, shovelHasOilItem)) {
             toolResult = handleAddOilWithShovel(context, controller, player, toolHand, hasHeatSource);
+        } else if (ItemMatch.is(toolItem, oilPotItem)) {
+            toolResult = handleAddOilWithPot(context, controller, player, toolHand, toolItem, hasHeatSource);
         } else if (ItemMatch.is(toolItem, oilItem)) {
             toolResult = handleAddOil(context, controller, player, toolHand, toolItem, hasHeatSource);
         } else if (ItemMatch.is(toolItem, shovelNoOilItem)) {
@@ -138,13 +132,19 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
 
         // 取放食材只认主手
         Item mainItem = player.getItemInHand(InteractionHand.MAIN_HAND);
-        if (mainItem.vanillaId().equals(bowlItem) && (controller.stage() == PotStage.DONE || controller.stage() == PotStage.BURNT)) {
-            return handleExtractDish(context, controller, player, InteractionHand.MAIN_HAND);
+        // 盛装容器由配方决定 carrier 为空表示空手就能盛 所以这条要排在空手取食材前面
+        boolean cooked = controller.stage() == PotStage.DONE || controller.stage() == PotStage.BURNT;
+        if (cooked) {
+            Key carrier = controller.resultCarrier();
+            boolean holdingCarrier = carrier == null ? mainItem.isEmpty() : mainItem.vanillaId().equals(carrier);
+            if (holdingCarrier) {
+                return handleExtractDish(context, controller, player, InteractionHand.MAIN_HAND);
+            }
         }
         if (mainItem.isEmpty()) {
             return handleTakeIngredient(controller, player, InteractionHand.MAIN_HAND);
         }
-        if (FoodCategoryRegistry.instance().isRegistered(ApplianceType.POT, mainItem.id())) {
+        if (ApplianceFoodRegistry.instance().isAllowed(ApplianceType.POT, mainItem.id())) {
             return handleAddIngredient(context, controller, player, InteractionHand.MAIN_HAND, mainItem, hasHeatSource);
         }
         return InteractionResult.PASS;
@@ -153,6 +153,7 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     // 锅的工具类物品 锅铲 油瓶 食谱本 这些走副手优先
     private boolean isPotTool(Item item) {
         return ItemMatch.is(item, shovelHasOilItem)
+                || ItemMatch.is(item, oilPotItem)
                 || ItemMatch.is(item, oilItem)
                 || ItemMatch.is(item, shovelNoOilItem)
                 || ItemMatch.is(item, recipeItemNoRecipe)
@@ -175,9 +176,11 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         }
         Item dish = BukkitItemManager.instance().wrap(event.dish());
 
+        Key carrier = controller.resultCarrier();
         int available = controller.resultCount();
         int taken = 0;
-        while (taken < available && InventoryUtils.consumeItem(player, bowlItem, 1)) {
+        // carrier 为空的菜空手就能拿 不扣任何东西 有容器的每份扣一个
+        while (taken < available && (carrier == null || InventoryUtils.consumeItem(player, carrier, 1))) {
             InventoryUtils.giveOrHold(player, hand, dish.copyWithCount(1));
             taken++;
         }
@@ -186,7 +189,10 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
             controller.consumeResult(taken);
             player.swingHand(hand);
         } else {
-            player.sendActionBar(Localization.component(msgNeedBowl));
+            player.sendActionBar(carrier == null
+                    ? Localization.component(MessageKeys.POT_USE_HAND)
+                    : Localization.componentWithReplacement(
+                            MessageKeys.POT_NEED_BOWL, "%s", ItemNames.displayName(carrier)));
         }
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
@@ -203,11 +209,11 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     // 用带油锅铲倒油
     private InteractionResult handleAddOilWithShovel(UseOnContext context, PotController controller, Player player, InteractionHand hand, boolean hasHeatSource) {
         if (controller.hasOil()) {
-            player.sendActionBar(Localization.component(msgHasOil));
+            player.sendActionBar(Localization.component(MessageKeys.POT_HAS_OIL));
         } else if (controller.stage() == PotStage.DONE || controller.stage() == PotStage.BURNT) {
-            player.sendActionBar(Localization.component(msgPotOccupied));
+            player.sendActionBar(Localization.component(MessageKeys.POT_OCCUPIED));
         } else if (!hasHeatSource) {
-            player.sendActionBar(Localization.component(msgNeedHeat));
+            player.sendActionBar(Localization.component(MessageKeys.POT_NEED_HEAT));
         } else {
             controller.setHasOil(true);
             player.setItemInHand(hand, InventoryUtils.createOrEmpty(shovelNoOilItem));
@@ -217,14 +223,42 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
+    // 用油壶倒油 扣一点耐久 耐久耗尽换成空壶 别让它碎掉
+    private InteractionResult handleAddOilWithPot(UseOnContext context, PotController controller, Player player, InteractionHand hand, Item itemInHand, boolean hasHeatSource) {
+        if (controller.hasOil()) {
+            player.sendActionBar(Localization.component(MessageKeys.POT_HAS_OIL));
+        } else if (controller.stage() == PotStage.DONE || controller.stage() == PotStage.BURNT) {
+            player.sendActionBar(Localization.component(MessageKeys.POT_OCCUPIED));
+        } else if (!hasHeatSource) {
+            player.sendActionBar(Localization.component(MessageKeys.POT_NEED_HEAT));
+        } else {
+            controller.setHasOil(true);
+            if (!player.canInstabuild()) {
+                // 先判断这是不是最后一次 是就直接换空壶
+                // 交给 hurtAndBreak 的话物品会先摔碎再补发 会多一声破碎音效和一帧空手
+                int max = itemInHand.maxDamage();
+                int damage = itemInHand.damage().orElse(0);
+                if (max > 0 && damage + 1 >= max) {
+                    player.setItemInHand(hand, InventoryUtils.createOrEmpty(oilPotEmptyItem));
+                } else {
+                    itemInHand.damage(damage + 1);
+                    player.setItemInHand(hand, itemInHand);
+                }
+            }
+            context.getLevel().playSound(Vec3d.atCenterOf(context.getClickedPos()), SOUND_ADD_OIL, DEFAULT_VOLUME, 1.0f, SoundSource.BLOCK);
+            player.swingHand(hand);
+        }
+        return InteractionResult.SUCCESS_AND_CANCEL;
+    }
+
     // 用油瓶倒油
     private InteractionResult handleAddOil(UseOnContext context, PotController controller, Player player, InteractionHand hand, Item itemInHand, boolean hasHeatSource) {
         if (controller.hasOil()) {
-            player.sendActionBar(Localization.component(msgHasOil));
+            player.sendActionBar(Localization.component(MessageKeys.POT_HAS_OIL));
         } else if (controller.stage() == PotStage.DONE || controller.stage() == PotStage.BURNT) {
-            player.sendActionBar(Localization.component(msgPotOccupied));
+            player.sendActionBar(Localization.component(MessageKeys.POT_OCCUPIED));
         } else if (!hasHeatSource) {
-            player.sendActionBar(Localization.component(msgNeedHeat));
+            player.sendActionBar(Localization.component(MessageKeys.POT_NEED_HEAT));
         } else {
             controller.setHasOil(true);
             InventoryUtils.shrinkHeld(player, itemInHand, 1);
@@ -235,13 +269,16 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     }
 
     // 翻炒 锅里翻炒不了(空/已完成/动画中)就不挥手 返回 PASS 让调用方继续走主手逻辑
+    // 起炒条件没满足时已经提示过玩家 这里吞掉这次右键但不挥手 别让人以为炒了一下
     private InteractionResult handleStirFry(UseOnContext context, PotController controller, Player player, InteractionHand hand, boolean hasHeatSource) {
-        if (!controller.stirFry(hasHeatSource, player)) {
+        PotController.StirResult result = controller.stirFry(hasHeatSource, player);
+        if (result == PotController.StirResult.IDLE) {
             return InteractionResult.PASS;
         }
-        if (hasHeatSource && controller.hasOil()) {
-            context.getLevel().playSound(Vec3d.atCenterOf(context.getClickedPos()), SOUND_STIR_FRY, DEFAULT_VOLUME, 1.0f, SoundSource.BLOCK);
+        if (result == PotController.StirResult.DENIED) {
+            return InteractionResult.SUCCESS_AND_CANCEL;
         }
+        context.getLevel().playSound(Vec3d.atCenterOf(context.getClickedPos()), SOUND_STIR_FRY, DEFAULT_VOLUME, 1.0f, SoundSource.BLOCK);
         player.swingHand(hand);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
@@ -251,11 +288,14 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         ItemStack bukkitStack = ItemStackUtils.getBukkitStack(itemInHand.minecraftItem());
         if (RecipeUtils.hasRecipe(bukkitStack)) {
             if (controller.stage() == PotStage.IDLE && controller.ingredients().isEmpty()) {
-                if (!controller.hasOil()) {
-                    player.sendActionBar(Localization.component(msgNeedOilFirst));
+                PotCookConditions.Verdict verdict = controller.cookVerdict(hasHeatSource, player);
+                if (!verdict.allowed()) {
+                    if (verdict.message() != null) {
+                        player.sendActionBar(Localization.component(verdict.message()));
+                    }
                 } else if (!RecipeUtils.tryAutoFill((org.bukkit.entity.Player) player.platformPlayer(), bukkitStack,
                         item -> controller.addIngredient(item, hasHeatSource, player))) {
-                    player.sendActionBar(Localization.component(msgNotEnoughIngredients));
+                    player.sendActionBar(Localization.component(MessageKeys.POT_NOT_ENOUGH_INGREDIENTS));
                 } else {
                     player.swingHand(hand);
                     context.getLevel().playSound(Vec3d.atCenterOf(context.getClickedPos()), SOUND_ADD_INGREDIENT, DEFAULT_VOLUME, 0.5f, SoundSource.BLOCK);
@@ -265,17 +305,17 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         }
 
         if (controller.stage() == PotStage.BURNT) {
-            player.sendActionBar(Localization.component(msgBurntNoRecipe));
+            player.sendActionBar(Localization.component(MessageKeys.POT_BURNT_NO_RECIPE));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         if (controller.stage() != PotStage.DONE) {
-            player.sendActionBar(Localization.component(msgNotDoneYet));
+            player.sendActionBar(Localization.component(MessageKeys.POT_NOT_DONE_YET));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         List<Key> ingredientIds = controller.ingredients().stream().map(Item::id).toList();
         FlexFoodRecipe matchedRecipe = FoodRecipeRegistry.instance().findBestFlexRecipe(ApplianceType.POT, ingredientIds).orElse(null);
         if (matchedRecipe == null) {
-            player.sendActionBar(Localization.component(msgMixedNoRecipe));
+            player.sendActionBar(Localization.component(MessageKeys.POT_MIXED_NO_RECIPE));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         Item recipeItem = InventoryUtils.createOrEmpty(recipeItemHasRecipe);
@@ -284,7 +324,7 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         InventoryUtils.shrinkHeld(player, itemInHand, 1);
         InventoryUtils.giveOrHold(player, hand, BukkitItemManager.instance().wrap(recorded));
         player.swingHand(hand);
-        player.sendActionBar(Localization.component(msgRecipeSaved));
+        player.sendActionBar(Localization.component(MessageKeys.POT_RECIPE_SAVED));
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
@@ -370,24 +410,12 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
             b.oilItem = Key.of(BehaviorConfig.getString(section, b.oilItem.asString(), "oil_item", "oil-item"));
             b.shovelNoOilItem = Key.of(BehaviorConfig.getString(section, b.shovelNoOilItem.asString(), "shovel_no_oil_item", "shovel-no-oil-item"));
             b.shovelHasOilItem = Key.of(BehaviorConfig.getString(section, b.shovelHasOilItem.asString(), "shovel_has_oil_item", "shovel-has-oil-item"));
+            b.oilPotItem = Key.of(BehaviorConfig.getString(section, b.oilPotItem.asString(), "oil_pot_item", "oil-pot-item"));
+            b.oilPotEmptyItem = Key.of(BehaviorConfig.getString(section, b.oilPotEmptyItem.asString(), "oil_pot_empty_item", "oil-pot-empty-item"));
             b.recipeItemNoRecipe = Key.of(BehaviorConfig.getString(section, b.recipeItemNoRecipe.asString(), "recipe_item_no_recipe", "recipe-item-no-recipe"));
             b.recipeItemHasRecipe = Key.of(BehaviorConfig.getString(section, b.recipeItemHasRecipe.asString(), "recipe_item_has_recipe", "recipe-item-has-recipe"));
             b.bowlItem = Key.of(BehaviorConfig.getString(section, b.bowlItem.asString(), "bowl_item", "bowl-item"));
 
-            b.msgNeedBowl = BehaviorConfig.getString(section, b.msgNeedBowl, "msg_need_bowl", "msg-need-bowl");
-            b.msgHasOil = BehaviorConfig.getString(section, b.msgHasOil, "msg_has_oil", "msg-has-oil");
-            b.msgPotOccupied = BehaviorConfig.getString(section, b.msgPotOccupied, "msg_pot_occupied", "msg-pot-occupied");
-            b.msgNeedHeat = BehaviorConfig.getString(section, b.msgNeedHeat, "msg_need_heat", "msg-need-heat");
-            b.msgNeedOilFirst = BehaviorConfig.getString(section, b.msgNeedOilFirst, "msg_need_oil_first", "msg-need-oil-first");
-            b.msgNotEnoughIngredients = BehaviorConfig.getString(section, b.msgNotEnoughIngredients, "msg_not_enough_ingredients", "msg-not-enough-ingredients");
-            b.msgBurntNoRecipe = BehaviorConfig.getString(section, b.msgBurntNoRecipe, "msg_burnt_no_recipe", "msg-burnt-no-recipe");
-            b.msgNotDoneYet = BehaviorConfig.getString(section, b.msgNotDoneYet, "msg_not_done_yet", "msg-not-done-yet");
-            b.msgMixedNoRecipe = BehaviorConfig.getString(section, b.msgMixedNoRecipe, "msg_mixed_no_recipe", "msg-mixed-no-recipe");
-            b.msgRecipeSaved = BehaviorConfig.getString(section, b.msgRecipeSaved, "msg_recipe_saved", "msg-recipe-saved");
-            b.msgStartCooking = BehaviorConfig.getString(section, b.msgStartCooking, "msg_start_cooking", "msg-start-cooking");
-            b.msgDishReady = BehaviorConfig.getString(section, b.msgDishReady, "msg_dish_ready", "msg-dish-ready");
-            b.msgAllBurnt = BehaviorConfig.getString(section, b.msgAllBurnt, "msg_all_burnt", "msg-all-burnt");
-            b.msgNotIngredient = BehaviorConfig.getString(section, b.msgNotIngredient, "msg_not_ingredient", "msg-not-ingredient");
             return b;
         }
     }

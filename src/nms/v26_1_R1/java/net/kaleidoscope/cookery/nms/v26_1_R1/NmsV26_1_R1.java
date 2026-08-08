@@ -2,6 +2,7 @@ package net.kaleidoscope.cookery.nms.v26_1_R1;
 
 import net.kaleidoscope.cookery.nms.NmsBridge;
 import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundSpectateEntityPacket;
 import net.minecraft.network.protocol.game.ServerboundTeleportToEntityPacket;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import org.bukkit.craftbukkit.entity.CraftEntity;
@@ -30,8 +31,9 @@ public final class NmsV26_1_R1 implements NmsBridge {
     }
 
     @Override
-    public boolean isSpectateTeleportPacket(Object packet) {
-        return packet instanceof ServerboundTeleportToEntityPacket;
+    public boolean isSpectatePacket(Object packet) {
+        return packet instanceof ServerboundTeleportToEntityPacket
+                || packet instanceof ServerboundSpectateEntityPacket;
     }
 
     @Override

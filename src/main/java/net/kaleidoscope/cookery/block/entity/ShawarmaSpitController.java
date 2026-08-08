@@ -1,5 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
 
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.block.behavior.ShawarmaSpitBehavior;
 
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
@@ -299,7 +300,7 @@ public class ShawarmaSpitController extends BlockEntityController {
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
                 if (!items[l][s].isEmpty()) {
-                    DropUtils.dropAtCenter(blockEntity, items[l][s]);
+                    DropUtils.dropOnRemove(blockEntity, items[l][s]);
                 }
             }
         }
@@ -316,13 +317,14 @@ public class ShawarmaSpitController extends BlockEntityController {
         ListTag itemsTag = new ListTag();
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
-                if (items[l][s].isEmpty()) {
+                Tag itemTag = BlockEntityNbt.itemTag(items[l][s]);
+                if (itemTag == null) {
                     continue;
                 }
                 CompoundTag entry = new CompoundTag();
                 entry.putInt(K_LAYER, l);
                 entry.putInt(K_SLOT, s);
-                entry.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(items[l][s].minecraftItem()));
+                entry.put(K_ITEM, itemTag);
                 entry.putInt(K_PROGRESS, cookingProgress[l][s]);
                 entry.putInt(K_TIME, cookingTime[l][s]);
                 itemsTag.add(entry);

@@ -1,5 +1,7 @@
 package net.kaleidoscope.cookery.entity.cat;
 
+import net.kaleidoscope.cookery.block.entity.FruitBasketController;
+import net.momirealms.craftengine.core.world.BlockPos;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
@@ -22,7 +24,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-// 猫趴果篮 AI 扫描附近果篮 寻路过去 趴下
+// 猫趴果篮
 // 一个果篮同一时间只允许一只猫认领 驯服猫可挤走野猫 驯服猫占着时其它猫不来
 public final class FruitBasketCatGoal implements Goal<Cat> {
 
@@ -151,36 +153,32 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
         int cz = base.getBlockZ();
 
         Location best = null;
-        double bestSq = Double.MAX_VALUE;
+
         boolean tamed = cat.isTamed();
         UUID self = cat.getUniqueId();
 
-        for (int dx = -H_RADIUS; dx <= H_RADIUS; dx++) {
-            for (int dy = -V_RADIUS; dy <= V_RADIUS; dy++) {
-                for (int dz = -H_RADIUS; dz <= H_RADIUS; dz++) {
-                    Block b = w.getBlockAt(cx + dx, cy + dy, cz + dz);
-                    if (!isFruitBasket(b)) {
-                        continue;
-                    }
-                    Location bl = b.getLocation();
-                    Claim c = resolveClaim(posOf(bl));
-                    if (c != null) {
-                        if (c.cat().equals(self)) {
-                            continue;
-                        }
-                        // 已被占 只有是驯服猫且占者是野猫才能挤走
-                        if (c.tamed() || !tamed) {
-                            continue;
-                        }
-                    }
-                    double sq = bl.distanceSquared(base);
-                    if (sq < bestSq) {
-                        bestSq = sq;
-                        best = bl;
-                    }
-                }
+        // 只查猫自己那一个区块桶 果篮在 ensurePositionsInitialized 时按 SEARCH_RADIUS 铺开登记过
+        Location[] bestHolder = {null};
+        double[] bestSqHolder = {Double.MAX_VALUE};
+        FruitBasketController.forEachNear(w, cx, cz, controller -> {
+            BlockPos pos = controller.blockEntity().pos;
+            if (Math.abs(pos.x() - cx) > H_RADIUS || Math.abs(pos.y() - cy) > V_RADIUS
+                    || Math.abs(pos.z() - cz) > H_RADIUS) {
+                return true;
             }
-        }
+            Location bl = new Location(w, pos.x(), pos.y(), pos.z());
+            Claim c = resolveClaim(posOf(bl));
+            if (c != null && (c.cat().equals(self) || c.tamed() || !tamed)) {
+                return true;
+            }
+            double sq = bl.distanceSquared(base);
+            if (sq < bestSqHolder[0]) {
+                bestSqHolder[0] = sq;
+                bestHolder[0] = bl;
+            }
+            return true;
+        });
+        best = bestHolder[0];
 
         if (best == null) {
             return false;
@@ -324,5 +322,10 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
     @Override
     public EnumSet<GoalType> getTypes() {
         return EnumSet.of(GoalType.MOVE, GoalType.JUMP, GoalType.LOOK);
+    }
+
+    // 关服只做纯内存清理 静态表不清会连着旧 ClassLoader 一起泄漏
+    public static void clearAll() {
+        CLAIMS.clear();
     }
 }

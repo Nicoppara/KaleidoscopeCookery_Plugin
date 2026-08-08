@@ -1,180 +1,97 @@
 package net.kaleidoscope.cookery.block.entity;
 
-import it.unimi.dsi.fastutil.ints.IntArrayList;
+import net.kaleidoscope.cookery.block.entity.render.ItemDisplayPackets;
+import net.kaleidoscope.cookery.block.entity.render.ItemDisplaySet;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.util.Direction;
-import net.momirealms.craftengine.core.util.MiscUtils;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.world.WorldPosition;
-import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy;
-import net.momirealms.craftengine.bukkit.util.EntityUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
-import net.kaleidoscope.cookery.block.entity.render.ItemDisplayPackets;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
+// 厨具展示架左右各挂一件 空槽不生成实体
 public final class KitchenwareRacksElement implements BlockEntityElement {
+    private static final int SLOT_LEFT = 0;
+    private static final int SLOT_RIGHT = 1;
+    private static final int SLOTS = 2;
+
+    private static final float ITEM_SCALE = 0.75f;
+    // 展示框那套
+    private static final byte ITEM_TRANSFORM_FIXED = 8;
+    // 厨具是斜挂在架子上的 先翻面再侧倾
+    private static final float TILT_YAW = 25;
+    private static final float TILT_PITCH = -180;
+    private static final float TILT_ROLL = 45;
+
     private final KitchenwareRacksController controller;
+    private final ItemDisplaySet displays = new ItemDisplaySet(SLOTS);
+    private volatile boolean built;
 
-    public final int leftItemId;
-    public final int rightItemId;
-    public final UUID leftItemUUID = UUID.randomUUID();
-    public final UUID rightItemUUID = UUID.randomUUID();
-    public final Object despawnLeftPacket;
-    public final Object despawnRightPacket;
-    public final Object despawnAllPacket;
-    private Object spawnLeftPacket;
-    private Object spawnRightPacket;
-    private Object changeLeftItemPacket;
-    private Object changeRightItemPacket;
-    private boolean leftSpawned;
-    private boolean rightSpawned;
-
-    public KitchenwareRacksElement(@NotNull KitchenwareRacksController controller,
-                                   @Nullable WorldPosition leftPosition,
-                                   @Nullable WorldPosition rightPosition) {
+    public KitchenwareRacksElement(@NotNull KitchenwareRacksController controller) {
         this.controller = controller;
-        this.leftItemId = EntityUtils.ENTITY_COUNTER.incrementAndGet();
-        this.rightItemId = EntityUtils.ENTITY_COUNTER.incrementAndGet();
+    }
 
-        this.despawnLeftPacket = ClientboundRemoveEntitiesPacketProxy.INSTANCE.newInstance(
-                MiscUtils.init(new IntArrayList(), a -> a.add(leftItemId)));
-        this.despawnRightPacket = ClientboundRemoveEntitiesPacketProxy.INSTANCE.newInstance(
-                MiscUtils.init(new IntArrayList(), a -> a.add(rightItemId)));
-        this.despawnAllPacket = ClientboundRemoveEntitiesPacketProxy.INSTANCE.newInstance(
-                MiscUtils.init(new IntArrayList(), a -> {
-                    a.add(leftItemId);
-                    a.add(rightItemId);
-                }));
-
-        if (leftPosition != null && rightPosition != null) {
-            this.refreshSpawnPackets(leftPosition, rightPosition);
+    // 区块反序列化时 loadCustomData 早于 setWorld 位置算不出来 画面留空等 show 时再补
+    public void rebuild(@Nullable WorldPosition left, @Nullable WorldPosition right, Direction facing) {
+        if (left == null || right == null) {
+            this.built = false;
+            return;
         }
+        buildSlot(SLOT_LEFT, this.controller.getItemLeft(), left, facing);
+        buildSlot(SLOT_RIGHT, this.controller.getItemRight(), right, facing);
+        this.built = true;
     }
 
-    public void refreshLeftItem(Item item, Direction facing) {
-        float yOffset = facingToYOffset(facing);
-        this.changeLeftItemPacket = ItemDisplayPackets.builder()
-                .item(item)
-                .scale(0.75f)
-                .leftRotation(new Quaternionf()
-                        .rotateY(yOffset + (float) Math.toRadians(25))
-                        .rotateX((float) Math.toRadians(-180))
-                        .rotateZ((float) Math.toRadians(45)))
-                .itemTransform((byte) 8)
-                .meta(leftItemId);
+    private void buildSlot(int slot, Item item, WorldPosition position, Direction facing) {
+        if (ItemUtils.isEmpty(item)) {
+            this.displays.clear(slot);
+            return;
+        }
+        this.displays.setPackets(slot,
+                ItemDisplayPackets.at(position).spawn(this.displays.id(slot), this.displays.uuid(slot)),
+                ItemDisplayPackets.builder()
+                        .item(item)
+                        .scale(ITEM_SCALE)
+                        .leftRotation(new Quaternionf()
+                                .rotateY(yawOf(facing) + (float) Math.toRadians(TILT_YAW))
+                                .rotateX((float) Math.toRadians(TILT_PITCH))
+                                .rotateZ((float) Math.toRadians(TILT_ROLL)))
+                        .itemTransform(ITEM_TRANSFORM_FIXED)
+                        .meta(this.displays.id(slot)));
     }
 
-    public void refreshRightItem(Item item, Direction facing) {
-        float yOffset = facingToYOffset(facing);
-        this.changeRightItemPacket = ItemDisplayPackets.builder()
-                .item(item)
-                .scale(0.75f)
-                .leftRotation(new Quaternionf()
-                        .rotateY(yOffset + (float) Math.toRadians(25))
-                        .rotateX((float) Math.toRadians(-180))
-                        .rotateZ((float) Math.toRadians(45)))
-                .itemTransform((byte) 8)
-                .meta(rightItemId);
-    }
-
-    private static float facingToYOffset(Direction facing) {
+    private static float yawOf(Direction facing) {
         return switch (facing) {
-            case NORTH -> 0f;
-            case WEST  -> (float) Math.toRadians(90);
+            case WEST -> (float) Math.toRadians(90);
             case SOUTH -> (float) Math.toRadians(180);
-            case EAST  -> (float) Math.toRadians(270);
-            default    -> 0f;
+            case EAST -> (float) Math.toRadians(270);
+            default -> 0f;
         };
     }
 
-    public void refreshSpawnPackets(WorldPosition leftPosition, WorldPosition rightPosition) {
-        this.spawnLeftPacket = ItemDisplayPackets.at(leftPosition).spawn(leftItemId, leftItemUUID);
-        this.spawnRightPacket = ItemDisplayPackets.at(rightPosition).spawn(rightItemId, rightItemUUID);
-    }
-
-    public void refreshPositions(WorldPosition leftPosition, WorldPosition rightPosition) {
-        this.refreshSpawnPackets(leftPosition, rightPosition);
+    private void ensureBuilt() {
+        if (!this.built) {
+            this.controller.rebuildElement();
+        }
     }
 
     @Override
     public void show(@NotNull Player player) {
-        controller.ensurePositionsInitialized();
-        List<Object> packets = new ArrayList<>();
-        if (!controller.getItemLeft().isEmpty()) {
-            packets.add(spawnLeftPacket);
-            packets.add(changeLeftItemPacket);
-            leftSpawned = true;
-        }
-        if (!controller.getItemRight().isEmpty()) {
-            packets.add(spawnRightPacket);
-            packets.add(changeRightItemPacket);
-            rightSpawned = true;
-        }
-        if (!packets.isEmpty()) {
-            player.sendPackets(packets, false);
-        }
+        ensureBuilt();
+        this.displays.show(player);
     }
 
     @Override
     public void hide(@NotNull Player player) {
-        player.sendPacket(despawnAllPacket, false);
-        leftSpawned = false;
-        rightSpawned = false;
+        this.displays.hide(player);
     }
 
     @Override
     public void update(@NotNull Player player) {
-        boolean leftChanged = controller.hasLeftChanged();
-        boolean rightChanged = controller.hasRightChanged();
-
-        if (!leftChanged && !rightChanged) {
-            return;
-        }
-
-        List<Object> packets = new ArrayList<>();
-
-        // 按槽差异分派 空变非空才发 spawn 内容变化只发 meta 重发 spawn 会让客户端重建实体丢插值
-        if (leftChanged) {
-            if (!controller.getItemLeft().isEmpty()) {
-                if (!leftSpawned) {
-                    packets.add(spawnLeftPacket);
-                    leftSpawned = true;
-                }
-                packets.add(changeLeftItemPacket);
-            } else if (leftSpawned) {
-                packets.add(despawnLeftPacket);
-                leftSpawned = false;
-            }
-        }
-
-        if (rightChanged) {
-            if (!controller.getItemRight().isEmpty()) {
-                if (!rightSpawned) {
-                    packets.add(spawnRightPacket);
-                    rightSpawned = true;
-                }
-                packets.add(changeRightItemPacket);
-            } else if (rightSpawned) {
-                packets.add(despawnRightPacket);
-                rightSpawned = false;
-            }
-        }
-
-        if (!packets.isEmpty()) {
-            player.sendPackets(packets, false);
-        }
-    }
-
-    // 取下后由 refreshElement/update 统一补发移除包 此处无需操作
-    public void hideLeft() {
-    }
-
-    public void hideRight() {
+        ensureBuilt();
+        this.displays.update(player);
     }
 }

@@ -22,7 +22,9 @@ import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.plugin.config.ConfigValue;
 import net.momirealms.craftengine.core.util.AdventureHelper;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.World;
+import net.momirealms.craftengine.core.world.context.BlockPlaceContext;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
@@ -60,6 +62,10 @@ public class TeapotItemBehavior extends BlockItemBehavior {
             InteractionHand hand = context.getHand();
             if (tryFill(player, hand) || tryPour(context, player, hand)) {
                 return InteractionResult.SUCCESS_AND_CANCEL;
+            }
+            BlockPlaceContext placeContext = new BlockPlaceContext(context);
+            if (!InteractGuard.canPlace(player, context.getLevel(), placeContext.getClickedPos())) {
+                return InteractionResult.PASS;
             }
         }
         return super.useOnBlock(context);
@@ -124,6 +130,10 @@ public class TeapotItemBehavior extends BlockItemBehavior {
         org.bukkit.entity.Player bukkitPlayer = (org.bukkit.entity.Player) player.platformPlayer();
         RayTraceResult result = bukkitPlayer.rayTraceBlocks(REACH, FluidCollisionMode.SOURCE_ONLY);
         if (result == null || result.getHitBlock() == null) {
+            return false;
+        }
+        if (!InteractGuard.canInteract(player, player.world(),
+                new BlockPos(result.getHitBlock().getX(), result.getHitBlock().getY(), result.getHitBlock().getZ()))) {
             return false;
         }
         Material type = result.getHitBlock().getType();

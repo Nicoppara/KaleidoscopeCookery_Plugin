@@ -36,13 +36,39 @@ public final class SoupBaseRegistry {
         return isSoupBase(Key.of(bucket));
     }
 
-    // 该桶汤底对应的液面展示模型 未登记返回 null
+    // 没配 show 时的液面 水是最常见的汤底
+    public static final Key DEFAULT_SHOW = Key.of("show:stove_water");
+
+    // 该桶汤底对应的液面展示模型 未登记也回落到水 否则灶口会整个空掉
     public Key showModel(Key bucket) {
-        return bucketToShow.get(bucket);
+        if (bucket == null) {
+            return null;
+        }
+        return bucketToShow.getOrDefault(bucket, DEFAULT_SHOW);
     }
 
     public Key showModel(String bucket) {
         return showModel(Key.of(bucket));
+    }
+
+    // 取消登记 UI 删除汤底用 已煮上的锅不受影响 那边存的是 soupBaseId 不查这张表
+    public void remove(Key bucket) {
+        if (bucket != null) {
+            bucketToShow.remove(bucket);
+        }
+    }
+
+    // 该桶登记的液面 未登记返回 null 与 showModel 的兜底不同 UI 要区分这两种
+    public Key registeredShow(Key bucket) {
+        return bucket == null ? null : bucketToShow.get(bucket);
+    }
+
+    // 已登记的桶 按 id 排序 否则每次开菜单顺序都在跳
+    // 已登记的汤底桶 编辑器列预设按钮用
+    public java.util.List<Key> keys() {
+        java.util.List<Key> out = new java.util.ArrayList<>(bucketToShow.keySet());
+        out.sort(java.util.Comparator.comparing(Key::asString));
+        return java.util.List.copyOf(out);
     }
 
     public void clear() {

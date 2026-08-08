@@ -1,5 +1,8 @@
 package net.kaleidoscope.cookery.plugin;
 
+import net.kaleidoscope.cookery.item.ItemNames;
+import net.kaleidoscope.cookery.ui.RecipeMenuConfig;
+
 import net.kaleidoscope.cookery.util.ConsoleMessages;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.api.event.CraftEngineReloadEvent;
@@ -36,6 +39,11 @@ public final class CraftEngineRegistryCheckListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onCraftEngineReload(CraftEngineReloadEvent event) {
         ConsoleMessages.reloadFromDisk(plugin);
+        // 物品显示名跟着配置走 重载后必须重算
+        ItemNames.clearCache();
+        // 顺带重读 config.yml 的菜单外观 改完图标标题不必重启
+        plugin.reloadConfig();
+        RecipeMenuConfig.load();
         checkLoadedBlocks(event.isFirstReload());
     }
 

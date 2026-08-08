@@ -1,11 +1,11 @@
 package net.kaleidoscope.cookery.item.listener;
 
+import net.kaleidoscope.cookery.util.FoliaUtil;
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import net.kaleidoscope.cookery.item.LunchBagContents;
 import net.kaleidoscope.cookery.item.LunchBagEating;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.entity.player.Player;
@@ -31,8 +31,7 @@ import org.bukkit.inventory.ItemStack;
 public class LunchBagListener implements Listener {
 
     // 原版收纳袋右键会把内容物扔出去 无条件压掉
-    // 不能只靠物品行为返回 SUCCESS_AND_CANCEL 因为准星指着实体时 CE 的 onInteractAir 会被 lastInteractEntityCheck 挡掉不派发
-    // 进食态是 paper 不在这里被拦 原版的 consumable 才能正常起效
+    // 不能只靠行为返回 SUCCESS_AND_CANCEL 准星指实体时 CE 的 onInteractAir 会被挡掉不派发
     @EventHandler(priority = EventPriority.LOWEST)
     public void onInteract(PlayerInteractEvent event) {
         Action action = event.getAction();
@@ -90,7 +89,7 @@ public class LunchBagListener implements Listener {
     }
 
     // 底材是原版 minecraft:bundle 原版右键既能往里塞也能往外取 用的是同一个操作
-    // 只能拦"塞入不该收的东西" 不能无差别取消右键 否则玩家连自己的牛排都取不出来
+    // 只拦塞入不该收的东西 无差别取消右键会让玩家连自己的牛排都取不出来
     @EventHandler(ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
         ItemStack current = event.getCurrentItem();
@@ -134,7 +133,7 @@ public class LunchBagListener implements Listener {
         if (!(human instanceof org.bukkit.entity.Player bukkitPlayer)) {
             return;
         }
-        BukkitCraftEngine.instance().scheduler().platform().runLater(
+        FoliaUtil.runLater(
                 () -> LunchBagContents.sanitizeInventory(bukkitPlayer), null, 1L, bukkitPlayer);
     }
 

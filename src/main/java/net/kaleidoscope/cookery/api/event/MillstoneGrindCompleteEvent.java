@@ -9,7 +9,12 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.List;
 
-// 石磨磨完一批产出成品时触发 推磨者可能是玩家也可能是生物
+/**
+ * Fired when a millstone finishes grinding a batch.
+ * The millstone can be turned by a player pushing the bar or by a harnessed
+ * animal, so {@link #player()} is null in the animal case.
+ * Cancelling withholds the products; the batch is still consumed.
+ */
 public class MillstoneGrindCompleteEvent extends Event implements Cancellable {
     private static final HandlerList HANDLER_LIST = new HandlerList();
     private final Player player;
@@ -17,21 +22,34 @@ public class MillstoneGrindCompleteEvent extends Event implements Cancellable {
     private final List<ItemStack> products;
     private boolean cancelled;
 
+    /**
+     * @param player the pushing player, or null when an animal pulls
+     * @param location the millstone furniture
+     * @param products the ground output about to be ejected
+     */
     public MillstoneGrindCompleteEvent(Player player, Location location, List<ItemStack> products) {
         this.player = player;
         this.location = location;
         this.products = products;
     }
 
-    /** @return 拉磨的玩家 生物拉磨则返回 null */
+    /**
+     * @return the pushing player, or null when an animal pulls
+     */
     public Player player() {
         return this.player;
     }
 
+    /**
+     * @return the millstone furniture
+     */
     public Location location() {
         return this.location;
     }
 
+    /**
+     * @return the ground output about to be ejected, mutable
+     */
     public List<ItemStack> products() {
         return this.products;
     }

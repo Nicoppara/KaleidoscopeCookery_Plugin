@@ -74,32 +74,38 @@ public final class MillstoneElement implements FurnitureElement {
         this.spawnPacket1 = model.spawn(basePos, stick1Id, stick1Uuid);
         this.spawnPacket2 = model.spawn(basePos, stick2Id, stick2Uuid);
         this.spawnPacket3 = model.spawn(basePos, stoneId, stoneUuid);
+        invalidateMeta();
+    }
 
+    // 静态 meta 只有新观察者 show 时才用得上 动画每帧重建等于每帧白建三个包
+    private void invalidateMeta() {
+        this.metaPacket1 = null;
+        this.metaPacket2 = null;
+        this.metaPacket3 = null;
+    }
+
+    private void ensureMeta() {
+        if (this.metaPacket1 != null) {
+            return;
+        }
+        float yaw = baseYawRad();
         float angle = controller.currentAngle();
-        this.metaPacket1 = model.stick1Meta(stick1Id, baseYawRad(), angle, 0);
-        this.metaPacket2 = model.stick2Meta(stick2Id, baseYawRad(), angle, 0);
-        this.metaPacket3 = model.stoneMeta(stoneId, baseYawRad(), angle, 0);
+        this.metaPacket1 = model.stick1Meta(stick1Id, yaw, angle, 0);
+        this.metaPacket2 = model.stick2Meta(stick2Id, yaw, angle, 0);
+        this.metaPacket3 = model.stoneMeta(stoneId, yaw, angle, 0);
     }
 
     public void updateRotation(float targetAngle, int durationTicks) {
         float yaw = baseYawRad();
-        Object packet1 = model.stick1Meta(stick1Id, yaw, targetAngle, durationTicks);
-        Object packet2 = model.stick2Meta(stick2Id, yaw, targetAngle, durationTicks);
-        Object packet3 = model.stoneMeta(stoneId, yaw, targetAngle, durationTicks);
-
-        List<Object> packets = new ArrayList<>();
-        packets.add(packet1);
-        packets.add(packet2);
-        packets.add(packet3);
-        Object bundlePacket = PacketBundles.of(packets);
+        Object bundlePacket = PacketBundles.of(List.of(
+                model.stick1Meta(stick1Id, yaw, targetAngle, durationTicks),
+                model.stick2Meta(stick2Id, yaw, targetAngle, durationTicks),
+                model.stoneMeta(stoneId, yaw, targetAngle, durationTicks)));
 
         for (Player p : TrackedPlayers.snapshotInRange(controller.furniture().getTrackedBy(), srcChunkX, srcChunkZ, controller.behavior().animChunkRadius)) {
             p.sendPacket(bundlePacket, false);
         }
-
-        this.metaPacket1 = model.stick1Meta(stick1Id, yaw, targetAngle, 0);
-        this.metaPacket2 = model.stick2Meta(stick2Id, yaw, targetAngle, 0);
-        this.metaPacket3 = model.stoneMeta(stoneId, yaw, targetAngle, 0);
+        invalidateMeta();
     }
 
     private void buildGrindSlotPackets(int slot, Item item) {
@@ -183,15 +189,11 @@ public final class MillstoneElement implements FurnitureElement {
     @Override
     public void show(@NotNull Player player) {
         if (spawnPacket1 != null) {
-            List<Object> packets = new ArrayList<>();
-            packets.add(spawnPacket1);
-            packets.add(metaPacket1);
-            packets.add(spawnPacket2);
-            packets.add(metaPacket2);
-            packets.add(spawnPacket3);
-            packets.add(metaPacket3);
-
-            PacketBundles.send(player, packets);
+            ensureMeta();
+            PacketBundles.send(player, List.of(
+                    spawnPacket1, metaPacket1,
+                    spawnPacket2, metaPacket2,
+                    spawnPacket3, metaPacket3));
         }
         sendAllGrind(player);
     }

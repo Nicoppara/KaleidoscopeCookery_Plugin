@@ -189,7 +189,7 @@ public final class LunchBagContents {
     }
 
     // 底材是原版 minecraft:bundle 右键塞入和取出是同一个操作
-    // 只有"往袋里塞不该收的东西"该拦 光标为空是取出 必须放行 否则玩家取不出自己的牛排
+    // 只拦往袋里塞不该收的东西 光标为空是取出 必须放行
     public static boolean rejectsInsert(ItemStack incoming) {
         if (incoming == null || incoming.getType().isAir()) {
             return false;

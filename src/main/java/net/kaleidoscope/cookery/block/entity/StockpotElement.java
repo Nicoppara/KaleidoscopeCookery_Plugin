@@ -11,7 +11,6 @@ import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.MiscUtils;
-import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy;
@@ -54,6 +53,7 @@ public final class StockpotElement implements BlockEntityElement {
 
     private Key currentLiquidModel() {
         if (controller.stage() == StockpotStage.FINISHED) return ItemKeys.STOVE_FINISHED;
+        if (controller.stage() == StockpotStage.PUT_SOUP_BASE) return null;
         return SoupBaseRegistry.instance().showModel(controller.soupBaseId());
     }
 
@@ -232,13 +232,10 @@ public final class StockpotElement implements BlockEntityElement {
         if (fishSpawnPacket == null || fishMetaPacket == null) return;
         packets.add(fishSpawnPacket);
         packets.add(fishMetaPacket);
-        if (VersionHelper.isOrAbove1_20_5) {
-            Object attributeIns = AttributeInstanceProxy.INSTANCE.newInstance$0(
-                    AttributesProxy.SCALE, $ -> {});
-            AttributeInstanceProxy.INSTANCE.setBaseValue(attributeIns, 0.5f);
-            packets.add(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$0(
-                    fishEntityId, Collections.singletonList(attributeIns)));
-        }
+        Object attributeIns = AttributeInstanceProxy.INSTANCE.newInstance$0(AttributesProxy.SCALE, $ -> {});
+        AttributeInstanceProxy.INSTANCE.setBaseValue(attributeIns, 0.5f);
+        packets.add(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$0(
+                fishEntityId, Collections.singletonList(attributeIns)));
     }
 
     @Override

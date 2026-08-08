@@ -46,9 +46,6 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
     public int particleInterval = 20;
     public int particleCount = 3;
 
-    public String msgPut = "kaleidoscopecookery.message.teapot.put";
-    public String msgProcessing = "kaleidoscopecookery.message.teapot.processing";
-    public String msgFinished = "kaleidoscopecookery.message.teapot.finished";
 
     private TeapotBehavior(BlockDefinition blockDefinition) {
         super(blockDefinition);
@@ -219,9 +216,6 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
             b.animChunkRadius = BehaviorConfig.getInt(section, b.animChunkRadius, "animation_view_distance", "animation-view-distance");
             b.particleInterval = BehaviorConfig.getInt(section, b.particleInterval, "particle_interval", "particle-interval");
             b.particleCount = BehaviorConfig.getInt(section, b.particleCount, "particle_count", "particle-count");
-            b.msgPut = BehaviorConfig.getString(section, b.msgPut, "msg_put", "msg-put");
-            b.msgProcessing = BehaviorConfig.getString(section, b.msgProcessing, "msg_processing", "msg-processing");
-            b.msgFinished = BehaviorConfig.getString(section, b.msgFinished, "msg_finished", "msg-finished");
             return b;
         }
     }

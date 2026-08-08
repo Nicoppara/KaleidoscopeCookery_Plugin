@@ -1,10 +1,10 @@
 package net.kaleidoscope.cookery.block.listener;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
 import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
@@ -47,7 +47,7 @@ public class SteamerFallingBlockListener implements Listener {
         if (!(event.getEntity() instanceof FallingBlock fb)) return;
         Object nmsEntity = getNmsHandle(fb);
         if (nmsEntity == null) return;
-        // 只处理被我们标记的蒸笼下落实体
+        // 只处理带蒸笼标记的下落实体
         if (!ceCancelledEntities.remove(nmsEntity)) return;
         SteamerBehavior.PendingData data = SteamerBehavior.pendingData.get(nmsEntity);
         if (data == null) return;
@@ -89,7 +89,7 @@ public class SteamerFallingBlockListener implements Listener {
         Object blockPos = LocationUtils.toBlockPos(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
         // 延迟一 tick 再掉落 成功落地时 onLand 会在本 tick 内清掉 pendingData
         // 下一 tick 若仍在 pendingData 才说明确实丢失 避免与正常落地重复掉落
-        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> {
+        FoliaUtil.runLater(() -> {
             if (SteamerBehavior.pendingData.containsKey(nmsEntity)) {
                 SteamerBehavior.dropPendingSteamer(level, blockPos, nmsEntity);
             }

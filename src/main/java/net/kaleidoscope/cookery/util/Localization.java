@@ -25,9 +25,10 @@ public final class Localization {
         return literal(value);
     }
 
+    // replacement 允许是 MiniMessage 物品名不能当纯文本塞 否则 <lang:...> 会被原样显示
     public static Component componentWithReplacement(String value, String placeholder, String replacement) {
         if (isTranslationKey(value)) {
-            return Component.translatable(value).arguments(Component.text(replacement));
+            return Component.translatable(value).arguments(literal(replacement));
         }
         return literal(value == null ? "" : value.replace(placeholder, replacement));
     }

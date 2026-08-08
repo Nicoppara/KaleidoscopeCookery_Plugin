@@ -4,14 +4,12 @@ import net.momirealms.craftengine.core.util.Key;
 
 import java.util.List;
 
-// 精准配方 1 对 1 成品为带权重列表 按权重随机产出一个
-// rotations 石磨产出所需圈数 仅石磨用 0 表示用 behavior 默认
-// resultCount 单次产出份数 不配则为 1
+// 精准配方 1 对 1 成品是带权重列表 按权重随机取一个
+// rotations 仅石磨用 0 表示用 behavior 默认 resultCount 不配则为 1
 public record AccurateFoodRecipe(
         Key id,
         Key input,
         List<WeightedResult> results,
-        int resultCount,
         ApplianceType cook,
         int rotations,
         int resultCount,

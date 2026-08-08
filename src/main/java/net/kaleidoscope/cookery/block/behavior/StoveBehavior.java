@@ -40,6 +40,12 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
             ItemKeys.GOLDEN_SHOVEL, ItemKeys.DIAMOND_SHOVEL, ItemKeys.NETHERITE_SHOVEL
     };
 
+    private static final Key IGNITE_FIRE_CHARGE_SOUND = Key.of("minecraft:entity.firework_rocket.blast");
+    private static final Key IGNITE_FLINT_SOUND = Key.of("minecraft:item.flintandsteel.use");
+    private static final Key EXTINGUISH_SOUND = Key.of("minecraft:block.fire.extinguish");
+    private static final float SOUND_VOLUME = 1.0f;
+    private static final float SOUND_PITCH = 1.0f;
+
     public Key kitchenShovelNoOilItem = ItemKeys.KITCHEN_SHOVEL_NO_OIL;
     public int particleInterval = 20;
     public int particleCount = 3;
@@ -119,10 +125,8 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
         if (newLit) {
             context.getLevel().playBlockSound(
                     new Vec3d(context.getClickedPos().x() + 0.5, context.getClickedPos().y() + 0.5, context.getClickedPos().z() + 0.5),
-                    fireCharge
-                            ? Key.of("minecraft:entity.firework_rocket.blast")
-                            : Key.of("minecraft:item.flintandsteel.use"),
-                    1.0f, 1.0f
+                    fireCharge ? IGNITE_FIRE_CHARGE_SOUND : IGNITE_FLINT_SOUND,
+                    SOUND_VOLUME, SOUND_PITCH
             );
             // 火焰弹点火消耗一个 创造不扣
             if (fireCharge) {
@@ -150,8 +154,8 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
         );
         context.getLevel().playBlockSound(
                 new Vec3d(context.getClickedPos().x() + 0.5, context.getClickedPos().y() + 0.5, context.getClickedPos().z() + 0.5),
-                Key.of("minecraft:block.fire.extinguish"),
-                1.0f, 1.0f
+                EXTINGUISH_SOUND,
+                SOUND_VOLUME, SOUND_PITCH
         );
         player.swingHand(hand);
         return InteractionResult.SUCCESS_AND_CANCEL;

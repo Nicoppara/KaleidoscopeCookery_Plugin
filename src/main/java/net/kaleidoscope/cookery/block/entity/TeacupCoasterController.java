@@ -1,5 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
 
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.block.behavior.TeacupCoasterBehavior;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
@@ -199,7 +200,7 @@ public final class TeacupCoasterController extends BlockEntityController {
     public void onRemove() {
         for (Item item : cupItems) {
             if (!item.isEmpty()) {
-                DropUtils.dropAtCenter(blockEntity, item);
+                DropUtils.dropOnRemove(blockEntity, item);
             }
         }
         cupItems.clear();
@@ -212,8 +213,12 @@ public final class TeacupCoasterController extends BlockEntityController {
         CompoundTag data = new CompoundTag();
         ListTag list = new ListTag();
         for (int i = 0; i < cupItems.size(); i++) {
+            Tag itemTag = BlockEntityNbt.itemTag(cupItems.get(i));
+            if (itemTag == null) {
+                continue;
+            }
             CompoundTag c = new CompoundTag();
-            c.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(cupItems.get(i).minecraftItem()));
+            c.put(K_ITEM, itemTag);
             c.putString(K_MODEL, cupModels.get(i).asString());
             list.add(c);
         }

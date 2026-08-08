@@ -3,6 +3,7 @@ package net.kaleidoscope.cookery.block.entity;
 import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
 
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -366,7 +367,7 @@ public class SteamerController extends BlockEntityController {
             if (!skipFoodDrop) {
                 for (int i = 0; i < itemCount; i++) {
                     if (!items[i].isEmpty()) {
-                        DropUtils.dropAtCenter(super.blockEntity, items[i]);
+                        DropUtils.dropOnRemove(super.blockEntity, items[i]);
                     }
                 }
             }
@@ -397,11 +398,7 @@ public class SteamerController extends BlockEntityController {
         data.putLong(K_SEED, this.seed);
         data.putBoolean(K_HAS_LID, hasLid);
         data.putInt(K_LIT_LEVEL, litLevel);
-        ListTag itemsTag = new ListTag();
-        for (int i = 0; i < itemCount; i++) {
-            itemsTag.add(ItemStackUtils.saveMinecraftItemStackAsTag(items[i].minecraftItem()));
-        }
-        data.put(K_ITEMS, itemsTag);
+        data.put(K_ITEMS, BlockEntityNbt.saveItems(items, itemCount));
         data.putIntArray(K_COOKING_PROGRESS, cookingProgress);
         data.putIntArray(K_COOKING_TIME, cookingTime);
         tag.put(DATA_KEY, data);
@@ -414,22 +411,7 @@ public class SteamerController extends BlockEntityController {
             this.seed = data.getLong(K_SEED, System.currentTimeMillis());
             this.hasLid = data.getBoolean(K_HAS_LID, false);
             this.litLevel = data.getInt(K_LIT_LEVEL, 0);
-            ListTag itemsTag = data.getList(K_ITEMS);
-            Arrays.fill(this.items, Item.empty());
-            this.itemCount = 0;
-            if (itemsTag != null) {
-                int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
-                for (Tag itemTag : itemsTag) {
-                    if (this.itemCount >= SLOTS) {
-                        break;
-                    }
-                    Object nmsItem = ItemStackUtils.parseMinecraftItem(itemTag, dataVersion);
-                    if (nmsItem != null) {
-                        this.items[this.itemCount] = ItemStackUtils.wrap(nmsItem);
-                        this.itemCount++;
-                    }
-                }
-            }
+            this.itemCount = BlockEntityNbt.loadItems(data.getList(K_ITEMS), BlockEntityNbt.dataVersion(data), this.items);
             int[] progress = data.getIntArray(K_COOKING_PROGRESS);
             if (progress != null && progress.length == SLOTS) {
                 System.arraycopy(progress, 0, this.cookingProgress, 0, SLOTS);

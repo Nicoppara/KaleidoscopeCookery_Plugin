@@ -24,6 +24,7 @@ import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemNames;
+import net.kaleidoscope.cookery.item.ItemIcons;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,11 +51,13 @@ public final class RecipeUtils {
     private static final String TEXT_USE = "tooltip.kaleidoscopecookery.recipe_item.use";
     private static final String TEXT_TITLE = "item.kaleidoscopecookery.recipe_item.title";
 
+    // getItemMeta 每次都从 NBT 重建一份 只取一次
     public static boolean hasRecipe(ItemStack stack) {
-        if (stack == null || stack.getItemMeta() == null) {
+        if (stack == null) {
             return false;
         }
-        return stack.getItemMeta().getPersistentDataContainer().has(HAS_RECIPE_KEY, PersistentDataType.BYTE);
+        ItemMeta meta = stack.getItemMeta();
+        return meta != null && meta.getPersistentDataContainer().has(HAS_RECIPE_KEY, PersistentDataType.BYTE);
     }
 
     // 炒锅与高汤锅的食材上限都是 8 食谱记录再长也没意义 上限同时防伪造 PDC 撑爆循环
@@ -227,8 +230,14 @@ public final class RecipeUtils {
         return component;
     }
 
+    // 1.21.9+ 用 sprite 直接引图集贴图 不需注册字体 老版本回退成 CE 字体图像 见 ItemIcons
+    // 两条路找不到对应条目时都退成物品名 总比画一个空白或缺失贴图强
     private static Component image(Key key) {
-        return MiniMessage.miniMessage().deserialize("<image:kaleidoscopecookery:" + key.value() + ">");
+        String icon = ItemIcons.iconId(key);
+        if (icon == null) {
+            return displayName(key);
+        }
+        return MiniMessage.miniMessage().deserialize("<image:" + icon + ">");
     }
 
     private static Component displayName(Item item) {

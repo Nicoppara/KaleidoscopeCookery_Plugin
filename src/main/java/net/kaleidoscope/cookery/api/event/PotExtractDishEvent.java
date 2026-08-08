@@ -7,27 +7,45 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerEvent;
 import org.bukkit.inventory.ItemStack;
 
-// 玩家从炒锅盛出成品时触发 可改写 dish 或取消
+/**
+ * Fired when a player serves a finished dish out of a cooking pot.
+ * Rewrite {@code dish} to hand out something else, or cancel to keep the dish
+ * in the pot and give the player nothing.
+ */
 public class PotExtractDishEvent extends PlayerEvent implements Cancellable {
     private static final HandlerList HANDLER_LIST = new HandlerList();
     private final Location location;
     private ItemStack dish;
     private boolean cancelled;
 
+    /**
+     * @param who the serving player
+     * @param location the pot block
+     * @param dish the dish about to be handed out
+     */
     public PotExtractDishEvent(Player who, Location location, ItemStack dish) {
         super(who);
         this.location = location;
         this.dish = dish;
     }
 
+    /**
+     * @return the pot block
+     */
     public Location location() {
         return this.location;
     }
 
+    /**
+     * @return the dish about to be handed out
+     */
     public ItemStack dish() {
         return this.dish;
     }
 
+    /**
+     * @param dish the dish to hand out instead
+     */
     public void setDish(ItemStack dish) {
         this.dish = dish;
     }

@@ -10,7 +10,7 @@ public interface NmsBridge {
 
     Object nmsHandle(Entity entity);
 
-    boolean isSpectateTeleportPacket(Object packet);
+    boolean isSpectatePacket(Object packet);
 
     boolean isPerformRespawnPacket(Object packet);
 

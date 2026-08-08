@@ -30,7 +30,7 @@ public final class NmsV1_21_R5 implements NmsBridge {
     }
 
     @Override
-    public boolean isSpectateTeleportPacket(Object packet) {
+    public boolean isSpectatePacket(Object packet) {
         return packet instanceof ServerboundTeleportToEntityPacket;
     }
 

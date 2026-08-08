@@ -1,5 +1,7 @@
 package net.kaleidoscope.cookery.block.entity;
 
+import net.kaleidoscope.cookery.util.MessageKeys;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.block.behavior.TeapotBehavior;
 import net.kaleidoscope.cookery.block.entity.render.PacketBundles;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
@@ -400,9 +402,9 @@ public final class TeapotController extends BlockEntityController {
 
     private String statusMsg() {
         return switch (status) {
-            case PROCESSING -> behavior.msgProcessing;
-            case FINISHED -> behavior.msgFinished;
-            default -> behavior.msgPut;
+            case PROCESSING -> MessageKeys.TEAPOT_PROCESSING;
+            case FINISHED -> MessageKeys.TEAPOT_FINISHED;
+            default -> MessageKeys.TEAPOT_PUT;
         };
     }
 
@@ -478,14 +480,14 @@ public final class TeapotController extends BlockEntityController {
             return;
         }
         if (!input.isEmpty()) {
-            DropUtils.dropAtCenter(blockEntity, input);
+            DropUtils.dropOnRemove(blockEntity, input);
         }
         if (creativeBreak) {
             return;
         }
         Item teapot = buildDroppedTeapot();
         if (!ItemUtils.isEmpty(teapot)) {
-            DropUtils.dropAtCenter(blockEntity, teapot);
+            DropUtils.dropOnRemove(blockEntity, teapot);
         }
     }
 
@@ -502,7 +504,7 @@ public final class TeapotController extends BlockEntityController {
         String barStr;
         if (status == FINISHED && !result.isEmpty()) {
             data.putInt(K_STATUS, FINISHED);
-            data.put(K_RESULT, ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
+            BlockEntityNbt.putItem(data, K_RESULT, result);
             data.putInt(K_SERVINGS, servings);
             barStr = TeapotBar.build(fluid, servings);
         } else if (status != PROCESSING && fluid != null) {
@@ -541,12 +543,8 @@ public final class TeapotController extends BlockEntityController {
         if (fluid != null) {
             data.putString(K_FLUID, fluid.asString());
         }
-        if (!input.isEmpty()) {
-            data.put(K_INPUT, ItemStackUtils.saveMinecraftItemStackAsTag(input.minecraftItem()));
-        }
-        if (!result.isEmpty()) {
-            data.put(K_RESULT, ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
-        }
+        BlockEntityNbt.putItem(data, K_INPUT, input);
+        BlockEntityNbt.putItem(data, K_RESULT, result);
         data.putInt(K_SERVINGS, servings);
         tag.put(DATA_KEY, data);
     }
@@ -563,17 +561,8 @@ public final class TeapotController extends BlockEntityController {
         fluid = (fluidStr == null || fluidStr.isEmpty()) ? null : Key.of(fluidStr);
         servings = data.getInt(K_SERVINGS, 0);
         int version = Config.itemDataFixerUpperFallbackVersion();
-        input = loadItem(data, K_INPUT, version);
-        result = loadItem(data, K_RESULT, version);
+        input = BlockEntityNbt.getItem(data, K_INPUT, version);
+        result = BlockEntityNbt.getItem(data, K_RESULT, version);
         initDisplay();
-    }
-
-    private Item loadItem(CompoundTag data, String key, int version) {
-        Tag tag = data.get(key);
-        if (tag == null) {
-            return Item.empty();
-        }
-        Object nms = ItemStackUtils.parseMinecraftItem(tag, version);
-        return nms == null ? Item.empty() : ItemStackUtils.wrap(nms);
     }
 }

@@ -2,20 +2,16 @@ package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.block.behavior.KitchenwareRacksBehavior;
 
-import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.util.Direction;
-import net.momirealms.craftengine.core.util.ItemUtils;
-import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
-import net.momirealms.craftengine.libraries.nbt.Tag;
 import org.jetbrains.annotations.NotNull;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 
@@ -23,53 +19,28 @@ import java.util.function.Consumer;
 
 public final class KitchenwareRacksController extends BlockEntityController {
     private static final String DATA_KEY = "kaleidoscopecookery:kitchenware_racks";
-    private static final String K_DATA_VERSION = "data_version";
     private static final String K_ITEM_LEFT = "item_left";
     private static final String K_ITEM_RIGHT = "item_right";
 
+    private static final float ITEM_HEIGHT = 0.4375f;
+    private static final float SIDE_OFFSET = 0.2f;
+    private static final float DEPTH_OFFSET = 0.3f;
+
     private final KitchenwareRacksBehavior behavior;
-    private final KitchenwareRacksElement element;
+    private final KitchenwareRacksElement element = new KitchenwareRacksElement(this);
 
     @NotNull
-    private Item itemLeft;
+    private Item itemLeft = Item.empty();
     @NotNull
-    private Item itemRight;
-    private Item lastItemLeft = Item.empty();
-    private Item lastItemRight = Item.empty();
+    private Item itemRight = Item.empty();
 
     private WorldPosition leftPosition;
     private WorldPosition rightPosition;
-    private boolean positionsInitialized = false;
-
-    public boolean hasLeftChanged() {
-        return !itemLeft.isSimilar(lastItemLeft);
-    }
-
-    public boolean hasRightChanged() {
-        return !itemRight.isSimilar(lastItemRight);
-    }
-
-    public void updateLastState() {
-        this.lastItemLeft = this.itemLeft;
-        this.lastItemRight = this.itemRight;
-    }
+    private boolean positionsInitialized;
 
     public KitchenwareRacksController(BlockEntity blockEntity, KitchenwareRacksBehavior behavior) {
         super(blockEntity);
         this.behavior = behavior;
-        this.itemLeft = Item.empty();
-        this.itemRight = Item.empty();
-
-        this.element = new KitchenwareRacksElement(this, null, null);
-    }
-
-    public void ensurePositionsInitialized() {
-        if (!positionsInitialized && super.blockEntity.world != null) {
-            this.leftPosition = calculateItemPosition(super.blockEntity.blockState, true);
-            this.rightPosition = calculateItemPosition(super.blockEntity.blockState, false);
-            this.element.refreshPositions(this.leftPosition, this.rightPosition);
-            this.positionsInitialized = true;
-        }
     }
 
     @Override
@@ -93,128 +64,106 @@ public final class KitchenwareRacksController extends BlockEntityController {
     }
 
     public void putLeft(Item item) {
-        ensurePositionsInitialized();
         this.itemLeft = item;
-        this.element.refreshLeftItem(item, getCurrentFacing());
-        this.refreshElement();
-        this.updateLastState();
+        refresh();
     }
 
     public void putRight(Item item) {
-        ensurePositionsInitialized();
         this.itemRight = item;
-        this.element.refreshRightItem(item, getCurrentFacing());
-        this.refreshElement();
-        this.updateLastState();
+        refresh();
     }
 
     public Item takeLeft() {
-        ensurePositionsInitialized();
-        Item temp = this.itemLeft;
+        Item taken = this.itemLeft;
         this.itemLeft = Item.empty();
-        this.element.hideLeft();
-        this.refreshElement();
-        this.updateLastState();
-        return temp;
+        refresh();
+        return taken;
     }
 
     public Item takeRight() {
-        ensurePositionsInitialized();
-        Item temp = this.itemRight;
+        Item taken = this.itemRight;
         this.itemRight = Item.empty();
-        this.element.hideRight();
-        this.refreshElement();
-        this.updateLastState();
-        return temp;
+        refresh();
+        return taken;
     }
 
-    @Override
-    public void preBlockStateChange(ImmutableBlockState newState) {
-        ensurePositionsInitialized();
-        if (super.blockEntity.world != null) {
-            this.leftPosition = calculateItemPosition(newState, true);
-            this.rightPosition = calculateItemPosition(newState, false);
-            this.element.refreshPositions(this.leftPosition, this.rightPosition);
-            this.refreshElement();
+    // 位置依赖 world 与方块状态 区块反序列化时 world 还没注入 只能推迟到第一次用
+    void rebuildElement() {
+        rebuildElement(super.blockEntity.blockState);
+    }
+
+    private void rebuildElement(ImmutableBlockState state) {
+        if (!this.positionsInitialized && super.blockEntity.world != null) {
+            this.leftPosition = itemPosition(state, true);
+            this.rightPosition = itemPosition(state, false);
+            this.positionsInitialized = true;
         }
+        this.element.rebuild(this.leftPosition, this.rightPosition, facingOf(state));
     }
 
-    private WorldPosition calculateItemPosition(ImmutableBlockState state, boolean isLeft) {
-        Direction facing = behavior.getFacingProperty() != null ? state.get(behavior.getFacingProperty()) : Direction.NORTH;
-        float x = (float) (super.blockEntity.pos.x + 0.5);
-        float y = (float) (super.blockEntity.pos.y + 0.4375);
-        float z = (float) (super.blockEntity.pos.z + 0.5);
-
-        float offset = isLeft ? -0.2f : 0.2f;
-        float zOffset = 0.3f;
-
-        return switch (facing) {
-            case NORTH -> new WorldPosition(super.blockEntity.world.world, x + offset, y, z + zOffset);
-            case SOUTH -> new WorldPosition(super.blockEntity.world.world, x - offset, y, z - zOffset);
-            case EAST -> new WorldPosition(super.blockEntity.world.world, x - zOffset, y, z + offset);
-            case WEST -> new WorldPosition(super.blockEntity.world.world, x + zOffset, y, z - offset);
-            default -> new WorldPosition(super.blockEntity.world.world, x + offset, y, z + zOffset);
-        };
-    }
-
-    private void refreshElement() {
+    private void redraw(ImmutableBlockState state) {
+        rebuildElement(state);
         TrackedPlayers.forEach(super.blockEntity, this.element::update);
+    }
+
+    private void refresh() {
+        redraw(super.blockEntity.blockState);
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
     }
 
-    private Direction getCurrentFacing() {
-        return behavior.getFacingProperty() != null
-                ? blockEntity.blockState.get(behavior.getFacingProperty())
-                : Direction.NORTH;
+    // 架子转向后挂件的位置与自身旋转都要跟着走 状态写进世界前先按新状态重画
+    @Override
+    public void preBlockStateChange(ImmutableBlockState newState) {
+        if (super.blockEntity.world == null) {
+            return;
+        }
+        this.leftPosition = itemPosition(newState, true);
+        this.rightPosition = itemPosition(newState, false);
+        this.positionsInitialized = true;
+        redraw(newState);
+    }
+
+    private WorldPosition itemPosition(ImmutableBlockState state, boolean isLeft) {
+        float x = (float) (super.blockEntity.pos.x + 0.5);
+        float y = (float) (super.blockEntity.pos.y + ITEM_HEIGHT);
+        float z = (float) (super.blockEntity.pos.z + 0.5);
+        float side = isLeft ? -SIDE_OFFSET : SIDE_OFFSET;
+        return switch (facingOf(state)) {
+            case SOUTH -> new WorldPosition(super.blockEntity.world.world, x - side, y, z - DEPTH_OFFSET);
+            case EAST -> new WorldPosition(super.blockEntity.world.world, x - DEPTH_OFFSET, y, z + side);
+            case WEST -> new WorldPosition(super.blockEntity.world.world, x + DEPTH_OFFSET, y, z - side);
+            default -> new WorldPosition(super.blockEntity.world.world, x + side, y, z + DEPTH_OFFSET);
+        };
+    }
+
+    private Direction facingOf(ImmutableBlockState state) {
+        return behavior.getFacingProperty() != null ? state.get(behavior.getFacingProperty()) : Direction.NORTH;
     }
 
     @Override
     public void saveCustomData(CompoundTag tag) {
-        CompoundTag data = new CompoundTag();
-        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
-        if (!ItemUtils.isEmpty(itemLeft)) {
-            data.put(K_ITEM_LEFT, ItemStackUtils.saveMinecraftItemStackAsTag(itemLeft.minecraftItem()));
-        }
-        if (!ItemUtils.isEmpty(itemRight)) {
-            data.put(K_ITEM_RIGHT, ItemStackUtils.saveMinecraftItemStackAsTag(itemRight.minecraftItem()));
-        }
+        CompoundTag data = BlockEntityNbt.newData();
+        BlockEntityNbt.putItem(data, K_ITEM_LEFT, this.itemLeft);
+        BlockEntityNbt.putItem(data, K_ITEM_RIGHT, this.itemRight);
         tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
-        CompoundTag dataTag = tag.getCompound(DATA_KEY);
-        if (dataTag == null) {
-            this.itemLeft = Item.empty();
-            this.itemRight = Item.empty();
-            this.updateLastState();
+        this.itemLeft = Item.empty();
+        this.itemRight = Item.empty();
+        CompoundTag data = tag.getCompound(DATA_KEY);
+        if (data == null) {
             return;
         }
-
-        int dataVersion = dataTag.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
-
-        Tag leftTag = dataTag.get(K_ITEM_LEFT);
-        if (leftTag != null) {
-            this.itemLeft = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(leftTag, dataVersion));
-        } else {
-            this.itemLeft = Item.empty();
-        }
-
-        Tag rightTag = dataTag.get(K_ITEM_RIGHT);
-        if (rightTag != null) {
-            this.itemRight = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(rightTag, dataVersion));
-        } else {
-            this.itemRight = Item.empty();
-        }
-
-        this.element.refreshLeftItem(this.itemLeft, getCurrentFacing());
-        this.element.refreshRightItem(this.itemRight, getCurrentFacing());
-        this.updateLastState();
+        int dataVersion = BlockEntityNbt.dataVersion(data);
+        this.itemLeft = BlockEntityNbt.getItem(data, K_ITEM_LEFT, dataVersion);
+        this.itemRight = BlockEntityNbt.getItem(data, K_ITEM_RIGHT, dataVersion);
     }
 
     @Override
     public void onRemove() {
-        DropUtils.dropAtCenter(super.blockEntity, itemLeft);
-        DropUtils.dropAtCenter(super.blockEntity, itemRight);
+        DropUtils.dropOnRemove(super.blockEntity, itemLeft);
+        DropUtils.dropOnRemove(super.blockEntity, itemRight);
     }
 }

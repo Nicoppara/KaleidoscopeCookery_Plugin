@@ -5,6 +5,7 @@ import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.GameMode;
 import org.bukkit.inventory.ItemStack;
@@ -19,7 +20,11 @@ public final class InventoryUtils {
     }
 
     // player 参与物品构建上下文 影响名称等占位符解析 无玩家语境传 null
+    // key 为 null 视作无效 key 一样返回空物品 免得调用方再各自判一次
     public static Item createOrEmpty(Key key, Player player) {
+        if (key == null) {
+            return Item.empty();
+        }
         return BukkitItemManager.instance().getBuildableItem(key)
                 .map(buildable -> buildable.buildItem(player))
                 .orElse(Item.empty());
@@ -31,7 +36,7 @@ public final class InventoryUtils {
     }
 
     public static void give(Player player, Item item, boolean spawnPickupAnimation) {
-        if (player == null || item == null || item.isEmpty()) {
+        if (player == null || ItemUtils.isEmpty(item)) {
             return;
         }
         player.giveItem(item, spawnPickupAnimation);
@@ -59,14 +64,14 @@ public final class InventoryUtils {
 
     // 扣减玩家手中物品 创造模式不消耗 统一收口创造判定
     public static void shrinkHeld(Player player, Item item, int count) {
-        if (item != null && !item.isEmpty() && !player.canInstabuild()) {
+        if (!ItemUtils.isEmpty(item) && !player.canInstabuild()) {
             item.shrink(count);
         }
     }
 
     // 智能取出 固定使用主手 先与背包同类堆叠合并 剩余物品优先放空主手 否则走 give
     public static void giveOrHold(Player player, InteractionHand hand, Item item) {
-        if (player == null || item == null || item.isEmpty()) {
+        if (player == null || ItemUtils.isEmpty(item)) {
             return;
         }
 
@@ -107,7 +112,7 @@ public final class InventoryUtils {
 
     // 预检查 玩家背包能否完整容纳该物品
     public static boolean hasSpaceFor(Player player, Item item) {
-        if (item == null || item.isEmpty()) {
+        if (ItemUtils.isEmpty(item)) {
             return true;
         }
         org.bukkit.entity.Player bukkit = (org.bukkit.entity.Player) player.platformPlayer();
@@ -133,7 +138,7 @@ public final class InventoryUtils {
     }
 
     public static boolean isSameType(Item a, Item b) {
-        if (a == null || b == null || a.isEmpty() || b.isEmpty()) {
+        if (ItemUtils.isEmpty(a) || ItemUtils.isEmpty(b)) {
             return false;
         }
         return a.id().equals(b.id());
