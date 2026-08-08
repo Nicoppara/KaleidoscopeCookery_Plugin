@@ -25,28 +25,25 @@ import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
-import net.kaleidoscope.cookery.util.BehaviorConfig;
 import net.kaleidoscope.cookery.util.Hands;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
-import net.kaleidoscope.cookery.item.ItemKeys;
+import net.kaleidoscope.cookery.util.ItemMatcher;
 import org.bukkit.Particle;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<ChoppingBoardBehavior> FACTORY = new Factory();
 
-    public Set<String> knives = Set.of();
-    public Set<String> craftEngineKnives = Set.of(
-            ItemKeys.DIAMOND_KITCHEN_KNIFE.asString(),
-            ItemKeys.GOLD_KITCHEN_KNIFE.asString(),
-            ItemKeys.IRON_KITCHEN_KNIFE.asString(),
-            ItemKeys.NETHERITE_KITCHEN_KNIFE.asString());
+    public static final String DEFAULT_KNIFE_TAG = "#kaleidoscopecookery:kitchen_knife";
+    private static final List<String> DEFAULT_KNIVES = List.of(DEFAULT_KNIFE_TAG);
+    private static final String[] KNIVES = {"knives", "knife_items", "knife-items"};
+
+    public ItemMatcher knives = ItemMatcher.of(DEFAULT_KNIVES);
 
     private static final float DEFAULT_VOLUME = 1.0f;
     private static final Key PLACE_SOUND = Key.of("minecraft:block.wood.place");
@@ -110,14 +107,7 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         if (item.isEmpty()) {
             return false;
         }
-        if (ChoppingBoardKnives.instance().isKnife(item)) {
-            return true;
-        }
-        if (knives.contains(item.id().asString()) || knives.contains(item.vanillaId().asString())) {
-            return true;
-        }
-        return item.isCustomItem() && (craftEngineKnives.contains(item.id().asString())
-                || item.customId().map(Key::asString).filter(craftEngineKnives::contains).isPresent());
+        return ChoppingBoardKnives.instance().isKnife(item) || this.knives.matches(item);
     }
 
     // 处理切菜逻辑
@@ -225,60 +215,8 @@ public final class ChoppingBoardBehavior extends BukkitBlockBehavior implements 
         public ChoppingBoardBehavior create(BlockDefinition block, ConfigSection section) {
             ChoppingBoardBehavior behavior = new ChoppingBoardBehavior(block);
             behavior.facingProperty = BlockBehaviorFactory.getProperty(section.path(), block, "facing", Direction.class);
-
-            Set<String> knives = new HashSet<>();
-            Set<String> craftEngineKnives = new HashSet<>();
-            addLegacyKnife(knives, craftEngineKnives, BehaviorConfig.getString(section, ItemKeys.DIAMOND_KITCHEN_KNIFE.asString(), "diamond_knife_item", "diamond-knife-item"));
-            addLegacyKnife(knives, craftEngineKnives, BehaviorConfig.getString(section, ItemKeys.GOLD_KITCHEN_KNIFE.asString(), "gold_knife_item", "gold-knife-item"));
-            addLegacyKnife(knives, craftEngineKnives, BehaviorConfig.getString(section, ItemKeys.IRON_KITCHEN_KNIFE.asString(), "iron_knife_item", "iron-knife-item"));
-            addLegacyKnife(knives, craftEngineKnives, BehaviorConfig.getString(section, ItemKeys.NETHERITE_KITCHEN_KNIFE.asString(), "netherite_knife_item", "netherite-knife-item"));
-            addKnives(knives, craftEngineKnives, section.getStringList("knives"));
-            addKnives(knives, craftEngineKnives, section.getStringList("knife_items"));
-            addKnives(knives, craftEngineKnives, section.getStringList("knife-items"));
-            behavior.knives = knives;
-            behavior.craftEngineKnives = craftEngineKnives;
+            behavior.knives = ItemMatcher.fromConfig(section, DEFAULT_KNIVES, KNIVES);
             return behavior;
-        }
-
-        private static void addKnives(Set<String> knives, Set<String> craftEngineKnives, Iterable<String> ids) {
-            for (String id : ids) {
-                addKnife(knives, craftEngineKnives, id);
-            }
-        }
-
-        private static void addLegacyKnife(Set<String> knives, Set<String> craftEngineKnives, String id) {
-            addKnife(knives, craftEngineKnives, id);
-            String trimmed = id.trim();
-            if (!trimmed.isEmpty() && !trimmed.startsWith(Key.CRAFTENGINE_NAMESPACE + ":")) {
-                addCraftEngineKnife(craftEngineKnives, trimmed);
-            }
-        }
-
-        private static void addKnife(Set<String> knives, Set<String> craftEngineKnives, String id) {
-            String trimmed = id.trim();
-            if (trimmed.isEmpty()) {
-                return;
-            }
-            String prefix = Key.CRAFTENGINE_NAMESPACE + ":";
-            if (trimmed.startsWith(prefix)) {
-                addCraftEngineKnife(craftEngineKnives, trimmed.substring(prefix.length()));
-            } else {
-                addPlainKnife(knives, trimmed);
-            }
-        }
-
-        private static void addPlainKnife(Set<String> knives, String id) {
-            String trimmed = id.trim();
-            if (!trimmed.isEmpty()) {
-                knives.add(trimmed);
-            }
-        }
-
-        private static void addCraftEngineKnife(Set<String> craftEngineKnives, String id) {
-            String trimmed = id.trim();
-            if (!trimmed.isEmpty()) {
-                craftEngineKnives.add(trimmed);
-            }
         }
     }
 }

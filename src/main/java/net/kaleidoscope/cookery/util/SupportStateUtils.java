@@ -16,4 +16,14 @@ public final class SupportStateUtils {
             return true;
         }
     }
+
+    // 下表面 悬挂类方块判天花板用
+    public static boolean isSturdyDown(Object level, Object pos, Object blockState) {
+        try {
+            return BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.isFaceSturdy(
+                    blockState, level, pos, DirectionProxy.DOWN, SupportTypeProxy.FULL);
+        } catch (Exception e) {
+            return true;
+        }
+    }
 }

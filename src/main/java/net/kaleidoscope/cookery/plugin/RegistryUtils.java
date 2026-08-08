@@ -9,9 +9,17 @@ import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureBehavi
 import net.momirealms.craftengine.core.item.behavior.ItemBehavior;
 import net.momirealms.craftengine.core.item.behavior.ItemBehaviorFactory;
 import net.momirealms.craftengine.core.item.behavior.ItemBehaviorType;
+import net.momirealms.craftengine.core.plugin.context.CommonConditionType;
+import net.momirealms.craftengine.core.plugin.context.CommonConditions;
+import net.momirealms.craftengine.core.plugin.context.Condition;
+import net.momirealms.craftengine.core.plugin.context.Context;
+import net.momirealms.craftengine.core.plugin.context.condition.ConditionFactory;
 import net.momirealms.craftengine.core.registry.BuiltInRegistries;
 import net.momirealms.craftengine.core.registry.Registries;
 import net.momirealms.craftengine.core.registry.WritableRegistry;
+import net.momirealms.craftengine.core.plugin.context.CommonFunctionType;
+import net.momirealms.craftengine.core.plugin.context.function.Function;
+import net.momirealms.craftengine.core.plugin.context.function.FunctionFactory;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.ResourceKey;
 
@@ -30,6 +38,20 @@ public final class RegistryUtils {
         ItemBehaviorType<T> type = new ItemBehaviorType<>(id, factory);
         ((WritableRegistry<ItemBehaviorType<? extends ItemBehavior>>) BuiltInRegistries.ITEM_BEHAVIOR_TYPE)
                 .register(ResourceKey.create(Registries.ITEM_BEHAVIOR_TYPE.location(), id), type);
+        return type;
+    }
+
+    public static <T extends Condition<Context>> CommonConditionType<T> registerCondition(Key id, ConditionFactory<Context, T> factory) {
+        return CommonConditions.register(id, factory);
+    }
+
+    // CommonFunctions 没有公开的 register 只能直接往注册表里塞 和家具行为同一套写法
+    @SuppressWarnings("unchecked")
+    public static <T extends Function<Context>> CommonFunctionType<T> registerFunction(
+            Key id, FunctionFactory<Context, T> factory) {
+        CommonFunctionType<T> type = new CommonFunctionType<>(id, factory);
+        ((WritableRegistry<CommonFunctionType<? extends Function<Context>>>) BuiltInRegistries.COMMON_FUNCTION_TYPE)
+                .register(ResourceKey.create(Registries.COMMON_FUNCTION_TYPE.location(), id), type);
         return type;
     }
 

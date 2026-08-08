@@ -6,12 +6,8 @@ import net.momirealms.craftengine.core.world.CEWorld;
 import org.bukkit.Particle;
 import org.bukkit.World;
 
-// 粒子发包统一走这里 必须在该坐标所属 region 线程调用 调用方负责调度
-// 按端分流 paper 走 receivers 精确过滤省带宽 folia 只能广播
-// receivers(radius,true) 底下是 world.getNearbyPlayers 的 AABB 查询 folia 下该范围可能跨越
-// 当前 region 未拥有的邻近 region 直接抛 Cannot getEntities asynchronously 所以 folia 不能用
-// folia 退回 force(true) 让 spawn 走 world.spawnParticle 广播 该路径不做跨 region 实体扫描
-// 代价是收件人范围变成原版 force 的扩展视距 比 8 格大得多 属于 folia 下的已知取舍
+// 粒子发包入口 调用方负责调度到该坐标所属 region 线程
+// folia 不能用 receivers 它底下的 AABB 查询跨 region 会抛 退回 force 广播 收件人范围远大于 8 格
 public final class Particles {
     private Particles() {}
 

@@ -1,9 +1,7 @@
 package net.kaleidoscope.cookery.recipe;
 
-// 砧板产出模式
-// SINGLE        单产物 按权重随机选一个产出
-// SINGLE_EXTRA  单产物 + 附带产物 主产物按权重选一个 附带产物各自按权重当作百分比独立判定是否产出
-// MULTI_RANDOM  多产物随机 每个产物按权重当作百分比独立判定 全部未命中时再按权重随机保底产出一个
+// 砧板产出模式 权重在 SINGLE 里是相对权重 在 EXTRA 与 MULTI_RANDOM 里当百分比独立判定
+// MULTI_RANDOM 全部未命中时按权重随机保底产出一个
 public enum ChoppingMode {
     SINGLE,
     SINGLE_EXTRA,

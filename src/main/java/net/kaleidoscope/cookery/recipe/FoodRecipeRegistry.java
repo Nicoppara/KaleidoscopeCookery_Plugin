@@ -4,12 +4,11 @@ import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.util.AdventureHelper;
 import net.kaleidoscope.cookery.util.InventoryUtils;
-import net.kaleidoscope.cookery.item.ItemNames;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
-import net.momirealms.craftengine.libraries.adventure.text.format.TextDecoration;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -17,17 +16,24 @@ import java.util.concurrent.ThreadLocalRandom;
 // 外部插件追加注册须在自身 enable 阶段完成 之后配置重载会清空并重新填充
 @SuppressWarnings("unused")
 public final class FoodRecipeRegistry {
-    private static final String TEXT_FLEX_DISH_NAMED = "item.kaleidoscopecookery.flex_dish.named";
-    private static final String TEXT_FLEX_DISH_SEPARATOR = "item.kaleidoscopecookery.flex_dish.separator";
+    private record AccurateKey(ApplianceType cook, Key input) {}
+
+    // 只有完全不沾边才不出菜 加了一堆杂料仍该出最近的那道菜 只是品质掉到生疏
+    private static final double DEFAULT_MIN_FLEX_SCORE = 0.15;
+
     private static final FoodRecipeRegistry INSTANCE = new FoodRecipeRegistry();
     private final List<FlexFoodRecipe> flexRecipes = new CopyOnWriteArrayList<>();
+    // 最高分低于这个值就不出菜 调用方据此产出迷之炒菜 乱炖自然降级不需要特判
+    private volatile double minFlexScore = DEFAULT_MIN_FLEX_SCORE;
     private final List<AccurateFoodRecipe> accurateRecipes = new CopyOnWriteArrayList<>();
+    // 器具加输入唯一确定一条精确配方 注册期建索引 免得热路径全表扫
+    private final Map<AccurateKey, AccurateFoodRecipe> accurateIndex = new ConcurrentHashMap<>();
     private final List<ChoppingBoardRecipe> choppingRecipes = new CopyOnWriteArrayList<>();
     private final List<TeapotRecipe> teapotRecipes = new CopyOnWriteArrayList<>();
-    private final Map<Key, TeapotLiquid> teapotLiquids = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Key, TeapotLiquid> teapotLiquids = new ConcurrentHashMap<>();
     private volatile TeapotLiquid defaultLiquid;
-    private final Map<Key, TeaCup> teaCups = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<Key, TeaCup> teaCupsByItem = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Key, TeaCup> teaCups = new ConcurrentHashMap<>();
+    private final Map<Key, TeaCup> teaCupsByItem = new ConcurrentHashMap<>();
 
     private FoodRecipeRegistry() {
     }
@@ -94,12 +100,145 @@ public final class FoodRecipeRegistry {
         return teaCups.size();
     }
 
+    public void minFlexScore(double value) {
+        this.minFlexScore = value;
+    }
+
+    // 方向相同即余弦恒等 两道菜会永远打平 注册前查重
+    public FlexFoodRecipe findSameDirection(FlexFoodRecipe candidate) {
+        for (FlexFoodRecipe r : flexRecipes) {
+            if (r.cook() != candidate.cook() || r.perfect().size() != candidate.perfect().size()) {
+                continue;
+            }
+            // 汤底不重叠的两条配方在匹配时就被过滤开了 理想配比再像也不会打平
+            // 水底饺子和岩浆底生煎馒头就是同一个向量 但永远碰不到一起
+            if (!liquidsOverlap(r.liquids(), candidate.liquids())) {
+                continue;
+            }
+            Double scale = null;
+            boolean same = true;
+            for (Map.Entry<Key, Integer> e : candidate.perfect().entrySet()) {
+                Integer other = r.perfect().get(e.getKey());
+                if (other == null) {
+                    same = false;
+                    break;
+                }
+                double ratio = (double) other / e.getValue();
+                if (scale == null) {
+                    scale = ratio;
+                } else if (Math.abs(scale - ratio) > 1e-6) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    // 任一方不限汤底就一定会相遇 否则要有交集才算相遇
+    private static boolean liquidsOverlap(List<Key> a, List<Key> b) {
+        if (a.isEmpty() || b.isEmpty()) {
+            return true;
+        }
+        for (Key k : a) {
+            if (b.contains(k)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void registerFlex(FlexFoodRecipe r) {
         flexRecipes.add(r);
+        DishCarriers.rebuild(flexRecipes);
     }
 
     public void registerAccurate(AccurateFoodRecipe r) {
         accurateRecipes.add(r);
+        // 精确配方按 器具 加 输入 唯一确定 注册期建好索引 别在热路径上全表扫
+        accurateIndex.putIfAbsent(new AccurateKey(r.cook(), r.input()), r);
+    }
+
+    // 按器具取该器具下的全部精确配方 快照 供编辑与浏览 UI 分页
+    public List<AccurateFoodRecipe> accurateRecipes(ApplianceType cook) {
+        List<AccurateFoodRecipe> out = new ArrayList<>();
+        for (AccurateFoodRecipe r : accurateRecipes) {
+            if (r.cook() == cook) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    public List<FlexFoodRecipe> flexRecipes(ApplianceType cook) {
+        List<FlexFoodRecipe> out = new ArrayList<>();
+        for (FlexFoodRecipe r : flexRecipes) {
+            if (r.cook() == cook) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    // UI 编辑走这两个 删除后整表重建索引 registerAccurate 的 putIfAbsent 只认首个
+    public boolean removeAccurate(Key id) {
+        if (!accurateRecipes.removeIf(r -> r.id().equals(id))) {
+            return false;
+        }
+        rebuildAccurateIndex();
+        return true;
+    }
+
+    public boolean removeFlex(Key id) {
+        boolean removed = flexRecipes.removeIf(r -> r.id().equals(id));
+        if (removed) {
+            DishCarriers.rebuild(flexRecipes);
+        }
+        return removed;
+    }
+
+    public boolean removeChopping(Key id) {
+        return choppingRecipes.removeIf(r -> r.id().equals(id));
+    }
+
+    public boolean removeTeapot(Key id) {
+        return teapotRecipes.removeIf(r -> r.id().equals(id));
+    }
+
+    public List<ChoppingBoardRecipe> choppingRecipes() {
+        return List.copyOf(choppingRecipes);
+    }
+
+    public List<TeapotRecipe> teapotRecipes() {
+        return List.copyOf(teapotRecipes);
+    }
+
+    public ChoppingBoardRecipe findChoppingById(Key id) {
+        for (ChoppingBoardRecipe r : choppingRecipes) {
+            if (r.id().equals(id)) {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    public TeapotRecipe findTeapotById(Key id) {
+        for (TeapotRecipe r : teapotRecipes) {
+            if (r.id().equals(id)) {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    private void rebuildAccurateIndex() {
+        accurateIndex.clear();
+        for (AccurateFoodRecipe r : accurateRecipes) {
+            accurateIndex.putIfAbsent(new AccurateKey(r.cook(), r.input()), r);
+        }
     }
 
     public void registerChopping(ChoppingBoardRecipe r) {
@@ -108,10 +247,12 @@ public final class FoodRecipeRegistry {
 
     public void clearFlex(ApplianceType cook) {
         flexRecipes.removeIf(r -> r.cook() == cook);
+        DishCarriers.rebuild(flexRecipes);
     }
 
     public void clearAccurate() {
         accurateRecipes.clear();
+        accurateIndex.clear();
     }
 
     public void clearChopping() {
@@ -144,6 +285,13 @@ public final class FoodRecipeRegistry {
 
     public TeapotLiquid getTeapotLiquid(String fluid) {
         return getTeapotLiquid(Key.of(fluid));
+    }
+
+    // 已登记的液体 按 id 排序 编辑器列按钮用 顺序不定的话每次开菜单都在跳
+    public List<Key> teapotLiquidKeys() {
+        List<Key> out = new ArrayList<>(teapotLiquids.keySet());
+        out.sort(Comparator.comparing(Key::asString));
+        return List.copyOf(out);
     }
 
     public boolean hasTeapotLiquid(Key fluid) {
@@ -243,90 +391,56 @@ public final class FoodRecipeRegistry {
         }
         List<Item> out = new ArrayList<>();
         switch (recipe.mode()) {
-            case SINGLE -> addChoppingItem(out, pickWeightedChopping(results));
+            case SINGLE -> addChoppingItem(out, WeightedPicker.pick(results, ChoppingResult::weight));
             case SINGLE_EXTRA -> {
-                addChoppingItem(out, pickWeightedChopping(results));
+                addChoppingItem(out, WeightedPicker.pick(results, ChoppingResult::weight));
                 for (ChoppingResult extra : recipe.extras()) {
-                    if (rollChance(extra.weight())) {
+                    if (WeightedPicker.roll(extra.weight())) {
                         addChoppingItem(out, extra);
                     }
                 }
             }
             case MULTI_RANDOM -> {
                 for (ChoppingResult r : results) {
-                    if (rollChance(r.weight())) {
+                    if (WeightedPicker.roll(r.weight())) {
                         addChoppingItem(out, r);
                     }
                 }
                 if (out.isEmpty()) {
-                    addChoppingItem(out, pickWeightedChopping(results));
+                    addChoppingItem(out, WeightedPicker.pick(results, ChoppingResult::weight));
                 }
             }
         }
         return out;
     }
 
-    // 权重当作百分比 独立判定一次是否命中 权重大于等于 100 必中
-    private boolean rollChance(int weight) {
-        if (weight <= 0) {
-            return false;
-        }
-        return weight >= 100 || ThreadLocalRandom.current().nextInt(100) < weight;
-    }
-
-    // 按相对权重随机选一个产物 全 0 权重退回首个
-    private ChoppingResult pickWeightedChopping(List<ChoppingResult> results) {
-        int total = 0;
-        for (ChoppingResult r : results) {
-            if (r.weight() > 0) {
-                total += r.weight();
-            }
-        }
-        if (total <= 0) {
-            return results.getFirst();
-        }
-        int roll = ThreadLocalRandom.current().nextInt(total);
-        for (ChoppingResult r : results) {
-            if (r.weight() <= 0) {
-                continue;
-            }
-            if (roll < r.weight()) {
-                return r;
-            }
-            roll -= r.weight();
-        }
-        return results.getLast();
-    }
-
     private void addChoppingItem(List<Item> out, ChoppingResult result) {
         Item item = InventoryUtils.createOrEmpty(result.key());
-        if (item != null) {
+        if (!ItemUtils.isEmpty(item)) {
             out.add(item.copyWithCount(Math.max(1, result.count())));
         }
     }
 
     public Optional<FoodRecipeResult> findAccurate(ApplianceType type, Key inputItem) {
-        for (AccurateFoodRecipe recipe : accurateRecipes) {
-            if (recipe.cook() != type || !recipe.input().equals(inputItem)) {
-                continue;
-            }
-            Key chosen = pickWeighted(recipe.results());
-            if (chosen == null) {
-                continue;
-            }
-            Item item = InventoryUtils.createOrEmpty(chosen);
-            if (item == null) {
-                continue;
-            }
-            if (!recipe.lore().isEmpty()) {
-                item.loreJson(recipe.lore().stream()
-                        .map(l -> AdventureHelper.componentToJson(
-                                AdventureHelper.miniMessage().deserialize("<!i>" + l)))
-                        .toList());
-            }
-            return Optional.of(new FoodRecipeResult(item, recipe.resultCount()));
+        AccurateFoodRecipe recipe = accurateIndex.get(new AccurateKey(type, inputItem));
+        if (recipe == null) {
+            return Optional.empty();
         }
-        return Optional.empty();
+        WeightedResult chosen = WeightedPicker.pick(recipe.results(), WeightedResult::weight);
+        if (chosen == null) {
+            return Optional.empty();
+        }
+        Item item = InventoryUtils.createOrEmpty(chosen.key());
+        if (ItemUtils.isEmpty(item)) {
+            return Optional.empty();
+        }
+        if (!recipe.lore().isEmpty()) {
+            item.loreJson(recipe.lore().stream()
+                    .map(l -> AdventureHelper.componentToJson(
+                            AdventureHelper.miniMessage().deserialize("<!i>" + l)))
+                    .toList());
+        }
+        return Optional.of(new FoodRecipeResult(item, recipe.resultCount(), null));
     }
 
     public Optional<FoodRecipeResult> findAccurate(ApplianceType type, String inputItem) {
@@ -335,12 +449,11 @@ public final class FoodRecipeRegistry {
 
     // 石磨研磨该输入所需圈数 配方未指定圈数或无对应配方时用传入的默认值
     public int findGrindRotations(Key inputItem, int defaultRotations) {
-        for (AccurateFoodRecipe recipe : accurateRecipes) {
-            if (recipe.cook() == ApplianceType.MILLSTONE && recipe.input().equals(inputItem)) {
-                return recipe.rotations() > 0 ? recipe.rotations() : defaultRotations;
-            }
+        AccurateFoodRecipe recipe = accurateIndex.get(new AccurateKey(ApplianceType.MILLSTONE, inputItem));
+        if (recipe == null || recipe.rotations() <= 0) {
+            return defaultRotations;
         }
-        return defaultRotations;
+        return recipe.rotations();
     }
 
     public int findGrindRotations(String inputItem, int defaultRotations) {
@@ -355,357 +468,25 @@ public final class FoodRecipeRegistry {
 
     // 同上 但按当前汤底桶 id 过滤 配方声明 liquids 时当前汤底须命中其一 炒锅传 null 即可
     public Optional<FoodRecipeResult> cookFlex(ApplianceType type, List<Key> ingredientIds, Key liquid) {
-        if (ingredientIds == null || ingredientIds.isEmpty()) {
+        FlexMatcher.Match match = FlexMatcher.bestMatch(flexRecipes, minFlexScore, type, ingredientIds, liquid);
+        if (match == null) {
             return Optional.empty();
         }
-        Map<Key, Integer> counts = new HashMap<>();
-        for (Key k : ingredientIds) {
-            counts.merge(k, 1, Integer::sum);
-        }
-
-        FlexFoodRecipe best = null;
-        int bestInstances = 0, bestConsumed = -1, bestUnpref = -1, bestLore = -1, bestFirst = Integer.MAX_VALUE;
-        for (FlexFoodRecipe r : flexRecipes) {
-            if (r.cook() != type) {
-                continue;
-            }
-            if (!r.liquids().isEmpty() && (liquid == null || !r.liquids().contains(liquid))) {
-                continue;
-            }
-            int instances = maxInstances(r, counts);
-            if (instances <= 0) {
-                continue;
-            }
-            int consumed = instances * itemsPerInstance(r);
-            int unpref = presentCount(r.unpreferred(), counts);
-            int lore = matchedLoreCount(r, counts);
-            int first = firstMainIndex(r, ingredientIds);
-
-            boolean win = consumed > bestConsumed
-                    || (consumed == bestConsumed && unpref > bestUnpref)
-                    || (consumed == bestConsumed && unpref == bestUnpref && lore > bestLore)
-                    || (consumed == bestConsumed && unpref == bestUnpref && lore == bestLore && first < bestFirst);
-            if (win) {
-                best = r; bestInstances = instances; bestConsumed = consumed;
-                bestUnpref = unpref; bestLore = lore; bestFirst = first;
-            }
-        }
-        if (best == null) {
-            return Optional.empty();
-        }
-        Item dish = buildDish(best, counts);
+        Item dish = FlexMatcher.buildDish(match);
         if (dish == null) {
             return Optional.empty();
         }
-        return Optional.of(new FoodRecipeResult(dish, bestInstances));
-    }
-
-    // 这锅食材最多能做几份该配方
-    private int maxInstances(FlexFoodRecipe r, Map<Key, Integer> counts) {
-        int inst = Integer.MAX_VALUE;
-        boolean constrained = false;
-        for (ItemRequirement req : r.require()) {
-            constrained = true;
-            inst = Math.min(inst, counts.getOrDefault(req.item(), 0) / req.count());
-        }
-        FoodCategoryRegistry cat = FoodCategoryRegistry.instance();
-        for (RawRequirement raw : r.raw()) {
-            if (raw.min() <= 0) {
-                continue;
-            }
-            constrained = true;
-            int c = 0;
-            for (var e : counts.entrySet()) {
-                if (cat.isInCategory(r.cook(), e.getKey(), raw.category())) {
-                    c += e.getValue();
-                }
-            }
-            inst = Math.min(inst, c / raw.min());
-        }
-        return constrained ? inst : 0;
-    }
-
-    // 单份所消耗的食材数
-    private int itemsPerInstance(FlexFoodRecipe r) {
-        FoodCategoryRegistry cat = FoodCategoryRegistry.instance();
-        int per = 0;
-        for (RawRequirement raw : r.raw()) {
-            if (raw.min() > 0) {
-                per += raw.min();
-            }
-        }
-        for (ItemRequirement req : r.require()) {
-            boolean inRaw = false;
-            for (RawRequirement raw : r.raw()) {
-                if (raw.min() > 0 && cat.isInCategory(r.cook(), req.item(), raw.category())) {
-                    inRaw = true;
-                    break;
-                }
-            }
-            if (!inRaw) {
-                per += req.count();
-            }
-        }
-        return Math.max(per, 1);
-    }
-
-    private int presentCount(List<Key> list, Map<Key, Integer> counts) {
-        int n = 0;
-        for (Key k : list) {
-            if (counts.getOrDefault(k, 0) > 0) {
-                n++;
-            }
-        }
-        return n;
-    }
-
-    private int matchedLoreCount(FlexFoodRecipe r, Map<Key, Integer> counts) {
-        return resolveLoreLines(r, counts).size();
-    }
-
-    // 配方标志性食材最早出现的位置 优先看 require 没有 require 才退回 raw 类别成员
-    private int firstMainIndex(FlexFoodRecipe r, List<Key> ids) {
-        if (!r.require().isEmpty()) {
-            for (int i = 0; i < ids.size(); i++) {
-                for (ItemRequirement req : r.require()) {
-                    if (req.item().equals(ids.get(i))) {
-                        return i;
-                    }
-                }
-            }
-            return Integer.MAX_VALUE;
-        }
-        FoodCategoryRegistry cat = FoodCategoryRegistry.instance();
-        for (int i = 0; i < ids.size(); i++) {
-            for (RawRequirement raw : r.raw()) {
-                if (raw.min() > 0 && cat.isInCategory(r.cook(), ids.get(i), raw.category())) {
-                    return i;
-                }
-            }
-        }
-        return Integer.MAX_VALUE;
-    }
-
-    // 套用名称与 lore unpreferred 存在则覆盖 preferred 底味
-    private Item buildDish(FlexFoodRecipe r, Map<Key, Integer> counts) {
-        Item item = InventoryUtils.createOrEmpty(r.result());
-        if (item == null) {
-            return null;
-        }
-
-        boolean unprefPresent = anyPresent(r.unpreferred(), counts);
-
-        List<Key> flavor = unprefPresent ? r.unpreferred() : r.preferred();
-        List<Component> names = new ArrayList<>();
-        for (Key k : flavor) {
-            if (counts.getOrDefault(k, 0) > 0) {
-                names.add(displayNameComponent(k));
-            }
-        }
-        if (!names.isEmpty()) {
-            Component base = item.hoverNameComponent()
-                    .orElseGet(() -> Component.translatable(itemTranslationKey(r.result())));
-            Component name = Component.translatable(TEXT_FLEX_DISH_NAMED, joinNames(names), base)
-                    .decoration(TextDecoration.ITALIC, false);
-            item.customNameJson(AdventureHelper.componentToJson(name));
-        }
-
-        List<String> loreLines = resolveLoreLines(r, counts);
-        if (!loreLines.isEmpty()) {
-            List<String> loreJson = new ArrayList<>();
-            for (String line : loreLines) {
-                loreJson.add(AdventureHelper.componentToJson(AdventureHelper.miniMessage().deserialize("<!i>" + line)));
-            }
-            item.loreJson(loreJson);
-        }
-        return item;
-    }
-
-    private boolean anyPresent(List<Key> list, Map<Key, Integer> counts) {
-        for (Key k : list) {
-            if (counts.getOrDefault(k, 0) > 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // when 中所有条件都满足
-    private boolean whenMet(LoreCondition lc, Map<Key, Integer> counts) {
-        if (lc.when().isEmpty()) {
-            return false;
-        }
-        for (ItemRequirement c : lc.when()) {
-            if (counts.getOrDefault(c.item(), 0) < c.count()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // 这条 lore 算 unpreferred 底味 显式标记优先 否则看 when 是否含配方 unpreferred 食材
-    private boolean isUnprefRule(LoreCondition lc, FlexFoodRecipe r) {
-        if (lc.unpreferred() != null) {
-            return lc.unpreferred();
-        }
-        for (ItemRequirement c : lc.when()) {
-            if (r.unpreferred().contains(c.item())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // a 的条件是否覆盖 b b 的每个物品要求 a 都以 ≥ 的数量要求着
-    private boolean covers(LoreCondition a, LoreCondition b) {
-        for (ItemRequirement bc : b.when()) {
-            int aReq = 0;
-            for (ItemRequirement ac : a.when()) {
-                if (ac.item().equals(bc.item())) {
-                    aReq = Math.max(aReq, ac.count());
-                }
-            }
-            if (aReq < bc.count()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // 解析最终要显示的 lore 行 满足 when + 与当前底味一致 + 不被更具体的同类条件覆盖
-    private List<String> resolveLoreLines(FlexFoodRecipe r, Map<Key, Integer> counts) {
-        boolean unprefPresent = anyPresent(r.unpreferred(), counts);
-        List<LoreCondition> pool = new ArrayList<>();
-        for (LoreCondition lc : r.loreConditions()) {
-            if (!whenMet(lc, counts)) {
-                continue;
-            }
-            if (isUnprefRule(lc, r) != unprefPresent) {
-                continue;
-            }
-            pool.add(lc);
-        }
-        List<String> lines = new ArrayList<>();
-        for (LoreCondition lc : pool) {
-            boolean dominated = false;
-            for (LoreCondition other : pool) {
-                if (other == lc) {
-                    continue;
-                }
-                if (covers(other, lc) && !covers(lc, other)) {
-                    dominated = true;
-                    break;
-                }
-            }
-            if (!dominated) {
-                lines.addAll(lc.data());
-            }
-        }
-        return lines;
-    }
-
-    // 子集是否满足配方的 require 与 raw 门槛
-    private boolean matches(FlexFoodRecipe recipe, ApplianceType type, List<Key> subset) {
-        if (recipe.cook() != type) {
-            return false;
-        }
-        for (ItemRequirement req : recipe.require()) {
-            int have = 0;
-            for (Key k : subset) {
-                if (k.equals(req.item())) {
-                    have++;
-                }
-            }
-            if (have < req.count()) {
-                return false;
-            }
-        }
-        FoodCategoryRegistry cat = FoodCategoryRegistry.instance();
-        for (RawRequirement raw : recipe.raw()) {
-            if (raw.min() <= 0) {
-                continue;
-            }
-            if (cat.countInCategory(type, subset, raw.category()) < raw.min()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // 记录食谱用 在匹配配方里挑要求最具体的那个
-    private FlexFoodRecipe findBestSingleMatch(ApplianceType type, List<Key> subset) {
-        List<FlexFoodRecipe> candidates = new ArrayList<>();
-        for (FlexFoodRecipe recipe : flexRecipes) {
-            if (matches(recipe, type, subset)) {
-                candidates.add(recipe);
-            }
-        }
-        if (candidates.isEmpty()) {
-            return null;
-        }
-        candidates.sort((a, b) -> {
-            int cmp = Integer.compare(b.nonZeroRawCount(), a.nonZeroRawCount());
-            return cmp != 0 ? cmp : Integer.compare(b.totalMinCount(), a.totalMinCount());
-        });
-        return candidates.getFirst();
+        return Optional.of(new FoodRecipeResult(dish, match.portions(), match.recipe().carrier()));
     }
 
     public Optional<FlexFoodRecipe> findBestFlexRecipe(ApplianceType type, List<Key> ingredientIds) {
-        return Optional.ofNullable(findBestSingleMatch(type, ingredientIds));
+        return findBestFlexRecipe(type, ingredientIds, null);
     }
 
-    private String displayName(Key key) {
-        return ItemNames.displayName(key);
-    }
-
-    private Component displayNameComponent(Key key) {
-        String displayName = displayName(key);
-        if (!displayName.equals(key.value())) {
-            return AdventureHelper.miniMessage().deserialize(displayName);
-        }
-        return Component.translatable(itemTranslationKey(key));
-    }
-
-    private Component joinNames(List<Component> names) {
-        Component result = Component.empty();
-        for (int i = 0; i < names.size(); i++) {
-            if (i > 0) {
-                result = result.append(Component.translatable(TEXT_FLEX_DISH_SEPARATOR));
-            }
-            result = result.append(names.get(i));
-        }
-        return result;
-    }
-
-    private String itemTranslationKey(Key key) {
-        return "item." + key.namespace() + "." + key.value();
-    }
-
-    // 按权重随机选一个成品 Key 权重总和归一化 全 0 权重则退回首个
-    private Key pickWeighted(List<WeightedResult> results) {
-        if (results.isEmpty()) {
-            return null;
-        }
-        int total = 0;
-        for (WeightedResult r : results) {
-            if (r.weight() > 0) {
-                total += r.weight();
-            }
-        }
-        if (total <= 0) {
-            return results.getFirst().key();
-        }
-        int roll = ThreadLocalRandom.current().nextInt(total);
-        for (WeightedResult r : results) {
-            if (r.weight() <= 0) {
-                continue;
-            }
-            if (roll < r.weight()) {
-                return r.key();
-            }
-            roll -= r.weight();
-        }
-        return results.getLast().key();
+    // 高汤锅的配方几乎都声明了 liquids 不带汤底查会被整条过滤掉 永远匹配不上
+    public Optional<FlexFoodRecipe> findBestFlexRecipe(ApplianceType type, List<Key> ingredientIds, Key liquid) {
+        FlexMatcher.Match match = FlexMatcher.bestMatch(flexRecipes, minFlexScore, type, ingredientIds, liquid);
+        return Optional.ofNullable(match == null ? null : match.recipe());
     }
 
     public AccurateFoodRecipe findAccurateById(Key id) {

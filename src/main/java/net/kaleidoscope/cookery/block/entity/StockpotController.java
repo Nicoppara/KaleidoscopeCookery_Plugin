@@ -1,9 +1,9 @@
 package net.kaleidoscope.cookery.block.entity;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 
 import net.kaleidoscope.cookery.block.behavior.StockpotBehavior;
 
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -71,6 +71,7 @@ public class StockpotController extends BlockEntityController {
     private static final String K_SOUP_BASE_ID = "soup_base_id";
     private static final String K_INGREDIENTS = "ingredients";
     private static final String K_RESULT = "result";
+    private static final String K_CARRIER = "carrier";
     private static final String K_LID_ITEM = "lid_item";
 
     private StockpotStage stage = StockpotStage.PUT_SOUP_BASE;
@@ -81,6 +82,8 @@ public class StockpotController extends BlockEntityController {
     private int heatCheckTick = 0;
     private final List<Item> ingredients = new ArrayList<>();
     private Item result = Item.empty();
+    // 这锅成品的盛装容器 null 表示空手就能盛 与炒锅同一套 数据源都是配方的 carrier
+    private Key resultCarrier = null;
     private final List<Key> lastCookedIngredients = new ArrayList<>();
     private final List<Item> ingredientsView = Collections.unmodifiableList(ingredients);
     private final List<Key> lastCookedIngredientsView = Collections.unmodifiableList(lastCookedIngredients);
@@ -237,9 +240,11 @@ public class StockpotController extends BlockEntityController {
             if (res.isPresent()) {
                 FoodRecipeResult fr = res.get();
                 this.result = fr.item().copyWithCount(1);
+                this.resultCarrier = fr.carrier();
                 servings = Math.max(1, fr.count());
             } else {
                 this.result = InventoryUtils.createOrEmpty(ItemKeys.SUSPICIOUS_STIR_FRY).copyWithCount(1);
+                this.resultCarrier = null;
                 servings = 1;
             }
             servings = Math.min(servings, MAX_INGREDIENTS);
@@ -279,8 +284,7 @@ public class StockpotController extends BlockEntityController {
         this.lidItem = lidItem.copyWithCount(1);
         this.refreshRendering();
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
-        BukkitCraftEngine.instance().scheduler().platform()
-                .runLater(() -> refreshDynamicElement(StockpotElement::hide),
+        FoliaUtil.runLater(() -> refreshDynamicElement(StockpotElement::hide),
                         2L, super.blockEntity.world.world(),
                         super.blockEntity.pos.x >> 4, super.blockEntity.pos.z >> 4);
         return true;
@@ -386,6 +390,11 @@ public class StockpotController extends BlockEntityController {
     }
 
     // 只看不扣 供调用方在发可取消事件前预览 事件取消时不能已经扣掉份数
+    // null 表示空手就能盛
+    public Key resultCarrier() {
+        return resultCarrier;
+    }
+
     public Item peekResult() {
         if (stage != StockpotStage.FINISHED || hasLid() || takeoutCount <= 0 || result.isEmpty()) {
             return Item.empty();
@@ -457,12 +466,12 @@ public class StockpotController extends BlockEntityController {
     public void onRemove() {
         if (!ingredients.isEmpty()) {
             for (Item item : ingredients) {
-                DropUtils.dropAtCenter(super.blockEntity, item);
+                DropUtils.dropOnRemove(super.blockEntity, item);
             }
             ingredients.clear();
         }
         if (!lidItem.isEmpty()) {
-            DropUtils.dropAtCenter(super.blockEntity, lidItem);
+            DropUtils.dropOnRemove(super.blockEntity, lidItem);
         }
         super.onRemove();
     }
@@ -483,13 +492,11 @@ public class StockpotController extends BlockEntityController {
         data.putString(K_SOUP_BASE_ID, this.soupBaseId.asString());
 
         data.put(K_INGREDIENTS, BlockEntityNbt.saveItems(ingredients));
-        if (!result.isEmpty()) {
-            data.put(K_RESULT, ItemStackUtils.saveMinecraftItemStackAsTag(result.minecraftItem()));
+        BlockEntityNbt.putItem(data, K_RESULT, result);
+        if (resultCarrier != null) {
+            data.putString(K_CARRIER, resultCarrier.asString());
         }
-
-        if (!lidItem.isEmpty()) {
-            data.put(K_LID_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(lidItem.minecraftItem()));
-        }
+        BlockEntityNbt.putItem(data, K_LID_ITEM, lidItem);
         tag.put(DATA_KEY, data);
     }
 
@@ -512,18 +519,11 @@ public class StockpotController extends BlockEntityController {
 
         BlockEntityNbt.loadItems(data, K_INGREDIENTS, dataVersion, this.ingredients);
 
-        this.result = Item.empty();
-        if (data.containsKey(K_RESULT)) {
-            Item r = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(data.getCompound(K_RESULT), dataVersion));
-            if (r != null) this.result = r;
-        }
-
-        // 存档损坏时 parseMinecraftItem 会返回 null 这里必须收口成空物品 后续到处调 isEmpty
-        this.lidItem = Item.empty();
-        if (data.containsKey(K_LID_ITEM)) {
-            Item lid = ItemStackUtils.wrap(ItemStackUtils.parseMinecraftItem(data.getCompound(K_LID_ITEM), dataVersion));
-            if (lid != null) this.lidItem = lid;
-        }
+        // 存档损坏时解析返回 null 必须收口成空物品 后续到处调 isEmpty
+        this.result = BlockEntityNbt.getItem(data, K_RESULT, dataVersion);
+        String carrier = data.getString(K_CARRIER, null);
+        this.resultCarrier = carrier == null || carrier.isEmpty() ? null : Key.of(carrier);
+        this.lidItem = BlockEntityNbt.getItem(data, K_LID_ITEM, dataVersion);
 
         this.refreshRendering();
     }

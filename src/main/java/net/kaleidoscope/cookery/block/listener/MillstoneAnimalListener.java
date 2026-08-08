@@ -1,13 +1,13 @@
 package net.kaleidoscope.cookery.block.listener;
 
+import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.kaleidoscope.cookery.api.MillstoneAnimals;
 import net.kaleidoscope.cookery.block.entity.MillstoneController;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
+import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 
-import org.bukkit.GameMode;
-import org.bukkit.Material;
 import org.bukkit.entity.ChestedHorse;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -19,9 +19,7 @@ import org.bukkit.event.entity.EntityMountEvent;
 import org.bukkit.event.entity.PlayerLeashEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.inventory.ItemStack;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
@@ -36,15 +34,14 @@ public class MillstoneAnimalListener implements Listener {
         MillstoneController ctrl = MillstoneController.ACTIVE_ANIMAL_PULLERS.get(uuid);
         if (ctrl == null) return;
         // retired 表示实体已永久移除 只能做纯内存清理 stopSpinning 会写实体状态并掉落拴绳
-        BukkitCraftEngine.instance().scheduler().platform().run(
+        FoliaUtil.run(
                 ctrl::stopSpinning, ctrl::releaseAnimalRefs, event.getEntity());
     }
 
-    // 禁止玩家骑乘正在拉磨或罢工中的生物
+    // 禁止玩家骑乘正在拉磨的生物
     @EventHandler(ignoreCancelled = true)
     public void onMount(EntityMountEvent event) {
-        if (MillstoneController.ACTIVE_ANIMAL_PULLERS.containsKey(event.getMount().getUniqueId())
-                || MillstoneController.isStruck(event.getMount())) {
+        if (MillstoneController.ACTIVE_ANIMAL_PULLERS.containsKey(event.getMount().getUniqueId())) {
             event.setCancelled(true);
         }
     }
@@ -55,9 +52,8 @@ public class MillstoneAnimalListener implements Listener {
         if (!(event.getRightClicked() instanceof LivingEntity living) || living.isLeashed()) {
             return;
         }
-        // 正在拉磨或罢工中禁止再次拴绳 否则会被牵去同时拉多个磨 拉磨时拴绳已被取下所以这里要单独拦
-        if (MillstoneController.ACTIVE_ANIMAL_PULLERS.containsKey(living.getUniqueId())
-                || MillstoneController.isStruck(living)) {
+        // 正在拉磨禁止再次拴绳 否则会被牵去同时拉多个磨 拉磨时拴绳已被取下所以这里要单独拦
+        if (MillstoneController.ACTIVE_ANIMAL_PULLERS.containsKey(living.getUniqueId())) {
             event.setCancelled(true);
             return;
         }
@@ -71,6 +67,10 @@ public class MillstoneAnimalListener implements Listener {
         if (!ItemMatch.is(lead, ItemKeys.LEAD)) {
             return;
         }
+        // 强拴绕开了原版的可拴判定 领地校验也要自己补上 否则别人圈里的动物照样能被牵走
+        if (!InteractGuard.canInteract(event.getPlayer(), living.getLocation())) {
+            return;
+        }
         // TODO setLeashHolder 对原版不可拴生物可能不稳定 必要时改 NMS setLeashedTo
         living.setLeashHolder(event.getPlayer());
         // 走轮子 内部已判 canInstabuild 别手写 GameMode 判定 那样会漏掉旁观等情况
@@ -78,19 +78,15 @@ public class MillstoneAnimalListener implements Listener {
         event.setCancelled(true);
     }
 
-    // 拉磨中或罢工中的生物拦截道具右键 放行驴骡的交互以便开箱加料做自动化
+    // 拉磨中的生物拦截道具右键 放行驴骡的交互以便开箱加料做自动化
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEntityEvent event) {
         Entity entity = event.getRightClicked();
-        boolean pulling = MillstoneController.ACTIVE_ANIMAL_PULLERS.containsKey(entity.getUniqueId());
-        boolean struck = MillstoneController.isStruck(entity);
-        if (!pulling && !struck) return;
+        if (!MillstoneController.ACTIVE_ANIMAL_PULLERS.containsKey(entity.getUniqueId())) return;
         // 档案里关掉了右键禁用就放行交互
         MillstoneAnimals.Profile profile = MillstoneAnimals.instance().resolve(entity);
         if (profile != null && !profile.interactionDisabled()) return;
         if (entity instanceof ChestedHorse) return;
-        ItemStack hand = event.getPlayer().getInventory().getItem(event.getHand());
-        if (struck && !pulling && hand != null && hand.getType() == Material.LEAD) return;
         event.setCancelled(true);
     }
 

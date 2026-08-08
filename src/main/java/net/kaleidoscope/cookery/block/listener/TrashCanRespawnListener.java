@@ -1,4 +1,5 @@
 package net.kaleidoscope.cookery.block.listener;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -6,7 +7,6 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelPipeline;
 import net.kaleidoscope.cookery.block.entity.TrashCanController;
 import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -101,7 +101,7 @@ public final class TrashCanRespawnListener {
             boolean respawn = NmsBridgeProvider.bridge().isPerformRespawnPacket(msg);
             super.channelRead(ctx, msg);
             if (respawn) {
-                BukkitCraftEngine.instance().scheduler().platform().run(
+                FoliaUtil.run(
                         () -> {
                             if (player.isOnline()) {
                                 TrashCanController.handleRespawn(player);

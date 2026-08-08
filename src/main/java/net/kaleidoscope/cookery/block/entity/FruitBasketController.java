@@ -6,6 +6,8 @@ import net.kaleidoscope.cookery.entity.cat.FruitBasketCatGoal;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.ChunkIndex;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
@@ -77,10 +79,35 @@ public final class FruitBasketController extends BlockEntityController {
         return this.lastItems;
     }
 
+    // 猫找果篮以前是每 2 秒扫 13x3x13 共 507 格 每格一次自定义方块解析 一百只猫就是每 2 秒五万次
+    // 改成果篮自己登记进区块索引 猫只查自己那一个桶 登记半径要覆盖猫的搜索半径
+    private static final ChunkIndex<FruitBasketController> INDEX = new ChunkIndex<>();
+    // 猫的水平搜索半径 登记侧要按它铺开 两边必须一致
+    public static final int SEARCH_RADIUS = 6;
+
+    // 登记与注销挂在元素的 activate/deactivate 上 那对钩子随区块激活停用成对触发
+    // isValid 只是兜底 万一有没走到 deactivate 的路径 查询时顺手摘掉
+    public static void forEachNear(org.bukkit.World world, int blockX, int blockZ,
+                                   java.util.function.Predicate<FruitBasketController> action) {
+        INDEX.forEach(world, blockX, blockZ,
+                controller -> controller.blockEntity().isValid() && action.test(controller));
+    }
+
+    void unregisterFromIndex() {
+        INDEX.unregister(this);
+        this.positionsInitialized = false;
+    }
+
+    public static void clearIndex() {
+        INDEX.clear();
+    }
+
     public void ensurePositionsInitialized() {
         if (positionsInitialized || super.blockEntity.world == null) {
             return;
         }
+        INDEX.register(this, (org.bukkit.World) super.blockEntity.world.world().platformWorld(),
+                super.blockEntity.pos.x, super.blockEntity.pos.z, SEARCH_RADIUS);
         Direction facing = behavior.getFacingProperty() != null
                 ? super.blockEntity.blockState.get(behavior.getFacingProperty()) : Direction.SOUTH;
         int rotation = facing.data2d() * 90;
@@ -182,13 +209,7 @@ public final class FruitBasketController extends BlockEntityController {
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
         data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
-        ListTag list = new ListTag();
-        for (Item item : items) {
-            if (!item.isEmpty()) {
-                list.add(ItemStackUtils.saveMinecraftItemStackAsTag(item.minecraftItem()));
-            }
-        }
-        data.put(K_ITEMS, list);
+        data.put(K_ITEMS, BlockEntityNbt.saveItems(items));
         tag.put(DATA_KEY, data);
     }
 
@@ -197,20 +218,7 @@ public final class FruitBasketController extends BlockEntityController {
         Arrays.fill(items, Item.empty());
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data != null) {
-            int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
-            ListTag list = data.getList(K_ITEMS);
-            if (list != null) {
-                int i = 0;
-                for (Tag t : list) {
-                    if (i >= SLOTS) {
-                        break;
-                    }
-                    Object nms = ItemStackUtils.parseMinecraftItem(t, dataVersion);
-                    if (nms != null) {
-                        items[i++] = ItemStackUtils.wrap(nms);
-                    }
-                }
-            }
+            BlockEntityNbt.loadItems(data.getList(K_ITEMS), BlockEntityNbt.dataVersion(data), items);
         }
         for (int i = 0; i < SLOTS; i++) {
             element.refreshItem(i, items[i]);
@@ -252,6 +260,7 @@ public final class FruitBasketController extends BlockEntityController {
 
     @Override
     public void onRemove() {
+        INDEX.unregister(this);
         if (super.blockEntity.world != null) {
             FruitBasketCatGoal.releaseClaim(super.blockEntity.world.world().uuid(),
                     super.blockEntity.pos.x, super.blockEntity.pos.y, super.blockEntity.pos.z);
@@ -259,7 +268,7 @@ public final class FruitBasketController extends BlockEntityController {
         if (creativeBreak) {
             for (Item item : items) {
                 if (!item.isEmpty()) {
-                    DropUtils.dropAtCenter(super.blockEntity, item);
+                    DropUtils.dropOnRemove(super.blockEntity, item);
                 }
             }
         } else {
@@ -271,7 +280,7 @@ public final class FruitBasketController extends BlockEntityController {
                     nmsItems.add(item.isEmpty() ? ItemStackProxy.EMPTY : item.minecraftItem());
                 }
                 basket.setExactComponent(DataComponentTypes.CONTAINER, ItemContainerContentsProxy.INSTANCE.fromItems(nmsItems));
-                DropUtils.dropAtCenter(super.blockEntity, basket);
+                DropUtils.dropOnRemove(super.blockEntity, basket);
             }
         }
         Arrays.fill(items, Item.empty());

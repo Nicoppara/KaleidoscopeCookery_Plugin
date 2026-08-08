@@ -8,11 +8,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Runtime knife registry for chopping boards.
- *
- * <p>Accepted ids use the same format as the chopping board config:
- * {@code minecraft:iron_sword}, {@code othermod:steel_knife}, or
- * {@code craftengine:namespace:custom_knife}.</p>
+ * Runtime knife registry for chopping boards. Accepted ids use the same format
+ * as the chopping board config: {@code minecraft:iron_sword},
+ * {@code othermod:steel_knife} or {@code craftengine:namespace:custom_knife}.
  */
 @SuppressWarnings("unused")
 public final class ChoppingBoardKnives {
@@ -35,10 +33,8 @@ public final class ChoppingBoardKnives {
     }
 
     /**
-     * Registers a knife item id.
-     *
-     * <p>Use {@code namespace:item} for vanilla or mod registry ids. Use
-     * {@code craftengine:namespace:item} for CraftEngine custom item ids.</p>
+     * Registers a knife item id. Use {@code namespace:item} for vanilla or mod
+     * registry ids, {@code craftengine:namespace:item} for CraftEngine items.
      *
      * @param id the item id to register
      * @return {@code true} if the id was valid and was not already registered

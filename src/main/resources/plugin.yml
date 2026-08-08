@@ -4,6 +4,20 @@ main: net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin
 api-version: '1.21'
 folia-supported: true
 
+commands:
+  kcrecipe:
+    description: 打开食谱菜单，带 edit 参数进入编辑模式
+    usage: /kcrecipe [edit]
+    aliases: [kcfood]
+
+permissions:
+  kaleidoscopecookery.recipe.browse:
+    description: 允许玩家用 /kcrecipe 浏览全部食谱
+    default: op
+  kaleidoscopecookery.recipe.edit:
+    description: 允许用 /kcrecipe edit 编辑食谱
+    default: op
+
 dependencies:
   server:
     CraftEngine:

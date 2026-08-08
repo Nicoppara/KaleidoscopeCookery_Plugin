@@ -1,8 +1,12 @@
 package net.kaleidoscope.cookery.block.entity;
 
+import net.kaleidoscope.cookery.util.MessageKeys;
+import net.kaleidoscope.cookery.block.behavior.TrashCanBehavior;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.FoliaUtil;
+import net.kaleidoscope.cookery.util.Localization;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
@@ -15,7 +19,6 @@ import io.netty.channel.ChannelPromise;
 import io.netty.channel.ChannelPipeline;
 import com.mojang.datafixers.util.Pair;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.util.ItemUtils;
@@ -162,14 +165,16 @@ public class TrashCanController extends FurnitureController {
     private GameMode previousGameMode;
     // 固定视角用的相机实体 玩家旁观它 视角与位置都被锁住
     private Entity camera;
-    private final Key helmetItem;
+    private final TrashCanBehavior behavior;
+    // 占用期的假头盔恒定 进桶时算一次 别每 10 tick 重建一个物品
+    private ItemStack helmetCache;
 
-    public TrashCanController(Furniture furniture, int animChunkRadius, Key helmetItem) {
+    public TrashCanController(Furniture furniture, TrashCanBehavior behavior) {
         super(furniture);
         Arrays.fill(this.storage, Item.empty());
         WorldPosition pos = furniture.position();
-        this.animChunkRadius = animChunkRadius;
-        this.helmetItem = helmetItem;
+        this.behavior = behavior;
+        this.animChunkRadius = behavior.animChunkRadius;
         this.srcChunkX = ((int) Math.floor(pos.x)) >> 4;
         this.srcChunkZ = ((int) Math.floor(pos.z)) >> 4;
         this.element = new TrashCanElement(this, pos);
@@ -187,6 +192,10 @@ public class TrashCanController extends FurnitureController {
         return occupied;
     }
 
+    public boolean isCamera(Entity entity) {
+        return camera != null && camera.equals(entity);
+    }
+
     public float facingDegrees() {
         return furniture().position().yRot();
     }
@@ -202,6 +211,16 @@ public class TrashCanController extends FurnitureController {
         }
 
         Item itemInHand = player.getItemInHand(InteractionHand.MAIN_HAND);
+        // 空手潜行才倒空 手上有东西时潜行右键仍然是丢垃圾 免得误清
+        if (player.isSneaking() && itemInHand.isEmpty()) {
+            if (!clearStorage()) {
+                return InteractionResult.PASS;
+            }
+            player.sendActionBar(Localization.component(MessageKeys.TRASHCAN_CLEARED));
+            player.swingHand(InteractionHand.MAIN_HAND);
+            return InteractionResult.SUCCESS_AND_CANCEL;
+        }
+
         if (itemInHand.isEmpty()) {
             if (!withdrawItem(player, InteractionHand.MAIN_HAND)) {
                 return InteractionResult.PASS;
@@ -253,6 +272,25 @@ public class TrashCanController extends FurnitureController {
         furniture().setUnsaved();
     }
 
+    // 潜行右键倒空 内容直接销毁不返还 空桶返回 false 让调用方 PASS
+    public boolean clearStorage() {
+        boolean any = false;
+        for (int i = 0; i < SLOTS; i++) {
+            if (!storage[i].isEmpty()) {
+                storage[i] = Item.empty();
+                any = true;
+            }
+        }
+        if (!any) {
+            return false;
+        }
+        element.refreshItemsAndBroadcast();
+        playEffects(0.6f);
+        playAnimation(WITHDRAW_FRAMES);
+        furniture().setUnsaved();
+        return true;
+    }
+
     public boolean withdrawItem(Player player, InteractionHand hand) {
         for (int i = SLOTS - 1; i >= 0; i--) {
             if (!storage[i].isEmpty()) {
@@ -284,11 +322,11 @@ public class TrashCanController extends FurnitureController {
             if (delay <= 0) {
                 send.run();
             } else {
-                BukkitCraftEngine.instance().scheduler().platform().runLater(send, delay, loc);
+                FoliaUtil.runLater(send, delay, loc);
             }
         }
         int totalTicks = (int) frames[frames.length - 1][0];
-        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> animating = false, totalTicks, loc);
+        FoliaUtil.runLater(() -> animating = false, totalTicks, loc);
     }
 
     private void playEffects(float pitch) {
@@ -326,7 +364,6 @@ public class TrashCanController extends FurnitureController {
         this.occupantId = player.getUniqueId();
         BY_OCCUPANT.put(occupantId, this);
 
-        // 相机用空 ItemDisplay 无物品即无模型 旁观模式下无剪影无阴影(隐形盔甲架会被旁观者看到半透明剪影) 仍是真实体可被旁观锁定
         ItemDisplay display = world.spawn(camLoc, ItemDisplay.class, d -> {
             d.setPersistent(false);
             d.setGravity(false);
@@ -334,18 +371,16 @@ public class TrashCanController extends FurnitureController {
         this.camera = display;
 
         player.setGameMode(GameMode.SPECTATOR);
-        // 改写器负责服务端主动发的同步 周期重发负责客户端单方面的预测性改动
-        // 旁观模式下客户端点背包不会把点击发给服务端 服务端什么都不知道也就不会发纠正包
+        // 旁观下客户端点背包不发包给服务端 服务端不知道也就不发纠正包
         // 这种纯客户端的错位只能靠定时重发盖回去
         addHelmetRewriter(player);
         scheduleHelmetResend(gen, player);
         Entity cam = this.camera;
         addTeleportBlocker(player);
-        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> {
+        FoliaUtil.runLater(() -> {
             if (occupied && player.isOnline() && cam.isValid()) {
                 player.setSpectatorTarget(cam);
             }
-            // 操作的是玩家状态 走实体调度器 玩家换 region 时任务跟着走 玩家没了就不跑
         }, null, 1L, player);
 
         element.setItemsHidden(true);
@@ -353,29 +388,57 @@ public class TrashCanController extends FurnitureController {
         playEnterAnimation();
         // 进入摆动结束后转入占用待机 盖子微抬 眼睛冒出 并开始微动循环
         int enterEnd = (int) LID_ENTER[LID_ENTER.length - 1][0] + 1;
-        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> beginOccupiedIdle(gen), enterEnd, topCenter());
+        FoliaUtil.runLater(() -> beginOccupiedIdle(gen), enterEnd, topCenter());
     }
 
-    // 进桶头盔 配置的自定义帽(带 camera_overlay 遮罩) 取不到退回南瓜
+    // 进桶头盔
     private ItemStack helmetStack() {
-        Item item = InventoryUtils.createOrEmpty(helmetItem);
-        if (ItemUtils.isEmpty(item)) {
-            return new ItemStack(Material.CARVED_PUMPKIN);
+        if (this.helmetCache == null) {
+            Item item = InventoryUtils.createOrEmpty(this.behavior.helmetItem);
+            this.helmetCache = ItemUtils.isEmpty(item)
+                    ? new ItemStack(Material.CARVED_PUMPKIN)
+                    : ItemStackUtils.getBukkitStack(item);
         }
-        return ItemStackUtils.getBukkitStack(item);
+        return this.helmetCache;
     }
 
-    // 只发包给玩家自己 不写真实装备栏 写真的会被 /hat 摘下来带走 而且崩溃时会跟着背包落盘
-    // 南瓜遮罩由客户端读自己背包的头盔槽渲染 所以必须发容器槽位包 只发装备包不产生遮罩
-    // 装备包另发一份 让别的玩家也能看见戴着桶
-    // 定时把假头盔盖回客户端 代次变化或占用结束自动停止
+    // 躲桶是否开放 关掉后落到桶上只是普通落地
+    public boolean canHide(org.bukkit.entity.Player player) {
+        if (!this.behavior.allowHiding) {
+            return false;
+        }
+        String permission = this.behavior.hidePermission;
+        return permission.isEmpty() || player.hasPermission(permission);
+    }
+
+    // 只发包不写真实装备栏 写真的会被 /hat 带走 且崩溃时跟着背包落盘
+    // 南瓜遮罩由客户端读自己背包的头盔槽渲染 必须发容器槽位包 装备包另发一份让旁人可见
     private void scheduleHelmetResend(int gen, org.bukkit.entity.Player player) {
+        sendFakeHelmet(player, helmetStack());
+        FoliaUtil.runLater(
+                () -> occupancyTick(gen, player), null, HELMET_RESEND_INTERVAL, player);
+    }
+
+    private void occupancyTick(int gen, org.bukkit.entity.Player player) {
         if (!occupied || gen != occupancyId || !player.isOnline()) {
             return;
         }
+        // 相机可能被 /kill 或别的插件清掉 一旦没了玩家就永久留在无锁定的自由旁观 能穿墙透视
+        // 占用期只有这一条循环在跑 自检就挂在它身上
+        if (!isSpectatingCamera(player)) {
+            exit();
+            return;
+        }
         sendFakeHelmet(player, helmetStack());
-        BukkitCraftEngine.instance().scheduler().platform().runLater(
-                () -> scheduleHelmetResend(gen, player), null, HELMET_RESEND_INTERVAL, player);
+        FoliaUtil.runLater(
+                () -> occupancyTick(gen, player), null, HELMET_RESEND_INTERVAL, player);
+    }
+
+    private boolean isSpectatingCamera(org.bukkit.entity.Player player) {
+        Entity cam = this.camera;
+        return cam != null && cam.isValid()
+                && player.getGameMode() == GameMode.SPECTATOR
+                && player.getSpectatorTarget() == cam;
     }
 
     private static void sendFakeHelmet(org.bukkit.entity.Player player, ItemStack helmet) {
@@ -399,11 +462,13 @@ public class TrashCanController extends FurnitureController {
         if (channel == null) {
             return;
         }
-        ChannelPipeline pipeline = channel.pipeline();
-        if (pipeline.get(TELEPORT_BLOCKER) != null || pipeline.get("packet_handler") == null) {
-            return;
-        }
-        pipeline.addBefore("packet_handler", TELEPORT_BLOCKER, new SpectateTeleportBlocker());
+        runOnChannel(channel, () -> {
+            ChannelPipeline pipeline = channel.pipeline();
+            if (pipeline.get(TELEPORT_BLOCKER) != null || pipeline.get("packet_handler") == null) {
+                return;
+            }
+            pipeline.addBefore("packet_handler", TELEPORT_BLOCKER, new SpectateTeleportBlocker());
+        });
     }
 
     private void removeTeleportBlocker(org.bukkit.entity.Player player) {
@@ -411,14 +476,23 @@ public class TrashCanController extends FurnitureController {
         if (channel == null) {
             return;
         }
-        ChannelPipeline pipeline = channel.pipeline();
-        if (pipeline.get(TELEPORT_BLOCKER) != null) {
-            pipeline.remove(TELEPORT_BLOCKER);
+        runOnChannel(channel, () -> {
+            ChannelPipeline pipeline = channel.pipeline();
+            if (pipeline.get(TELEPORT_BLOCKER) != null) {
+                pipeline.remove(TELEPORT_BLOCKER);
+            }
+        });
+    }
+
+    private static void runOnChannel(Channel channel, Runnable task) {
+        if (channel.eventLoop().inEventLoop()) {
+            task.run();
+        } else {
+            channel.eventLoop().execute(task);
         }
     }
 
-    // 出站改写头盔槽 玩家点背包时服务端会把真实槽位同步回去 事后重发只能在下一 tick 补 客户端必然闪一下
-    // 改成在包发出前就替换成假头盔 客户端从头到尾没见过真实值 也就没有闪烁
+    // 包发出前就替换成假头盔
     private void addHelmetRewriter(org.bukkit.entity.Player player) {
         Channel channel = BukkitNetworkManager.instance().getChannel(player);
         if (channel == null) {
@@ -525,7 +599,7 @@ public class TrashCanController extends FurnitureController {
     private static final class SpectateTeleportBlocker extends ChannelInboundHandlerAdapter {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-            if (NmsBridgeProvider.bridge().isSpectateTeleportPacket(msg)) {
+            if (NmsBridgeProvider.bridge().isSpectatePacket(msg)) {
                 return;
             }
             super.channelRead(ctx, msg);
@@ -552,7 +626,7 @@ public class TrashCanController extends FurnitureController {
         } else {
             playEyeTrack(EYE_SWAY);
         }
-        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> scheduleIdle(gen), IDLE_PERIOD, topCenter());
+        FoliaUtil.runLater(() -> scheduleIdle(gen), IDLE_PERIOD, topCenter());
     }
 
     // 播放一条眼睛轨道 每个关键帧把下一帧目标发给追踪玩家 Y 叠加在冒出基准上
@@ -690,7 +764,7 @@ public class TrashCanController extends FurnitureController {
         }
         // 延后一 tick 待重生完成再还原游戏模式 否则可能被重生逻辑盖掉
         // 重生会换位置 必须走实体调度器 按坐标排会落到旧 region
-        BukkitCraftEngine.instance().scheduler().platform().runLater(
+        FoliaUtil.runLater(
                 () -> restoreIfCrashed(player), null, 1L, player);
     }
 
@@ -715,10 +789,8 @@ public class TrashCanController extends FurnitureController {
         this.previousGameMode = null;
     }
 
-    // 服务器关闭时统一把所有进入桶里的玩家放出来 避免卡在旁观模式
-    // onDisable 路径 只做纯内存清理
-    // folia 关服时 region 调度器已在停止流程中 往里排的还原任务不会被执行 排了等于没排
-    // 玩家的旁观态与游戏模式交给 PDC 标记 下次登录由 restoreIfCrashed 兜底还原
+    // onDisable 路径 只做纯内存清理 folia 关服时 region 调度器已在停止流程 排还原任务等于没排
+    // 旁观态与游戏模式交给 PDC 标记 下次登录由 restoreIfCrashed 兜底
     public static void releaseAll() {
         for (TrashCanController c : new ArrayList<>(BY_OCCUPANT.values())) {
             if (FoliaUtil.isFolia()) {
@@ -728,6 +800,7 @@ public class TrashCanController extends FurnitureController {
             }
         }
         BY_OCCUPANT.clear();
+        BY_BLOCK.clear();
     }
 
     // 只松开占用与相机 不碰玩家状态 PDC 标记保留给下次登录兜底
@@ -743,10 +816,8 @@ public class TrashCanController extends FurnitureController {
         }
     }
 
-    // 清除附近生物对进入玩家的敌意 仿模组进桶即安全 仅 paper 走这条即时清除
-    // folia 不能扫 getNearbyEntities 要求 AABB 覆盖的每个 section 都归当前 region 越界直接抛异常
-    // folia 靠 TrashCanListener.onTarget 拦截索敌 加上进桶已切旁观 原版怪物本就无法锁定旁观者
-    // 差别只是已锁定的怪要等下次重新索敌才掉仇恨 不是立刻
+    // 进桶即安全 仅 paper 走这条即时清仇恨 folia 的 getNearbyEntities 跨 region 会抛
+    // folia 改由 TrashCanListener.onTarget 拦索敌 差别只是已锁定的怪要下次索敌才掉仇恨
     private static final double HOSTILITY_CLEAR_RADIUS = 32;
 
     private void clearNearbyHostility(org.bukkit.entity.Player player) {
@@ -788,21 +859,34 @@ public class TrashCanController extends FurnitureController {
             scheduleFrame(send, delay, loc);
         }
         int total = (int) LID_ENTER[LID_ENTER.length - 1][0];
-        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> animating = false, total, loc);
+        FoliaUtil.runLater(() -> animating = false, total, loc);
     }
 
     private void scheduleFrame(Runnable send, int delay, Location loc) {
         if (delay <= 0) {
             send.run();
         } else {
-            BukkitCraftEngine.instance().scheduler().platform().runLater(send, delay, loc);
+            FoliaUtil.runLater(send, delay, loc);
         }
     }
 
+    // 落地进桶 落地事件在移动处理中触发 延后一 tick 再切模式与传送 避免在下落步骤里传送玩家
+    // landing 单独传入 移动包路径下玩家实体还停在落地前的位置 不能拿 getLocation
+    public static void tryEnterOnLand(org.bukkit.entity.Player player, Location landing) {
+        TrashCanController ctrl = findUnder(landing);
+        if (ctrl == null || ctrl.isOccupied() || ctrl.isAnimating() || !ctrl.canHide(player)) {
+            return;
+        }
+        FoliaUtil.runLater(() -> {
+            if (!ctrl.isOccupied() && !ctrl.isAnimating() && player.isOnline()) {
+                ctrl.enter(player);
+            }
+        }, null, 1L, player);
+    }
+
     // 按玩家脚下方块查询唯一垃圾桶 脚下方块或其下一格 检测到多个则返回 null 不进入
-    public static TrashCanController findUnder(org.bukkit.entity.Player player) {
-        UUID world = player.getWorld().getUID();
-        Location loc = player.getLocation();
+    public static TrashCanController findUnder(Location loc) {
+        UUID world = loc.getWorld().getUID();
         int bx = loc.getBlockX();
         int by = loc.getBlockY();
         int bz = loc.getBlockZ();
@@ -873,17 +957,7 @@ public class TrashCanController extends FurnitureController {
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
         data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
-        ListTag list = new ListTag();
-        for (int i = 0; i < SLOTS; i++) {
-            if (storage[i].isEmpty()) {
-                continue;
-            }
-            CompoundTag e = new CompoundTag();
-            e.putInt(K_SLOT, i);
-            e.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(storage[i].minecraftItem()));
-            list.add(e);
-        }
-        data.put(K_ITEMS, list);
+        data.put(K_ITEMS, BlockEntityNbt.saveSlots(storage));
         tag.put(DATA_KEY, data);
     }
 

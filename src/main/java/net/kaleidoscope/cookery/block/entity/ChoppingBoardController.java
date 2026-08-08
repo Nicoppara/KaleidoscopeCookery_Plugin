@@ -1,4 +1,5 @@
 package net.kaleidoscope.cookery.block.entity;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
 import net.kaleidoscope.cookery.block.behavior.ChoppingBoardBehavior;
 
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -18,6 +19,7 @@ import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe;
@@ -100,7 +102,8 @@ public class ChoppingBoardController extends BlockEntityController {
         return currentStage;
     }
 
-    // 当前阶段的展示模型路径 无料时返回 null
+    // 当前阶段的展示模型 无料或配方没给模型时返回 null
+    // 返回 null 不代表不显示 调用方会退回展示放上去的物品本身
     public String currentStageModel() {
         if (isEmpty()) {
             return null;
@@ -191,7 +194,7 @@ public class ChoppingBoardController extends BlockEntityController {
     @Override
     public void onRemove() {
         if (!placedItem.isEmpty()) {
-            DropUtils.dropAtCenter(super.blockEntity, placedItem);
+            DropUtils.dropOnRemove(super.blockEntity, placedItem);
         }
         super.onRemove();
     }
@@ -213,9 +216,7 @@ public class ChoppingBoardController extends BlockEntityController {
         CompoundTag data = new CompoundTag();
         data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
         data.putInt(K_STAGE, currentStage);
-        if (!placedItem.isEmpty()) {
-            data.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(placedItem.minecraftItem()));
-        }
+        BlockEntityNbt.putItem(data, K_ITEM, placedItem);
         tag.put(DATA_KEY, data);
     }
 
@@ -226,15 +227,7 @@ public class ChoppingBoardController extends BlockEntityController {
             return;
         }
         this.currentStage = data.getInt(K_STAGE, 0);
-        this.placedItem = Item.empty();
-        Tag itemTag = data.get(K_ITEM);
-        if (itemTag != null) {
-            int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
-            Object nmsItem = ItemStackUtils.parseMinecraftItem(itemTag, dataVersion);
-            if (nmsItem != null) {
-                this.placedItem = ItemStackUtils.wrap(nmsItem);
-            }
-        }
+        this.placedItem = BlockEntityNbt.getItem(data, K_ITEM, BlockEntityNbt.dataVersion(data));
         if (this.placedItem.isEmpty()) {
             this.currentStage = 0;
         }

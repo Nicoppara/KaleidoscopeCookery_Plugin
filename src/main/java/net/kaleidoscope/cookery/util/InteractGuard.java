@@ -22,6 +22,11 @@ public final class InteractGuard {
         return test(player, Flag.INTERACT, (org.bukkit.World) pos.world().platformWorld(), pos.x, pos.y, pos.z);
     }
 
+    // 自定义方块在写入世界前校验放置权限，避免先放置再由领地插件回滚。
+    public static boolean canPlace(Player player, World level, BlockPos pos) {
+        return test(player, Flag.PLACE, (org.bukkit.World) level.platformWorld(), pos.x(), pos.y(), pos.z());
+    }
+
     // 打开 UI 视作开容器 用 OPEN_CONTAINER 权限
     public static boolean canOpenContainer(Player player, WorldPosition pos) {
         return test(player, Flag.OPEN_CONTAINER, (org.bukkit.World) pos.world().platformWorld(), pos.x, pos.y, pos.z);
@@ -32,12 +37,27 @@ public final class InteractGuard {
         return test(player, Flag.BREAK, (org.bukkit.World) level.platformWorld(), x, y, z);
     }
 
+    // CE 事件回调里拿到的是 Bukkit 对象 没有 CE Player 可用
+    public static boolean canPlace(org.bukkit.entity.Player player, Location location) {
+        return test(player, Flag.PLACE, location);
+    }
+
+    // 对实体动手也算交互 拴绳骑乘之类按实体所在位置判
+    public static boolean canInteract(org.bukkit.entity.Player player, Location location) {
+        return test(player, Flag.INTERACT, location);
+    }
+
     private static boolean test(Player player, Flag flag, org.bukkit.World world, double x, double y, double z) {
         if (player == null) {
             return false;
         }
-        Location loc = new Location(world, x, y, z);
-        return KaleidoscopeCookeryPlugin.antiGrief().test(
-                (org.bukkit.entity.Player) player.platformPlayer(), flag, loc);
+        return test((org.bukkit.entity.Player) player.platformPlayer(), flag, new Location(world, x, y, z));
+    }
+
+    private static boolean test(org.bukkit.entity.Player player, Flag flag, Location location) {
+        if (player == null) {
+            return false;
+        }
+        return KaleidoscopeCookeryPlugin.antiGrief().test(player, flag, location);
     }
 }

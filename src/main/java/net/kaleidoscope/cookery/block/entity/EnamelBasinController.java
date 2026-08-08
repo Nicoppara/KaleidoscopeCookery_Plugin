@@ -99,7 +99,7 @@ public class EnamelBasinController extends BlockEntityController {
             Item oilItem = InventoryUtils.createOrEmpty(behavior.oilItem);
             if (!oilItem.isEmpty()) {
                 oilItem.count(oilCount);
-                DropUtils.dropAtCenter(super.blockEntity, oilItem);
+                DropUtils.dropOnRemove(super.blockEntity, oilItem);
             }
         }
         super.onRemove();

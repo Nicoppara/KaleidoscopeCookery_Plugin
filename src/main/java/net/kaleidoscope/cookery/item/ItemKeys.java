@@ -6,11 +6,23 @@ import net.momirealms.craftengine.core.util.Key;
 public final class ItemKeys {
     private ItemKeys() {}
 
+    public static final String NAMESPACE = "kaleidoscopecookery";
+
     public static final Key KITCHEN_SHOVEL_NO_OIL = Key.of("kaleidoscopecookery:kitchen_shovel_no_oil");
     public static final Key KITCHEN_SHOVEL_HAS_OIL = Key.of("kaleidoscopecookery:kitchen_shovel_has_oil");
     public static final Key OIL = Key.of("kaleidoscopecookery:oil");
+    public static final Key OIL_POT = Key.of("kaleidoscopecookery:oil_pot");
+    public static final Key OIL_POT_EMPTY = Key.of("kaleidoscopecookery:oil_pot_empty");
+    public static final Key SHOW_SCARECROW = Key.of("show:scarecrow_body");
+    public static final Key SHOW_SCARECROW_HEADLESS = Key.of("show:scarecrow_headless");
+    public static final Key SHOW_SCARECROW_LANTERN = Key.of("show:scarecrow_lantern");
+    public static final Key SHOW_SCARECROW_SOUL_LANTERN = Key.of("show:scarecrow_soul_lantern");
+    public static final Key LANTERN = Key.of("minecraft:lantern");
+    public static final Key SOUL_LANTERN = Key.of("minecraft:soul_lantern");
 
-    public static final Key RAW_NOODLES = Key.of("kaleidoscopecookery:raw_noodles");
+    public static boolean isLantern(Key vanillaId) {
+        return LANTERN.equals(vanillaId) || SOUL_LANTERN.equals(vanillaId);
+    }
 
     public static final Key STOCKPOT_LID = Key.of("kaleidoscopecookery:stockpot_lid");
 
@@ -44,6 +56,7 @@ public final class ItemKeys {
     public static final Key TRANSMUTATION_LUNCH_BAG = Key.of("kaleidoscopecookery:transmutation_lunch_bag");
     public static final Key TRANSMUTATION_LUNCH_BAG_EATING = Key.of("kaleidoscopecookery:transmutation_lunch_bag_eating");
     public static final Key COOKED_BEEF = Key.of("minecraft:cooked_beef");
+    public static final Key CATERPILLAR = Key.of("kaleidoscopecookery:caterpillar");
 
     public static final Key DIAMOND_KITCHEN_KNIFE = Key.of("kaleidoscopecookery:diamond_kitchen_knife");
     public static final Key GOLD_KITCHEN_KNIFE = Key.of("kaleidoscopecookery:gold_kitchen_knife");
@@ -62,4 +75,28 @@ public final class ItemKeys {
 
     public static final Key EMPTY_CUP = Key.of("kaleidoscopecookery:empty_cup");
     public static final Key EMPTY_CUP_MODEL = Key.of("show:empty_cup");
+
+    // 食谱菜单图标 全部用原版物品 不依赖资源包 缺资源包的服也能正常显示
+    public static final Key MENU_FILLER = Key.of("minecraft:gray_stained_glass_pane");
+    public static final Key MENU_INVALID = Key.of("minecraft:barrier");
+    public static final Key MENU_BACK = Key.of("minecraft:arrow");
+    public static final Key MENU_PREV = Key.of("minecraft:spectral_arrow");
+    public static final Key MENU_NEXT = Key.of("minecraft:spectral_arrow");
+    public static final Key MENU_CREATE = Key.of("minecraft:writable_book");
+    public static final Key MENU_SAVE = Key.of("minecraft:lime_dye");
+    public static final Key MENU_DELETE = Key.of("minecraft:red_dye");
+    public static final Key MENU_ADD = Key.of("minecraft:emerald");
+    public static final Key MENU_COUNT = Key.of("minecraft:comparator");
+    public static final Key MENU_MODE = Key.of("minecraft:lever");
+    public static final Key MENU_ROTATION = Key.of("minecraft:clock");
+    public static final Key MENU_LIQUID = Key.of("minecraft:water_bucket");
+    // 盛装容器槽 空手态要和灰玻璃背景区分开 否则看不见
+    public static final Key MENU_CARRIER_NONE = Key.of("minecraft:leather");
+    public static final Key MENU_POT = Key.of("kaleidoscopecookery:pot");
+    public static final Key MENU_STOCKPOT = Key.of("kaleidoscopecookery:stockpot");
+    public static final Key MENU_STEAMER = Key.of("kaleidoscopecookery:steamer");
+    public static final Key MENU_SHAWARMA = Key.of("kaleidoscopecookery:shawarma_spit");
+    public static final Key MENU_MILLSTONE = Key.of("kaleidoscopecookery:new_millstone");
+    public static final Key MENU_CHOPPING_BOARD = Key.of("kaleidoscopecookery:chopping_board");
+    public static final Key MENU_TEAPOT = Key.of("kaleidoscopecookery:teapot");
 }

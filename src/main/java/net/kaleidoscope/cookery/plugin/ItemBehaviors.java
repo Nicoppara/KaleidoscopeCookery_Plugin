@@ -3,6 +3,7 @@ package net.kaleidoscope.cookery.plugin;
 import net.momirealms.craftengine.core.item.behavior.ItemBehaviorType;
 import net.momirealms.craftengine.core.util.Key;
 import net.kaleidoscope.cookery.item.behavior.SickleRangeHarvestBehavior;
+import net.kaleidoscope.cookery.item.behavior.OilPotItemBehavior;
 import net.kaleidoscope.cookery.item.behavior.TeapotItemBehavior;
 import net.kaleidoscope.cookery.item.behavior.TransmutationLunchBagBehavior;
 
@@ -10,6 +11,7 @@ import net.kaleidoscope.cookery.item.behavior.TransmutationLunchBagBehavior;
 public final class ItemBehaviors {
     public static ItemBehaviorType<SickleRangeHarvestBehavior> SICKLE_RANGE_HARVEST;
     public static ItemBehaviorType<TeapotItemBehavior> TEAPOT;
+    public static ItemBehaviorType<OilPotItemBehavior> OIL_POT;
     public static ItemBehaviorType<TransmutationLunchBagBehavior> TRANSMUTATION_LUNCH_BAG;
 
     private ItemBehaviors() {}
@@ -31,6 +33,12 @@ public final class ItemBehaviors {
             TEAPOT = RegistryUtils.registerItemBehavior(
                     Key.of("kaleidoscopecookery:teapot_item"),
                     TeapotItemBehavior.FACTORY
+            );
+        }
+        if (OIL_POT == null) {
+            OIL_POT = RegistryUtils.registerItemBehavior(
+                    Key.of("kaleidoscopecookery:oil_pot_item"),
+                    OilPotItemBehavior.FACTORY
             );
         }
         if (TRANSMUTATION_LUNCH_BAG == null) {

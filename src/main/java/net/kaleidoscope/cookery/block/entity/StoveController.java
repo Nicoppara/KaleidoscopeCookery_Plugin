@@ -1,8 +1,8 @@
 package net.kaleidoscope.cookery.block.entity;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 
 import net.kaleidoscope.cookery.block.behavior.StoveBehavior;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
@@ -78,7 +78,7 @@ public final class StoveController extends BlockEntityController {
         CEWorld ceWorld = super.blockEntity.world();
         int count = behavior.particleCount;
         // 末两参是区块坐标 会原样喂给 Bukkit.getRegionScheduler() 传方块坐标会调度到错误的 region
-        BukkitCraftEngine.instance().scheduler().platform().run(() -> {
+        FoliaUtil.run(() -> {
             if (crackle) {
                 level.playSound(new Vec3d(x, y, z), CRACKLE, volume, pitch, SoundSource.BLOCK);
             }

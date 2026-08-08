@@ -6,6 +6,64 @@
 console:
   language: zh_cn
 
+# 食谱菜单外观（/kcrecipe 打开的那套界面）
+# 下面所有项都可以整段删掉或留空，删掉即使用内置默认值。
+# 改完执行 /ce reload all 即可生效，不用重启。
+# 注意：如果有插件通过 API 设置了同一项，以插件设置的为准，这里的值不会覆盖它。
+recipe_menu:
+  # 按钮材质。值可以是原版物品 id，也可以是 CraftEngine 自定义物品 id。
+  # 可用的按钮名：
+  #   filler        边框玻璃
+  #   invalid       物品 id 无效时的占位
+  #   back          返回
+  #   previous_page 上一页
+  #   next_page     下一页
+  #   create        新建
+  #   save          保存
+  #   delete        删除
+  #   add           添加
+  #   count         数量
+  #   mode          模式
+  #   rotation      研磨圈数
+  #   liquid        汤底 / 液体
+  #   carrier_none  空手盛出
+  buttons: {}
+  # 示例：
+  # buttons:
+  #   back: "minecraft:barrier"
+  #   next_page: "minecraft:feather"
+
+  # 厨具的图标与显示名。两项都可以只写其中一个。
+  # 可用的厨具名：pot、stockpot、steamer、shawarma、millstone、chopping_board、teapot
+  appliances: {}
+  # 示例：
+  # appliances:
+  #   pot:
+  #     icon: "minecraft:cauldron"
+  #     name: "铁锅"
+  #   millstone:
+  #     name: "磨盘"
+
+  # 界面标题。支持 MiniMessage 标签（如 <gold>、<bold>）。
+  # 占位符：<appliance> 厨具名、<count> 条目数、<recipe> 成品物品名
+  # 不写颜色标签时保持内置的深灰色。
+  # 可用的界面名与默认值：
+  #   home_browse       食谱一览 - 选择厨具
+  #   home_edit         食谱编辑 - 选择厨具
+  #   list_browse       一览 - <appliance> (<count>)
+  #   list_edit         编辑 - <appliance> (<count>)
+  #   create_pick_type  新建食谱 - <appliance>
+  #   detail_accurate   精准食谱 - <recipe>
+  #   detail_flex       模糊食谱 - <recipe>
+  #   detail_chopping   砧板食谱 - <recipe>
+  #   detail_teapot     茶壶食谱 - <recipe>
+  #   soup_base         汤底表 - 共 <count> 种
+  titles: {}
+  # 示例：
+  # titles:
+  #   home_browse: "<gold><bold>菜谱大全"
+  #   list_browse: "<yellow><appliance></yellow> 共 <count> 道"
+
 # bStats 匿名统计 (https://bstats.org/plugin/bukkit/KaleidoscopeCookeryPlugin/32444)
 # 默认开启。改为 false 可关闭本插件向 bStats 发送匿名统计数据。
 metrics:

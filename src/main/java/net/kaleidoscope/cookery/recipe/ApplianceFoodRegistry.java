@@ -7,7 +7,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 // 蒸笼/烤架等的可放入食材白名单 只有登记过的食材才允许放入该厨具
-// 与 FoodCategoryRegistry 区分 那是 pot stockpot 的分类配方系统 这里只判定能否放入
 @SuppressWarnings("unused")
 public final class ApplianceFoodRegistry {
     private static final ApplianceFoodRegistry INSTANCE = new ApplianceFoodRegistry();
@@ -35,6 +34,14 @@ public final class ApplianceFoodRegistry {
 
     public boolean isAllowed(ApplianceType type, String key) {
         return isAllowed(type, Key.of(key));
+    }
+
+    // UI 删除精准配方时同步摘掉白名单 否则原料要等到下次配置重载才禁得掉
+    public void unregister(ApplianceType type, Key key) {
+        Set<Key> set = allowed.get(type);
+        if (set != null) {
+            set.remove(key);
+        }
     }
 
     public void clear(ApplianceType type) {

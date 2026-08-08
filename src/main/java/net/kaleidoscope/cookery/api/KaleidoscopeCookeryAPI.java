@@ -2,17 +2,17 @@ package net.kaleidoscope.cookery.api;
 
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
-import net.kaleidoscope.cookery.recipe.FoodCategoryRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.api.ui.RecipeMenuHooks;
+import net.kaleidoscope.cookery.api.ui.RecipeMenuStyle;
 import net.kaleidoscope.cookery.recipe.SoupBaseRegistry;
 import org.bukkit.plugin.Plugin;
 
 /**
- * Static entry point for plugins integrating with Kaleidoscope Cookery.
- *
- * <p>Use this class from another plugin instead of depending on internal
- * controller or behavior packages. Runtime registries returned here are shared
- * by the plugin and can be extended during another plugin's enable phase.</p>
+ * Static entry point for plugins integrating with Kaleidoscope Cookery. Use
+ * this class instead of depending on internal controller or behavior packages.
+ * Runtime registries returned here are shared by the plugin and can be extended
+ * during another plugin's enable phase.
  */
 @SuppressWarnings("unused")
 public final class KaleidoscopeCookeryAPI {
@@ -47,6 +47,54 @@ public final class KaleidoscopeCookeryAPI {
     }
 
     /**
+     * Returns the item tag registry backing every {@code #namespace:tag}
+     * reference in the behavior configs.
+     *
+     * @return the item tag API
+     */
+    public static ItemTags itemTags() {
+        return ItemTags.instance();
+    }
+
+    /**
+     * Returns the vanilla block tag registry, backing the {@code block_tags}
+     * config section. CraftEngine custom blocks use {@code settings.tags} instead.
+     *
+     * @return the block tag registry
+     */
+    public static BlockTags blockTags() {
+        return BlockTags.instance();
+    }
+
+    /**
+     * Returns the reskin hook for the built-in recipe menus: button icons,
+     * screen titles and appliance names, without writing any inventory code.
+     *
+     * @return the recipe menu style registry
+     */
+    public static RecipeMenuStyle recipeMenuStyle() {
+        return RecipeMenuStyle.instance();
+    }
+
+    /**
+     * Returns the registration point for replacing whole recipe screens.
+     *
+     * @return the recipe menu hooks
+     */
+    public static RecipeMenuHooks recipeMenuHooks() {
+        return RecipeMenuHooks.instance();
+    }
+
+    /**
+     * Returns the pot cooking condition registry.
+     *
+     * @return the pot cook condition API
+     */
+    public static PotCookConditions potCookConditions() {
+        return PotCookConditions.instance();
+    }
+
+    /**
      * Returns the loaded food recipe registry.
      *
      * @return the food recipe registry
@@ -62,15 +110,6 @@ public final class KaleidoscopeCookeryAPI {
      */
     public static ApplianceFoodRegistry applianceFoods() {
         return ApplianceFoodRegistry.instance();
-    }
-
-    /**
-     * Returns the food category registry used by flexible pot recipes.
-     *
-     * @return the food category registry
-     */
-    public static FoodCategoryRegistry foodCategories() {
-        return FoodCategoryRegistry.instance();
     }
 
     /**

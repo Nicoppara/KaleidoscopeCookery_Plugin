@@ -23,6 +23,9 @@ bin/
 # VS Code
 .vscode/
 
+# CraftEngine 资源包内容 不随插件仓库分发
+Kaleidoscope/
+
 # 本地配置 / 凭据
 .claude/settings.local.json
 

@@ -20,7 +20,6 @@ public final class ChoppingBoardElement implements BlockEntityElement {
 
     private boolean lastVisible = false;
     private boolean currentVisible = false;
-    private String currentModel = null;
 
     public ChoppingBoardElement(@NotNull ChoppingBoardController controller, @NotNull WorldPosition position) {
         this.controller = controller;
@@ -33,26 +32,38 @@ public final class ChoppingBoardElement implements BlockEntityElement {
         refreshPackets();
     }
 
+    // 配方给了分阶段模型就用模型 那些模型是照着躺在板上画的 原样摆
+    // 没给模型的退回展示放上去的物品本身 物品默认是立着的 要放倒并缩小才像躺在板上
+    private static final float RAW_SCALE = 0.5f;
+    private static final float RAW_PITCH = (float) Math.toRadians(-90);
+    // basePos 的高度是照立着的阶段模型定的 物品放倒后中心还留在那儿会悬空
+    // 往下压回板面 展示实体的 translation 在旋转之外应用 不会被 pitch 带偏
+    private static final float RAW_Y_OFFSET = -0.5f;
+
     public void refreshPackets() {
         String model = controller.currentStageModel();
-        this.currentModel = model;
-        if (model == null) {
-            display.clear(0);
-            this.currentVisible = false;
-            return;
-        }
-        Item item = InventoryUtils.createOrEmpty(Key.of(model));
+        boolean raw = model == null;
+        Item item = raw
+                ? controller.placedItem().copy()
+                : InventoryUtils.createOrEmpty(Key.of(model));
         if (ItemUtils.isEmpty(item)) {
             display.clear(0);
             this.currentVisible = false;
             return;
         }
 
+        Quaternionf rotation = new Quaternionf().rotateY(controller.facingYawRadians());
+        if (raw) {
+            rotation.rotateX(RAW_PITCH);
+        }
         ItemDisplayPackets packets = ItemDisplayPackets.at(basePos)
                 .item(item)
-                .scale(1.0f)
+                .scale(raw ? RAW_SCALE : 1.0f)
                 .itemTransform((byte) 0)
-                .leftRotation(new Quaternionf().rotateY(controller.facingYawRadians()));
+                .leftRotation(rotation);
+        if (raw) {
+            packets.translation(0f, RAW_Y_OFFSET, 0f);
+        }
         display.setPackets(0, packets.spawn(display.id(0), display.uuid(0)), packets.meta(display.id(0)));
         this.currentVisible = true;
     }

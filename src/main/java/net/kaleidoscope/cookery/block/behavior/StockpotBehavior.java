@@ -1,5 +1,6 @@
 package net.kaleidoscope.cookery.block.behavior;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import net.kaleidoscope.cookery.block.entity.StockpotController;
 import net.kaleidoscope.cookery.block.entity.StockpotStage;
@@ -44,11 +45,13 @@ import net.kaleidoscope.cookery.util.Hands;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.Localization;
+import net.kaleidoscope.cookery.util.MessageKeys;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
+import net.kaleidoscope.cookery.item.ItemNames;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
-import net.kaleidoscope.cookery.recipe.FoodCategoryRegistry;
+import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.SoupBaseRegistry;
 import net.kaleidoscope.cookery.util.RecipeUtils;
@@ -59,8 +62,7 @@ import java.util.List;
 
 public final class StockpotBehavior extends BukkitBlockBehavior implements EntityBlock {
 
-    // 反射代理探测失败只报一次
-    private static boolean chainSupportWarned;
+    private static final AtomicBoolean CHAIN_SUPPORT_WARNED = new AtomicBoolean();
     public static final BlockBehaviorFactory<StockpotBehavior> FACTORY = new Factory();
     private int controllerId;
     private Property<Boolean> hasLidProperty;
@@ -76,11 +78,6 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     public Key bowlItem = ItemKeys.BOWL;
     public Key recipeItemNoRecipe = ItemKeys.RECIPE_ITEM_NO_RECIPE;
     public Key recipeItemHasRecipe = ItemKeys.RECIPE_ITEM_HAS_RECIPE;
-    public String msgStartStewing = "kaleidoscopecookery.message.stockpot.start_stewing";
-    public String msgNotEnoughIngredients = "kaleidoscopecookery.message.stockpot.not_enough_ingredients";
-    public String msgNoRecipe = "kaleidoscopecookery.message.stockpot.no_recipe";
-    public String msgRecipeSaved = "kaleidoscopecookery.message.stockpot.recipe_saved";
-    public String msgUseBowl = "kaleidoscopecookery.message.stockpot.use_bowl";
 
     public StockpotBehavior(BlockDefinition blockDefinition) {
         super(blockDefinition);
@@ -180,7 +177,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
                 updateLidState(context, state, true);
                 player.swingHand(hand);
                 if (controller.stage() == StockpotStage.PUT_INGREDIENT && !controller.ingredients().isEmpty()) {
-                    player.sendActionBar(Localization.component(msgStartStewing));
+                    player.sendActionBar(Localization.component(MessageKeys.STOCKPOT_START_STEWING));
                 }
                 return InteractionResult.SUCCESS_AND_CANCEL;
             }
@@ -256,7 +253,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
                 if (filled) {
                     player.swingHand(hand);
                 } else {
-                    player.sendActionBar(Localization.component(msgNotEnoughIngredients));
+                    player.sendActionBar(Localization.component(MessageKeys.STOCKPOT_NOT_ENOUGH_INGREDIENTS));
                 }
                 return InteractionResult.SUCCESS_AND_CANCEL;
             }
@@ -277,10 +274,10 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
             return InteractionResult.PASS;
         }
         FlexFoodRecipe matchedRecipe = FoodRecipeRegistry.instance()
-                .findBestFlexRecipe(ApplianceType.STOCKPOT, ingredientIds)
+                .findBestFlexRecipe(ApplianceType.STOCKPOT, ingredientIds, controller.soupBaseId())
                 .orElse(null);
         if (matchedRecipe == null) {
-            player.sendActionBar(Localization.component(msgNoRecipe));
+            player.sendActionBar(Localization.component(MessageKeys.STOCKPOT_NO_RECIPE));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         Item hasRecipeItem = InventoryUtils.createOrEmpty(recipeItemHasRecipe);
@@ -290,7 +287,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
         Item ceRecorded = BukkitItemManager.instance().wrap(recorded);
         InventoryUtils.giveOrHold(player, hand, ceRecorded);
         player.swingHand(hand);
-        player.sendActionBar(Localization.component(msgRecipeSaved));
+        player.sendActionBar(Localization.component(MessageKeys.STOCKPOT_RECIPE_SAVED));
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
@@ -300,7 +297,7 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
                                                InteractionHand hand, Item itemInHand) {
         // 加入食材
         if (!itemInHand.isEmpty()
-                && FoodCategoryRegistry.instance().isRegistered(ApplianceType.STOCKPOT, itemInHand.id())
+                && ApplianceFoodRegistry.instance().isAllowed(ApplianceType.STOCKPOT, itemInHand.id())
                 && controller.ingredients().size() < StockpotController.MAX_INGREDIENTS) {
             if (controller.addIngredient(itemInHand.copyWithCount(1))) {
                 InventoryUtils.shrinkHeld(player, itemInHand, 1);
@@ -329,8 +326,14 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
         if (controller.stage() != StockpotStage.FINISHED || state.get(hasLidProperty)) {
             return InteractionResult.PASS;
         }
-        if (!ItemMatch.is(itemInHand, bowlItem)) {
-            player.sendActionBar(Localization.component(msgUseBowl));
+        // 盛装容器由配方的 carrier 决定 carrier 为空表示空手就能盛
+        Key carrier = controller.resultCarrier();
+        boolean holding = carrier == null ? itemInHand.isEmpty() : ItemMatch.is(itemInHand, carrier);
+        if (!holding) {
+            player.sendActionBar(carrier == null
+                    ? Localization.component(MessageKeys.STOCKPOT_USE_HAND)
+                    : Localization.componentWithReplacement(MessageKeys.STOCKPOT_USE_BOWL, "%s",
+                            ItemNames.displayName(carrier)));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
         // 先预览再发事件 事件取消时不能已经扣掉份数 否则监听器一取消这份汤就没了
@@ -349,7 +352,10 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
         // 事件已经发出去了 监听器可能已有副作用 这里不能再返回 PASS 让原版接管
         controller.takeOutResult();
         Item finalResult = BukkitItemManager.instance().wrap(event.dish());
-        InventoryUtils.shrinkHeld(player, itemInHand, 1);
+        // 空手盛出的菜不扣任何东西
+        if (carrier != null) {
+            InventoryUtils.shrinkHeld(player, itemInHand, 1);
+        }
         InventoryUtils.giveOrHold(player, hand, finalResult);
         player.swingHand(hand);
         return InteractionResult.SUCCESS_AND_CANCEL;
@@ -435,10 +441,9 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
             return BlockBehaviourProxy.BlockStateBaseProxy.INSTANCE.isFaceSturdy(
                     aboveState, level, abovePos, DirectionProxy.DOWN, SupportTypeProxy.CENTER);
         } catch (Exception e) {
-            // 反射代理在不同 MC 版本上可能对不上 挂链子只是外观 失败按不能挂处理即可
-            // 这方法每次邻居更新都会调 只在首次失败时报一次 否则会刷满控制台
-            if (chainSupportWarned) return false;
-            chainSupportWarned = true;
+            if (!CHAIN_SUPPORT_WARNED.compareAndSet(false, true)) {
+                return false;
+            }
             KaleidoscopeCookeryPlugin.instance().getLogger().log(Level.WARNING,
                     "无法检查方块能否挂链子 汤锅链子外观将不显示", e);
             return false;
@@ -488,11 +493,6 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
             behavior.bowlItem = Key.of(BehaviorConfig.getString(section, behavior.bowlItem.asString(), "bowl_item", "bowl-item"));
             behavior.recipeItemNoRecipe = Key.of(BehaviorConfig.getString(section, behavior.recipeItemNoRecipe.asString(), "recipe_item_no_recipe", "recipe-item-no-recipe"));
             behavior.recipeItemHasRecipe = Key.of(BehaviorConfig.getString(section, behavior.recipeItemHasRecipe.asString(), "recipe_item_has_recipe", "recipe-item-has-recipe"));
-            behavior.msgStartStewing = BehaviorConfig.getString(section, behavior.msgStartStewing, "msg_start_stewing", "msg-start-stewing");
-            behavior.msgNotEnoughIngredients = BehaviorConfig.getString(section, behavior.msgNotEnoughIngredients, "msg_not_enough_ingredients", "msg-not-enough-ingredients");
-            behavior.msgNoRecipe = BehaviorConfig.getString(section, behavior.msgNoRecipe, "msg_no_recipe", "msg-no-recipe");
-            behavior.msgRecipeSaved = BehaviorConfig.getString(section, behavior.msgRecipeSaved, "msg_recipe_saved", "msg-recipe-saved");
-            behavior.msgUseBowl = BehaviorConfig.getString(section, behavior.msgUseBowl, "msg_use_bowl", "msg-use-bowl");
             return behavior;
         }
     }

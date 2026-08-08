@@ -1,11 +1,18 @@
 package net.kaleidoscope.cookery.block.entity;
 
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.EventUtils;
+import net.kaleidoscope.cookery.util.FoliaUtil;
+import net.kaleidoscope.cookery.util.Hands;
+import net.kaleidoscope.cookery.util.InteractGuard;
+import net.kaleidoscope.cookery.util.InventoryUtils;
+import net.kaleidoscope.cookery.util.Localization;
+import net.kaleidoscope.cookery.util.MessageKeys;
 import net.kaleidoscope.cookery.api.MillstoneAnimals;
 import net.kaleidoscope.cookery.block.behavior.MillstoneBehavior;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
 
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.entity.furniture.Furniture;
 import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureController;
@@ -29,30 +36,23 @@ import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.ListTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.kaleidoscope.cookery.api.event.MillstoneGrindCompleteEvent;
-import net.kaleidoscope.cookery.util.EventUtils;
-import net.kaleidoscope.cookery.util.Hands;
-import net.kaleidoscope.cookery.util.InteractGuard;
-import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.GameMode;
 import org.bukkit.Particle;
-import org.bukkit.block.data.BlockData;
-import org.bukkit.block.data.type.Snow;
 import org.bukkit.block.data.type.Stairs;
 import org.bukkit.entity.ChestedHorse;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.bukkit.block.Block;
@@ -62,7 +62,6 @@ import org.joml.Vector3f;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -70,91 +69,65 @@ import java.util.function.Consumer;
 
 public class MillstoneController extends FurnitureController {
 
-    public static final ConcurrentHashMap<UUID, MillstoneController> ACTIVE_PUSHERS = new ConcurrentHashMap<>();
     public static final ConcurrentHashMap<UUID, MillstoneController> ACTIVE_ANIMAL_PULLERS = new ConcurrentHashMap<>();
-
-    // 罢工标记写在动物自己的 PDC 上 关闭 AI 并禁骑乘/道具交互 直到重新拴绳绑定+正常停止才恢复
-    private static final NamespacedKey STRUCK_KEY =
-            Objects.requireNonNull(NamespacedKey.fromString("kaleidoscopecookery:millstone_struck"));
-
-    public static boolean isStruck(Entity e) {
-        return e.getPersistentDataContainer().has(STRUCK_KEY, PersistentDataType.BYTE);
-    }
-
-    public static void setStruck(Entity e, boolean struck) {
-        if (struck) {
-            e.getPersistentDataContainer().set(STRUCK_KEY, PersistentDataType.BYTE, (byte) 1);
-        } else {
-            e.getPersistentDataContainer().remove(STRUCK_KEY);
-        }
-    }
 
     // 拴绳生物搜索半径 原版拴绳超过 10 格就断 20 足够覆盖
     private static final double LEASH_SEARCH_RADIUS = 20;
     // 上面半径换算成区块 用于扫描前的 region 归属校验 切比雪夫距离
     private static final int LEASH_SEARCH_CHUNK_RADIUS = ((int) LEASH_SEARCH_RADIUS >> 4) + 1;
 
-    // 拉磨会关掉玩家的飞行权限 该状态随 playerdata 落盘 只存内存字段则硬崩溃后权限永久丢失
-    private static final NamespacedKey RESTORE_ALLOW_FLIGHT_KEY =
-            Objects.requireNonNull(NamespacedKey.fromString("kaleidoscopecookery:millstone_restore_allow_flight"));
-
-    private static void markFlightRestore(org.bukkit.entity.Player player) {
-        player.getPersistentDataContainer().set(
-                RESTORE_ALLOW_FLIGHT_KEY, PersistentDataType.BYTE, (byte) 1);
-    }
-
-    private static boolean hasFlightMark(org.bukkit.entity.Player player) {
-        return player.getPersistentDataContainer()
-                .has(RESTORE_ALLOW_FLIGHT_KEY, PersistentDataType.BYTE);
-    }
-
-    private static void clearFlightMark(org.bukkit.entity.Player player) {
-        player.getPersistentDataContainer().remove(RESTORE_ALLOW_FLIGHT_KEY);
-    }
-
-    // 同一次会话内正常停止 期间权限不会变 直接还原
-    public static void restoreFlight(org.bukkit.entity.Player player) {
-        if (!hasFlightMark(player)) {
-            return;
-        }
-        clearFlightMark(player);
-        player.setAllowFlight(true);
-    }
-
-    // 崩溃后重新登录的兜底 只清标记不授予飞行
-    public static void clearFlightMarkOnJoin(org.bukkit.entity.Player player) {
-        clearFlightMark(player);
-    }
-
-    public static void register(UUID uuid, MillstoneController ctrl) {
-        ACTIVE_PUSHERS.put(uuid, ctrl);
-    }
-
-    public static void unregister(UUID uuid) {
-        if (uuid != null) {
-            ACTIVE_PUSHERS.remove(uuid);
-        }
-    }
-
-    // 当前拉磨者的拉一圈秒数 玩家默认 7.5 生物按各自档案 被打时临时用骡子的速度
+    // 当前拉磨生物的拉一圈秒数与绕磨半径 按各自档案 被打时临时用骡子的速度
     private float currentSeconds = (float) MillstoneAnimals.PLAYER_SECONDS;
-    // 当前拉磨者的绕磨半径 起始与行走位置离磨心的距离
     private float currentRadius = (float) MillstoneAnimals.DEFAULT_ORBIT_RADIUS;
 
-    // 生物拉磨时每隔这么多 tick 掷一次骰子 命中则罢工
-    private static final int STRIKE_CHECK_INTERVAL = 100;
-    private static final double STRIKE_CHANCE = 0.005;
+    // 磨盘空转时驴骡自动投料的检查间隔
+    private static final int IDLE_FEED_INTERVAL = 20;
 
-    // 视觉旋转每隔几 tick 更新一次
+    // 生物匀速拉磨 视觉旋转每隔几 tick 更新一次
     private static final int VISUAL_UPDATE_INTERVAL = 5;
+    // 玩家推磨速度不可预测 视觉间隔越长手感越滞后 这里换成两 tick 一发
+    private static final int PUSH_VISUAL_INTERVAL = 2;
 
-    // 拉磨者跟位 偏离超过这个距离平方才瞬移归位 平时靠速度推进
-    private static final double TELEPORT_SNAP_DIST_SQ = 4.0;
     // 每 tick 朝目标推进的比例与位移上限
     private static final double STEP_FACTOR = 0.8;
     private static final double MAX_STEP = 0.25;
     // 位移小于这个平方值就不更新朝向 免得原地抖动
     private static final double YAW_UPDATE_EPSILON = 1e-6;
+
+    // 轨道点相对磨心的侧向偏移 orbitOffset 与其反解共用
+    private static final float ORBIT_LATERAL_OFFSET = -0.5f;
+    // 原版玩家碰撞箱半宽 换算成接触判定的角宽度
+    private static final double PLAYER_HALF_WIDTH = 0.3;
+    // 站上磨盘本身不算推磨
+    private static final double PUSH_MIN_RADIUS = 0.8;
+    // 接触环带在杆长之外再放宽的距离 站到杆梢外侧一点也还算摸着
+    private static final float PUSH_RADIUS_MARGIN = 0.6f;
+    // 磨杆挂在 y+0.9 只要玩家脚下与磨底盘同高就必然落在身体高度内
+    private static final double PUSH_MAX_HEIGHT_DIFF = 1.0;
+    // 磨杆扫开旁观者的施力间隔
+    private static final int SHOVE_INTERVAL = 4;
+    // 研磨粒子与音效的发包间隔 粒子错开 2 tick 免得与音效撞在同一 tick
+    private static final int GRIND_PARTICLE_INTERVAL = 5;
+    private static final int GRIND_PARTICLE_PHASE = 2;
+    private static final int GRIND_SOUND_INTERVAL = 25;
+    private static final int GRIND_PARTICLE_COUNT = 5;
+    // 成品出料口相对磨心的水平偏移与高度 抛出速度按发射器的手感定
+    private static final double EJECT_OFFSET = 0.6;
+    private static final double EJECT_HEIGHT = 1.0;
+    private static final double EJECT_SPEED = 0.25;
+    private static final double EJECT_LIFT = 0.12;
+    // 喷出的成品给玩家留出的拾取延迟
+    private static final int EJECT_PICKUP_DELAY = 10;
+    // 摘绳掉出的拴绳的搜索范围 与刚落地的判定阈值 收绳任务最迟下一 tick 执行
+    private static final double LEAD_DROP_SEARCH_RADIUS = 1;
+    private static final int FRESH_DROP_MAX_TICKS = 2;
+
+    private int pushVisualTick;
+    private boolean pushVisualPending;
+    // 接触判定每 tick 每个追踪玩家读一次坐标 getLocation 每次都新建 复用同一个游标
+    private final Location scratchLoc = new Location(null, 0, 0, 0);
+    // 最近一次推磨的玩家 只用于产出事件的归属 不落盘
+    private UUID lastPusher;
 
     private UUID pendingAnimalUUID = null;
     private boolean savedAnimalWasAI = true;
@@ -167,8 +140,6 @@ public class MillstoneController extends FurnitureController {
     private float orbitAngle = 0f;
     private float currentAngle = 0f;
     private boolean boosted = false;
-
-    private Player pullingPlayer = null;
 
     private LivingEntity pullingAnimal = null;
     private boolean animalWasAI = true;
@@ -187,13 +158,20 @@ public class MillstoneController extends FurnitureController {
     private static final String K_GRIND_DATA_VERSION = "grind_data_version";
     private static final String K_SLOT = "slot";
     private static final String K_ITEM = "item";
-    private static final String K_PROGRESS = "progress";
+    // 旧键 progress 存的是整圈数 语义已换成角度 换键让旧档从 0 重来 不做兼容
+    private static final String K_PROGRESS = "progress_degrees";
     private static final String K_ROTATIONS = "rotations";
+
+    // 接触判定的基准角 构造时定死
+    private final float orbitBaseDeg;
 
     public static final int GRIND_SLOTS = 8;
     private final Item[] grindItems = new Item[GRIND_SLOTS];
-    // grindProgress 已转圈数 requiredRotations 该料产出所需圈数
-    private final int[] grindProgress = new int[GRIND_SLOTS];
+    // 非空槽数 grindIsEmpty 每 tick 都要问 别每次扫一遍八个槽
+    private int filledSlots;
+    // grindDegrees 该槽已研磨的角度 requiredRotations 该料产出所需圈数
+    // 按角度累计而不是数 orbitAngle 跨 360 的次数 后者会让新放入的料白蹭上一轮的剩余角度
+    private final float[] grindDegrees = new float[GRIND_SLOTS];
     private final int[] requiredRotations = new int[GRIND_SLOTS];
 
     public MillstoneController(Furniture furniture, MillstoneBehavior behavior) {
@@ -201,6 +179,10 @@ public class MillstoneController extends FurnitureController {
         this.behavior = behavior;
         Arrays.fill(this.grindItems, Item.empty());
         this.element = new MillstoneElement(this, furniture.position());
+
+        double furnitureRad = Math.toRadians(-furniture.position().yRot());
+        double base = Math.atan2(-behavior.pushBarLength, ORBIT_LATERAL_OFFSET);
+        this.orbitBaseDeg = (float) Math.toDegrees(furnitureRad + base) - behavior.pushAngleOffset;
     }
 
     public MillstoneBehavior behavior() {
@@ -220,6 +202,9 @@ public class MillstoneController extends FurnitureController {
     }
 
     private int firstEmptyGrindSlot() {
+        if (filledSlots >= GRIND_SLOTS) {
+            return -1;
+        }
         for (int i = 0; i < GRIND_SLOTS; i++) {
             if (grindItems[i].isEmpty()) {
                 return i;
@@ -234,16 +219,21 @@ public class MillstoneController extends FurnitureController {
             return false;
         }
         grindItems[i] = item.copyWithCount(1);
-        grindProgress[i] = 0;
-        requiredRotations[i] = FoodRecipeRegistry.instance().findGrindRotations(item.id(), behavior.grindRotations);
+        grindDegrees[i] = 0f;
+        filledSlots++;
+        // 圈数为 0 会让第一圈就出货 收口成至少一圈
+        requiredRotations[i] = Math.max(1, FoodRecipeRegistry.instance().findGrindRotations(item.id(), behavior.grindRotations));
         element.spawnGrindSlot(i, grindItems[i]);
         furniture().setUnsaved();
         return true;
     }
 
     private void clearGrindSlot(int i) {
+        if (!grindItems[i].isEmpty()) {
+            filledSlots--;
+        }
         grindItems[i] = Item.empty();
-        grindProgress[i] = 0;
+        grindDegrees[i] = 0f;
         requiredRotations[i] = 0;
         element.removeGrindSlot(i);
     }
@@ -263,29 +253,29 @@ public class MillstoneController extends FurnitureController {
     }
 
     public boolean grindIsEmpty() {
-        for (int i = 0; i < GRIND_SLOTS; i++) {
-            if (!grindItems[i].isEmpty()) {
-                return false;
-            }
-        }
-        return true;
+        return filledSlots == 0;
     }
 
-    // 每转满一圈推进研磨 转够该料所需圈数就产出 真实耗时由转速(秒/圈)决定 转得慢产得慢
-    private void advanceGrind() {
-        List<Item> products = new ArrayList<>();
+    // 磨盘每转过一点角度就按同样的角度推进研磨 攒够该料所需圈数就产出
+    // 真实耗时由转速(秒/圈)决定 转得慢产得慢
+    private void advanceGrind(float degrees) {
+        List<Item> products = null;
         for (int i = 0; i < GRIND_SLOTS; i++) {
             if (grindItems[i].isEmpty()) {
                 continue;
             }
-            grindProgress[i]++;
-            if (grindProgress[i] >= requiredRotations[i]) {
-                products.add(getGrindResult(grindItems[i]));
-                clearGrindSlot(i);
+            grindDegrees[i] += degrees;
+            if (grindDegrees[i] < requiredRotations[i] * 360f) {
+                continue;
             }
+            if (products == null) {
+                products = new ArrayList<>();
+            }
+            products.add(getGrindResult(grindItems[i]));
+            clearGrindSlot(i);
         }
 
-        if (products.isEmpty()) {
+        if (products == null) {
             return;
         }
         ejectProducts(products);
@@ -293,7 +283,7 @@ public class MillstoneController extends FurnitureController {
         tryFeedFromChest();
     }
 
-    // 按槽取 不返回数组本身 否则调用方能直接改锅内物品且绕过脏标记
+    // 按槽取 不返回数组本身 否则调用方能直接改研磨槽且绕过脏标记
     public Item grindItem(int slot) {
         return grindItems[slot];
     }
@@ -303,39 +293,20 @@ public class MillstoneController extends FurnitureController {
         return new double[]{-Math.sin(rad), Math.cos(rad)};
     }
 
-    // 生物罢工
-    private void strikeAnimal() {
-        LivingEntity animal = this.pullingAnimal;
-        if (animal == null) {
-            return;
-        }
-        ACTIVE_ANIMAL_PULLERS.remove(animal.getUniqueId());
-        setStruck(animal, true);
-        if (animal.isValid()) {
-            animal.setGravity(true);
-            animal.setVelocity(new Vector(0, 0, 0));
-        }
-        if (leadOwner != null) {
-            ejectLead();
-        }
-        this.pullingAnimal = null;
-        this.leadOwner = null;
-        this.animating = false;
-        this.boosted = false;
-        this.rawTick = 0;
-        furniture().setUnsaved();
+    // 出料口在磨心朝家具正面偏移一点的位置 像发射器一样朝外抛
+    private org.bukkit.entity.Item ejectFromOutlet(ItemStack stack) {
+        World world = getBukkitWorld();
+        WorldPosition pos = furniture().position();
+        double[] dir = facingDir();
+        Location loc = new Location(world,
+                pos.x + dir[0] * EJECT_OFFSET, pos.y + EJECT_HEIGHT, pos.z + dir[1] * EJECT_OFFSET);
+        org.bukkit.entity.Item dropped = world.dropItem(loc, stack);
+        dropped.setVelocity(new Vector(dir[0] * EJECT_SPEED, EJECT_LIFT, dir[1] * EJECT_SPEED));
+        return dropped;
     }
 
-    // 拴绳从产物口弹出
     private void ejectLead() {
-        org.bukkit.World world = getBukkitWorld();
-        double[] dir = facingDir();
-        double ex = furniture().position().x + dir[0] * 0.6;
-        double ey = furniture().position().y + 1.0;
-        double ez = furniture().position().z + dir[1] * 0.6;
-        org.bukkit.entity.Item dropped = world.dropItem(
-                new org.bukkit.Location(world, ex, ey, ez), new ItemStack(Material.LEAD));
-        dropped.setVelocity(new Vector(dir[0] * 0.25, 0.12, dir[1] * 0.25));
+        ejectFromOutlet(new ItemStack(Material.LEAD));
     }
 
     // 磨完一批 触发事件 未被取消则逐个朝石磨朝向喷出
@@ -353,28 +324,15 @@ public class MillstoneController extends FurnitureController {
 
         WorldPosition pos = furniture().position();
         Location location = new Location((World) pos.world().platformWorld(), pos.x, pos.y, pos.z);
-        org.bukkit.entity.Player pusher = pullingPlayer == null ? null
-                : org.bukkit.Bukkit.getPlayer(pullingPlayer.uuid());
+        org.bukkit.entity.Player pusher = lastPusher == null ? null : Bukkit.getPlayer(lastPusher);
         MillstoneGrindCompleteEvent event = new MillstoneGrindCompleteEvent(pusher, location, stacks);
         if (EventUtils.fireAndCheckCancel(event)) {
             return;
         }
 
         for (ItemStack stack : stacks) {
-            ejectProduct(stack);
+            ejectFromOutlet(stack).setPickupDelay(EJECT_PICKUP_DELAY);
         }
-    }
-
-    // 成品像发射器/投掷器一样朝石磨朝向喷出
-    private void ejectProduct(ItemStack stack) {
-        org.bukkit.World world = getBukkitWorld();
-        double[] dir = facingDir();
-        double ex = furniture().position().x + dir[0] * 0.6;
-        double ey = furniture().position().y + 1.0;
-        double ez = furniture().position().z + dir[1] * 0.6;
-        org.bukkit.entity.Item dropped = world.dropItem(new org.bukkit.Location(world, ex, ey, ez), stack);
-        dropped.setVelocity(new Vector(dir[0] * 0.25, 0.12, dir[1] * 0.25));
-        dropped.setPickupDelay(10);
     }
 
     // 研磨粒子
@@ -389,7 +347,7 @@ public class MillstoneController extends FurnitureController {
         if (current == null) {
             return;
         }
-        org.bukkit.World world = getBukkitWorld();
+        World world = getBukkitWorld();
         float rad = (float) Math.toRadians(currentAngle);
         float baseYaw = (float) Math.toRadians(-furniture().position().yRot() - 90);
         Vector3f p = new Vector3f(0, 1, -0.5f).rotateY(rad).rotateY(baseYaw + (float) Math.PI);
@@ -399,7 +357,7 @@ public class MillstoneController extends FurnitureController {
         // 粒子纯装饰 物品转换失败不该打断磨盘运转 这里是每 tick 路径 不记日志免刷屏
         try {
             ItemStack stack = ItemStackUtils.getBukkitStack(current.minecraftItem());
-            Particles.emit(world, Particle.ITEM, px, py, pz, 5, 0.1, 0.1, 0.1, 0.05, stack);
+            Particles.emit(world, Particle.ITEM, px, py, pz, GRIND_PARTICLE_COUNT, 0.1, 0.1, 0.1, 0.05, stack);
         } catch (Exception ignored) {
         }
     }
@@ -459,37 +417,21 @@ public class MillstoneController extends FurnitureController {
         return createTickerHelper((f, controller) -> this.tick());
     }
 
-    private org.bukkit.World getBukkitWorld() {
-        return (org.bukkit.World) furniture().position().world().platformWorld();
+    private World getBukkitWorld() {
+        return (World) furniture().position().world().platformWorld();
     }
 
-    private boolean isPassable(double targetX, double floorY, double targetZ) {
-        org.bukkit.World world = getBukkitWorld();
-        int tx = (int) Math.floor(targetX);
-        int ty = (int) Math.floor(floorY);
-        int tz = (int) Math.floor(targetZ);
-        return world.getBlockAt(tx, ty, tz).isPassable()
-                && world.getBlockAt(tx, ty + 1, tz).isPassable();
-    }
-
-    private boolean hasSolidBlockUnderneath(double x, double y, double z) {
-        org.bukkit.World world = getBukkitWorld();
+    // 身位两格空 脚下一格实心 三次查询合成一趟 免得两个方法各算一遍 floor 各取一次 world
+    private boolean canStandAt(double x, double y, double z) {
+        World world = getBukkitWorld();
         int bx = (int) Math.floor(x);
-        int by = (int) Math.floor(y) - 1;
+        int by = (int) Math.floor(y);
         int bz = (int) Math.floor(z);
-        Block block = world.getBlockAt(bx, by, bz);
-        return !block.isPassable() && block.getType().isSolid();
-    }
-
-    private boolean isUnevenStandingPoint(double x, double y, double z) {
-        org.bukkit.World world = getBukkitWorld();
-        int bx = (int) Math.floor(x);
-        int bz = (int) Math.floor(z);
-        if (!isFullCubeTop(world.getBlockAt(bx, (int) Math.floor(y) - 1, bz))) {
-            return true;
+        if (!world.getBlockAt(bx, by, bz).isPassable() || !world.getBlockAt(bx, by + 1, bz).isPassable()) {
+            return false;
         }
-        BlockData feet = world.getBlockAt(bx, (int) Math.floor(y), bz).getBlockData();
-        return feet instanceof Snow snow && snow.getLayers() > 1;
+        Block ground = world.getBlockAt(bx, by - 1, bz);
+        return !ground.isPassable() && ground.getType().isSolid();
     }
 
     public static boolean isFullCubeTop(Block block) {
@@ -515,10 +457,6 @@ public class MillstoneController extends FurnitureController {
             ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
             pullingAnimal = null;
         }
-        if (pullingPlayer != null) {
-            unregister(pullingPlayer.uuid());
-            pullingPlayer = null;
-        }
         leadOwner = null;
         this.animating = false;
         this.rawTick = 0;
@@ -526,17 +464,8 @@ public class MillstoneController extends FurnitureController {
     }
 
     public void stopSpinning(Player leadRecipient) {
-        if (pullingPlayer != null) {
-            unregister(pullingPlayer.uuid());
-            org.bukkit.entity.Player bukkitPuller = org.bukkit.Bukkit.getPlayer(pullingPlayer.uuid());
-            if (bukkitPuller != null) {
-                restoreFlight(bukkitPuller);
-            }
-            pullingPlayer = null;
-        }
         if (pullingAnimal != null) {
             ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
-            setStruck(pullingAnimal, false);
             if (pullingAnimal.isValid()) {
                 pullingAnimal.setAI(animalWasAI);
                 pullingAnimal.setGravity(true);
@@ -559,29 +488,26 @@ public class MillstoneController extends FurnitureController {
     }
 
     public void tick() {
-        if (!animating) {
+        // 磨上没料就停转 生物留在原地待命 再投料自动继续
+        if (grindIsEmpty()) {
+            if (animating && pullingAnimal != null) {
+                if (rawTick % IDLE_FEED_INTERVAL == 0) {
+                    tryFeedFromChest();
+                }
+                rawTick++;
+            }
             return;
         }
-
-        if (pullingAnimal != null && rawTick % STRIKE_CHECK_INTERVAL == 0 && ThreadLocalRandom.current().nextDouble() < STRIKE_CHANCE) {
-            strikeAnimal();
+        if (animating && pullingAnimal != null) {
+            tickAnimalDriven();
             return;
         }
+        tickPlayerDriven();
+    }
 
-        if (pullingAnimal != null && grindIsEmpty() && rawTick % 20 == 0) {
-            tryFeedFromChest();
-        }
-
-        if (!grindIsEmpty()) {
-            if (rawTick % 5 == 2) {
-                grindParticles();
-            }
-            if (rawTick % 25 == 0) {
-                playGrindSound();
-            }
-        }
-
-        float seconds      = boosted ? (float) MillstoneAnimals.BOOST_SECONDS : currentSeconds;
+    // 生物匀速拉磨
+    private void tickAnimalDriven() {
+        float seconds = boosted ? (float) MillstoneAnimals.BOOST_SECONDS : currentSeconds;
         float anglePerTick = MillstoneAnimals.anglePerTick(seconds);
 
         // 视觉角度连续累加不归零 配合较短的更新间隔 保证过起点和高速自转时都不会倒转
@@ -589,96 +515,224 @@ public class MillstoneController extends FurnitureController {
             currentAngle += anglePerTick * VISUAL_UPDATE_INTERVAL;
             element.updateRotation(currentAngle, VISUAL_UPDATE_INTERVAL);
         }
-
         orbitAngle += anglePerTick;
 
-        if (pullingPlayer != null) {
-            if (!movePusher()) {
-                return;
+        if (!moveAnimal()) {
+            return;
+        }
+        if (rawTick % SHOVE_INTERVAL == 0) {
+            shoveBystanders();
+        }
+        grindEffects();
+        rawTick++;
+        advanceGrind(anglePerTick);
+        wrapOrbitAngle();
+    }
+
+    // 玩家推磨 磨杆跟手 玩家绕磨心走多少度磨就转多少度 松手即停
+    private void tickPlayerDriven() {
+        float advance = pushAdvance();
+        if (advance <= 0f) {
+            // 停手时把最后不足一个间隔的角度补发出去 免得磨杆停在旧位置
+            if (pushVisualPending) {
+                pushVisualPending = false;
+                pushVisualTick = 0;
+                element.updateRotation(currentAngle, 0);
             }
-        } else if (pullingAnimal != null) {
-            if (!moveAnimal()) {
-                return;
-            }
+            return;
         }
 
-        rawTick++;
+        currentAngle += advance;
+        orbitAngle += advance;
+        pushVisualPending = true;
+        if (++pushVisualTick >= PUSH_VISUAL_INTERVAL) {
+            pushVisualTick = 0;
+            element.updateRotation(currentAngle, PUSH_VISUAL_INTERVAL);
+        }
 
-        // 转满一圈 推进研磨 只把轨道角归一 视觉角和 rawTick 继续累加 不归零以免出现倒转
+        grindEffects();
+        rawTick++;
+        advanceGrind(advance);
+        wrapOrbitAngle();
+    }
+
+    private void grindEffects() {
+        if (rawTick % GRIND_PARTICLE_INTERVAL == GRIND_PARTICLE_PHASE) {
+            grindParticles();
+        }
+        if (rawTick % GRIND_SOUND_INTERVAL == 0) {
+            playGrindSound();
+        }
+    }
+
+    // 角度归一 减掉的是整 360 倍数 建出来的四元数完全相同 客户端不会看到跳变
+    // 不归一的话视觉角会一直累加 转上几小时后 float 精度掉到度级 磨盘开始抖
+    private void wrapOrbitAngle() {
+        if (currentAngle >= 360f) {
+            currentAngle %= 360f;
+        }
         if (orbitAngle >= 360f) {
             orbitAngle -= 360f;
-            advanceGrind();
             furniture().setUnsaved();
         }
     }
 
-    // 拉磨者沿轨道的目标点
-    private Vector3f orbitOffset() {
+    // 轨道点相对磨心的偏移 拉磨者的移动目标 生成点 存档恢复点都走这里
+    private Vector3f orbitOffset(float radius, float angleDeg) {
         float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-        float animRad = (float) Math.toRadians(orbitAngle);
-        float radius = currentRadius;
-        Vector3f targetOffset = new Vector3f(-radius, 0f, -0.5f);
-        targetOffset.rotateY(furnitureRad + animRad);
-        return targetOffset;
+        Vector3f offset = new Vector3f(-radius, 0f, ORBIT_LATERAL_OFFSET);
+        return offset.rotateY(furnitureRad + (float) Math.toRadians(angleDeg));
     }
 
-    // 玩家推磨移动；返回 false 表示已停止
-    private boolean movePusher() {
-        org.bukkit.entity.Player bukkitPlayer = org.bukkit.Bukkit.getPlayer(pullingPlayer.uuid());
-        if (bukkitPlayer == null) {
-            stopSpinning();
-            return false;
+    private Vector3f orbitOffset() {
+        return orbitOffset(currentRadius, orbitAngle);
+    }
+
+    // 把 loc 挪到轨道点 保留原有朝向
+    private void moveToOrbit(Location loc, float radius, float angleDeg) {
+        WorldPosition pos = furniture().position();
+        Vector3f offset = orbitOffset(radius, angleDeg);
+        loc.setX(pos.x + offset.x);
+        loc.setY(pos.y);
+        loc.setZ(pos.z + offset.z);
+    }
+
+    // orbitOffset 的反解 JOML rotateY 对 atan2(x,z) 就是加法 逐项相减即可拿回轨道角
+    private float orbitAngleOf(double dx, double dz) {
+        return (float) Math.toDegrees(Math.atan2(dx, dz)) - orbitBaseDeg;
+    }
+
+    // 玩家半身宽在该距离上张开的角度
+    private static float bodyHalfAngle(double distance) {
+        return (float) Math.toDegrees(Math.asin(Math.min(1.0, PLAYER_HALF_WIDTH / distance)));
+    }
+
+    private static float wrapDegrees(float deg) {
+        float d = deg % 360f;
+        if (d >= 180f) d -= 360f;
+        if (d < -180f) d += 360f;
+        return d;
+    }
+
+    // 玩家相对磨杆的角差 正值为玩家在磨杆前方 负值为磨杆已经扫过他 不在接触区返回 NaN
+    // 接触弧刻意不对称 玩家很容易跑到磨杆前面去 前方那侧放得宽得多才拽得住
+    private float contactDelta(double dx, double dz, double dy) {
+        double distSq = dx * dx + dz * dz;
+        float maxRadius = behavior.pushBarLength + PUSH_RADIUS_MARGIN;
+        if (distSq < PUSH_MIN_RADIUS * PUSH_MIN_RADIUS || distSq > maxRadius * maxRadius) {
+            return Float.NaN;
         }
-
-        double heightDiff = Math.abs(bukkitPlayer.getLocation().getY() - furniture().position().y);
-        if (heightDiff > 0.5) {
-            stopSpinning();
-            return false;
+        if (Math.abs(dy) > PUSH_MAX_HEIGHT_DIFF) {
+            return Float.NaN;
         }
-
-        Vector3f targetOffset = orbitOffset();
-        org.bukkit.Location currentLoc = bukkitPlayer.getLocation();
-        double targetX = furniture().position().x + targetOffset.x;
-        double targetZ = furniture().position().z + targetOffset.z;
-
-        if (!isPassable(targetX, currentLoc.getY(), targetZ)) {
-            stopSpinning();
-            return false;
+        float bodyHalf = bodyHalfAngle(Math.sqrt(distSq));
+        float delta = wrapDegrees(orbitAngleOf(dx, dz) - orbitAngle);
+        if (delta > bodyHalf + behavior.pushLeadTolerance
+                || delta < -bodyHalf - behavior.pushContactTolerance) {
+            return Float.NaN;
         }
+        return delta;
+    }
 
-        if (!hasSolidBlockUnderneath(targetX, currentLoc.getY(), targetZ)) {
-            stopSpinning();
-            return false;
+    // 只取追踪该家具的玩家 getNearbyEntities 在 folia 上跨 region 会直接抛异常
+    // 玩家可能归别的 region 所有 跨线程读写位置速度不安全 这里直接跳过
+    private static org.bukkit.entity.Player pushCandidate(Player p) {
+        if (!(p.platformPlayer() instanceof org.bukkit.entity.Player bukkit)) {
+            return null;
         }
-
-        double dx = targetX - currentLoc.getX();
-        double dz = targetZ - currentLoc.getZ();
-
-        if (dx * dx + dz * dz > TELEPORT_SNAP_DIST_SQ) {
-            currentLoc.setX(targetX);
-            currentLoc.setZ(targetZ);
-            FoliaUtil.teleportThen(bukkitPlayer, currentLoc,
-                    () -> bukkitPlayer.setVelocity(new Vector(0, 0, 0)));
-            return true;
+        if (bukkit.getGameMode() == GameMode.SPECTATOR || !Bukkit.isOwnedByCurrentRegion(bukkit)) {
+            return null;
         }
-        bukkitPlayer.setVelocity(clampStep(dx, dz));
-        return true;
+        return bukkit;
+    }
+
+    // 玩家推磨 取推得最多的那个人的角位移 没人推返回 0
+    // 顺带在同一趟里施加磨杆斥力 接触判定已经算完 分两个循环纯属浪费
+    private float pushAdvance() {
+        WorldPosition pos = furniture().position();
+        float maxStep = MillstoneAnimals.anglePerTick(behavior.pushMaxSeconds);
+        boolean resistTick = rawTick % SHOVE_INTERVAL == 0;
+        float best = 0f;
+        for (Player p : furniture().getTrackedBy()) {
+            org.bukkit.entity.Player bukkit = pushCandidate(p);
+            if (bukkit == null) {
+                continue;
+            }
+            Location loc = bukkit.getLocation(scratchLoc);
+            double dx = loc.getX() - pos.x;
+            double dz = loc.getZ() - pos.z;
+            float delta = contactDelta(dx, dz, loc.getY() - pos.y);
+            if (Float.isNaN(delta) || delta <= 0f) {
+                continue;
+            }
+            if (resistTick) {
+                resistOverrun(bukkit, dx, dz, delta);
+            }
+            float step = Math.min(delta, maxStep);
+            if (step > best) {
+                best = step;
+                this.lastPusher = bukkit.getUniqueId();
+            }
+        }
+        return best;
+    }
+
+    // 磨杆是实心的 玩家越到它前面就沿切线往回顶 顶回去磨杆才追得上 转速自然被卡在上限
+    // 斥力随越界角度渐强 贴着杆推的人几乎感觉不到 只有想跑赢磨杆的才会被拽住
+    private void resistOverrun(org.bukkit.entity.Player player, double dx, double dz, float delta) {
+        double ratio = Math.min(1.0, delta / behavior.pushLeadTolerance);
+        if (ratio <= 0) {
+            return;
+        }
+        shoveAlongTangent(player, dx, dz, -behavior.pushResistStrength * ratio, 0);
+    }
+
+    // 沿切线施力 切向量在方位角 atan2(x,z) 处是 (cos,-sin) 负强度即逆着磨盘转向往回顶
+    // 竖直分量只叠加不覆盖 直接写死 Y 会把玩家的跳跃和下落速度一并抹掉
+    private static void shoveAlongTangent(org.bukkit.entity.Player player,
+                                          double dx, double dz, double strength, double lift) {
+        double theta = Math.atan2(dx, dz);
+        double y = Math.max(player.getVelocity().getY(), 0) + lift;
+        player.setVelocity(new Vector(Math.cos(theta) * strength, y, -Math.sin(theta) * strength));
+    }
+
+    // 生物在拉时 转过来的磨杆把挡道的玩家沿切线扫开
+    private void shoveBystanders() {
+        WorldPosition pos = furniture().position();
+        for (Player p : furniture().getTrackedBy()) {
+            org.bukkit.entity.Player bukkit = pushCandidate(p);
+            if (bukkit == null) {
+                continue;
+            }
+            Location loc = bukkit.getLocation(scratchLoc);
+            double dx = loc.getX() - pos.x;
+            double dz = loc.getZ() - pos.z;
+            float delta = contactDelta(dx, dz, loc.getY() - pos.y);
+            if (Float.isNaN(delta) || delta < 0f) {
+                continue;
+            }
+            // 扫人是真撞上才算 不吃推磨那侧为了跟手放宽的前方容差
+            if (delta > bodyHalfAngle(Math.sqrt(dx * dx + dz * dz)) + behavior.pushContactTolerance) {
+                continue;
+            }
+            shoveAlongTangent(bukkit, dx, dz, behavior.pushShoveStrength, 0.1);
+        }
     }
 
     // 生物拉磨移动；返回 false 表示已停止
     private boolean moveAnimal() {
         if (!pullingAnimal.isValid() || pullingAnimal.isDead()) { stopSpinning(); return false; }
 
-        double heightDiff = Math.abs(pullingAnimal.getLocation().getY() - furniture().position().y);
-        if (heightDiff > 1.0) { stopSpinning(); return false; }
+        // getLocation 每次都新建一个 Location 这是每 tick 路径 只取一次
+        Location currentLoc = pullingAnimal.getLocation();
+        WorldPosition pos = furniture().position();
+        if (Math.abs(currentLoc.getY() - pos.y) > 1.0) { stopSpinning(); return false; }
 
         Vector3f targetOffset = orbitOffset();
-        org.bukkit.Location currentLoc = pullingAnimal.getLocation();
-        double targetX = furniture().position().x + targetOffset.x;
-        double targetZ = furniture().position().z + targetOffset.z;
+        double targetX = pos.x + targetOffset.x;
+        double targetZ = pos.z + targetOffset.z;
 
-        if (!isPassable(targetX, currentLoc.getY(), targetZ)) { stopSpinning(); return false; }
-        if (!hasSolidBlockUnderneath(targetX, currentLoc.getY(), targetZ)) { stopSpinning(); return false; }
+        if (!canStandAt(targetX, currentLoc.getY(), targetZ)) { stopSpinning(); return false; }
 
         double dx = targetX - currentLoc.getX();
         double dz = targetZ - currentLoc.getZ();
@@ -686,15 +740,15 @@ public class MillstoneController extends FurnitureController {
                 ? (float) Math.toDegrees(Math.atan2(-dx, dz))
                 : currentLoc.getYaw();
 
-        // 直接位置更新，不走 setVelocity
+        // setAI(false) 的生物不吃 setVelocity 只能每 tick 重定位 位移仍走 clampStep 限幅免得瞬移
         Vector step = clampStep(dx, dz);
         LivingEntity animal = pullingAnimal;
-        org.bukkit.Location newLoc = currentLoc.clone();
-        newLoc.setX(currentLoc.getX() + step.getX());
-        newLoc.setZ(currentLoc.getZ() + step.getZ());
-        newLoc.setYaw(yaw);
-        FoliaUtil.teleportThen(animal, newLoc,
-                () -> animal.setRotation(newLoc.getYaw(), newLoc.getPitch()));
+        // currentLoc 是 getLocation 刚建的新对象 原地改即可 不必再拷一份
+        currentLoc.setX(currentLoc.getX() + step.getX());
+        currentLoc.setZ(currentLoc.getZ() + step.getZ());
+        currentLoc.setYaw(yaw);
+        FoliaUtil.teleportThen(animal, currentLoc,
+                () -> animal.setRotation(currentLoc.getYaw(), currentLoc.getPitch()));
         return true;
     }
 
@@ -711,68 +765,6 @@ public class MillstoneController extends FurnitureController {
         return new Vector(vx, 0, vz);
     }
 
-    public boolean spin(Player player) {
-        if (animating) return false;
-
-        if (ACTIVE_PUSHERS.containsKey(player.uuid())) {
-            player.sendActionBar(Component.text(behavior.msgAlreadyPushing));
-            return false;
-        }
-
-        float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-        float startRad = (float) Math.toRadians(orbitAngle);
-        float radius = (float) MillstoneAnimals.DEFAULT_ORBIT_RADIUS;
-
-        Vector3f startOffset = new Vector3f(-radius, 0f, -0.5f);
-        startOffset.rotateY(furnitureRad + startRad);
-
-        double startX = furniture().position().x() + startOffset.x;
-        double startZ = furniture().position().z() + startOffset.z;
-
-        if (!hasSolidBlockUnderneath(startX, furniture().position().y(), startZ)) {
-            player.sendActionBar(Component.text(behavior.msgNeedGroundBelow));
-            return false;
-        }
-
-        if (isUnevenStandingPoint(startX, furniture().position().y(), startZ)) {
-            player.sendActionBar(Component.text(behavior.msgUneven));
-            return false;
-        }
-
-        this.animating = true;
-        this.rawTick = 0;
-        this.boosted = false;
-        this.currentSeconds = (float) MillstoneAnimals.PLAYER_SECONDS;
-        this.currentRadius = (float) MillstoneAnimals.DEFAULT_ORBIT_RADIUS;
-        this.pullingPlayer = player;
-        this.orbitAngle = this.currentAngle;
-
-        register(player.uuid(), this);
-
-        org.bukkit.entity.Player bukkitPlayer = org.bukkit.Bukkit.getPlayer(player.uuid());
-        if (bukkitPlayer != null) {
-            if (bukkitPlayer.isFlying()) {
-                bukkitPlayer.setFlying(false);
-                if (bukkitPlayer.getGameMode() != GameMode.CREATIVE
-                        && bukkitPlayer.getGameMode() != GameMode.SPECTATOR) {
-                    markFlightRestore(bukkitPlayer);
-                    bukkitPlayer.setAllowFlight(false);
-                }
-            }
-
-            org.bukkit.Location loc = bukkitPlayer.getLocation();
-            loc.setX(startX);
-            loc.setZ(startZ);
-            FoliaUtil.teleportThen(bukkitPlayer, loc,
-                    () -> bukkitPlayer.setVelocity(new Vector(0, 0, 0)));
-        }
-
-        playMillstoneSound(1.0f, 0.8f);
-
-        furniture().setUnsaved();
-        return true;
-    }
-
     // owner 为触发绑定的玩家 停止时退还拴绳 怪物蛋触发时传 null
     // 返回是否真的开始拉磨 调用方据此回滚已生成的实体与已扣的物品
     public boolean spinWithAnimal(LivingEntity animal, org.bukkit.entity.Player owner, boolean doInitialTeleport) {
@@ -785,30 +777,22 @@ public class MillstoneController extends FurnitureController {
         this.animating = true;
         this.boosted = false;
         this.rawTick = 0;
-        this.pullingPlayer = null;
+        // 交给生物拉之后产出不再算在推磨玩家头上 不清会让产出事件归属到很久以前推过的人
+        this.lastPusher = null;
         this.pullingAnimal = animal;
         this.leadOwner = owner;
         this.orbitAngle = this.currentAngle;
 
-        this.animalWasAI = isStruck(animal) || animal.hasAI();
+        this.animalWasAI = animal.hasAI();
         animal.setAI(false);
         animal.setGravity(false);
 
         ACTIVE_ANIMAL_PULLERS.put(animal.getUniqueId(), this);
 
         if (doInitialTeleport) {
-            float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-            float startRad = (float) Math.toRadians(orbitAngle);
-            float radius = currentRadius;
-
-            Vector3f startOffset = new Vector3f(-radius, 0f, -0.5f);
-            startOffset.rotateY(furnitureRad + startRad);
-
-            org.bukkit.Location loc = animal.getLocation();
-            loc.setX(furniture().position().x() + startOffset.x);
-            loc.setY(furniture().position().y());
-            loc.setZ(furniture().position().z() + startOffset.z);
-            animal.teleport(loc);
+            Location loc = animal.getLocation();
+            moveToOrbit(loc, currentRadius, orbitAngle);
+            FoliaUtil.teleport(animal, loc);
         }
 
         playMillstoneSound(1.0f, 0.8f);
@@ -887,45 +871,22 @@ public class MillstoneController extends FurnitureController {
         return m == Material.SHEARS || m == Material.LEAD || m.name().endsWith("_SPAWN_EGG");
     }
 
+    // 潜行右键只剩剪刀停生物这一条 玩家推磨已改成走到磨杆上直接推 不再需要开关
     private InteractionResult handleSneak(Player player, boolean hasShears) {
-        // 剪刀只对生物拉磨生效 没生物在拉就什么都没发生
-        if (hasShears) {
-            if (!isAnimating() || pullingAnimal == null) {
-                return InteractionResult.PASS;
-            }
-            stopSpinning(player);
-            player.swingHand(InteractionHand.MAIN_HAND);
-            return InteractionResult.SUCCESS_AND_CANCEL;
+        if (!hasShears || !isAnimating() || pullingAnimal == null) {
+            return InteractionResult.PASS;
         }
-        if (isAnimating()) {
-            // 生物在拉时玩家潜行右键无事发生 别挥手也别吞掉原版交互
-            if (pullingPlayer == null) {
-                return InteractionResult.PASS;
-            }
-            stopSpinning();
-            player.swingHand(InteractionHand.MAIN_HAND);
-            return InteractionResult.SUCCESS_AND_CANCEL;
-        }
-        double sneakHeightDiff = Math.abs(player.y() - furniture().position().y);
-        if (sneakHeightDiff > 0.1) {
-            player.sendActionBar(Component.text(behavior.msgNotSamePlane));
-            return InteractionResult.SUCCESS_AND_CANCEL;
-        }
-        if (!spin(player)) {
-            return InteractionResult.SUCCESS_AND_CANCEL;
-        }
-        player.sendActionBar(Localization.component(behavior.msgExitHint));
+        stopSpinning(player);
         player.swingHand(InteractionHand.MAIN_HAND);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    // 找玩家正拴着的可拉磨生物 一次拴多只时取离磨最近的一只
-    // getNearbyEntities 要求 AABB 覆盖的每个 section 都归当前 region 否则 folia 抛异常
-    // 所以先问归属再扫 isOwnedByCurrentRegion 在 paper 上恒为 true 两端同一套代码
+    // 找玩家正拴着的可拉磨生物 拴多只时取离磨最近的
+    // getNearbyEntities 的 AABB 跨 region 会抛 所以先判归属 该判定在 paper 上恒为 true
     private LivingEntity findLeashedAnimal(org.bukkit.entity.Player bukkitPlayer) {
-        org.bukkit.Location furnitureLoc = new org.bukkit.Location(getBukkitWorld(),
+        Location furnitureLoc = new Location(getBukkitWorld(),
                 furniture().position().x, furniture().position().y, furniture().position().z);
-        if (!org.bukkit.Bukkit.isOwnedByCurrentRegion(furnitureLoc, LEASH_SEARCH_CHUNK_RADIUS)) {
+        if (!Bukkit.isOwnedByCurrentRegion(furnitureLoc, LEASH_SEARCH_CHUNK_RADIUS)) {
             return null;
         }
 
@@ -964,27 +925,40 @@ public class MillstoneController extends FurnitureController {
         if (target == null) {
             return InteractionResult.PASS;
         }
+        // 成年判定必须在摘绳之前 spinWithAnimal 对幼崽返回 false
+        // 先摘绳再发现拉不动 玩家就白亏一根拴绳
+        if (!MillstoneAnimals.isAdult(target)) {
+            return InteractionResult.PASS;
+        }
 
-        org.bukkit.Location dropLoc = target.getLocation().clone();
+        Location dropLoc = target.getLocation();
         target.setLeashHolder(null);
 
-        BukkitCraftEngine.instance().scheduler().platform().run(
-                () -> {
-                    for (Entity e : dropLoc.getWorld().getNearbyEntities(dropLoc, 1, 1, 1)) {
-                        if (e instanceof org.bukkit.entity.Item dropped
-                                && dropped.getItemStack().getType() == Material.LEAD) {
-                            dropped.remove();
-                            break;
-                        }
-                    }
-                },
-                dropLoc
-        );
+        if (!spinWithAnimal(target, bukkitPlayer, true)) {
+            return InteractionResult.PASS;
+        }
 
-        spinWithAnimal(target, bukkitPlayer, true);
-        player.sendActionBar(Component.text(behavior.msgStopAnimalHint));
+        // 摘绳会掉出一根拴绳物品 拉磨成功才去收掉它
+        FoliaUtil.run(() -> removeFreshLeadDrop(dropLoc), dropLoc);
+
+        player.sendActionBar(Localization.component(MessageKeys.MILLSTONE_STOP_ANIMAL_HINT));
         player.swingHand(InteractionHand.MAIN_HAND);
         return InteractionResult.SUCCESS_AND_CANCEL;
+    }
+
+    // 摘绳掉出的那根拴绳 只认刚落地的单个 否则会把玩家自己扔在旁边的拴绳一并吃掉
+    private static void removeFreshLeadDrop(Location dropLoc) {
+        for (Entity e : dropLoc.getWorld().getNearbyEntities(
+                dropLoc, LEAD_DROP_SEARCH_RADIUS, LEAD_DROP_SEARCH_RADIUS, LEAD_DROP_SEARCH_RADIUS)) {
+            if (!(e instanceof org.bukkit.entity.Item dropped) || dropped.getTicksLived() > FRESH_DROP_MAX_TICKS) {
+                continue;
+            }
+            ItemStack stack = dropped.getItemStack();
+            if (stack.getType() == Material.LEAD && stack.getAmount() == 1) {
+                dropped.remove();
+                return;
+            }
+        }
     }
 
     // 刷怪蛋右键 在轨道点生成支持的生物并立即拉磨 非支持生物放行
@@ -1002,18 +976,9 @@ public class MillstoneController extends FurnitureController {
             return InteractionResult.PASS;
         }
 
-        org.bukkit.World world = getBukkitWorld();
-        float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-        float startRad     = (float) Math.toRadians(currentAngle);
-        float radius = (float) profile.orbitRadius();
-
-        Vector3f spawnOffset = new Vector3f(-radius, 0f, -0.5f);
-        spawnOffset.rotateY(furnitureRad + startRad);
-
-        org.bukkit.Location spawnLoc = new org.bukkit.Location(world,
-                furniture().position().x + spawnOffset.x,
-                furniture().position().y,
-                furniture().position().z + spawnOffset.z);
+        World world = getBukkitWorld();
+        Location spawnLoc = new Location(world, 0, 0, 0);
+        moveToOrbit(spawnLoc, (float) profile.orbitRadius(), currentAngle);
 
         if (!(world.spawnEntity(spawnLoc, type) instanceof LivingEntity animal)) {
             return InteractionResult.PASS;
@@ -1023,7 +988,7 @@ public class MillstoneController extends FurnitureController {
             animal.remove();
             return InteractionResult.PASS;
         }
-        player.sendActionBar(Localization.component(behavior.msgStopAnimalHint));
+        player.sendActionBar(Localization.component(MessageKeys.MILLSTONE_STOP_ANIMAL_HINT));
         InventoryUtils.shrinkHeld(player, eggItem, 1);
         player.swingHand(InteractionHand.MAIN_HAND);
         return InteractionResult.SUCCESS_AND_CANCEL;
@@ -1060,8 +1025,8 @@ public class MillstoneController extends FurnitureController {
     @Override
     public void preRemove(Player player) {
         stopSpinning();
-        org.bukkit.World world = getBukkitWorld();
-        org.bukkit.Location dropLoc = new org.bukkit.Location(world,
+        World world = getBukkitWorld();
+        Location dropLoc = new Location(world,
                 furniture().position().x, furniture().position().y, furniture().position().z);
         for (int i = 0; i < GRIND_SLOTS; i++) {
             if (!grindItems[i].isEmpty()) {
@@ -1081,64 +1046,65 @@ public class MillstoneController extends FurnitureController {
 
         if (this.animating && this.pendingAnimalUUID != null) {
             WorldPosition fp = furniture().position();
-            org.bukkit.Location furnitureLoc = new org.bukkit.Location(
+            Location furnitureLoc = new Location(
                     (World) fp.world().platformWorld(), fp.x, fp.y, fp.z);
-            BukkitCraftEngine.instance().scheduler().platform().runLater(this::restoreAnimal, 1L, furnitureLoc);
+            FoliaUtil.runLater(this::restoreAnimal, 1L, furnitureLoc);
         }
     }
 
     private void restoreAnimal() {
         if (pendingAnimalUUID == null) return;
 
-        Entity entity = org.bukkit.Bukkit.getEntity(pendingAnimalUUID);
+        Entity entity = Bukkit.getEntity(pendingAnimalUUID);
         this.pendingAnimalUUID = null;
 
-        if (entity instanceof LivingEntity living && living.isValid()) {
-            this.pullingAnimal = living;
-            this.animalWasAI = this.savedAnimalWasAI;
-            MillstoneAnimals.Profile profile = MillstoneAnimals.instance().resolve(living);
-            if (profile != null) {
-                this.currentSeconds = (float) profile.secondsPerRevolution();
-                this.currentRadius = (float) profile.orbitRadius();
-            }
-            living.setAI(false);
-            living.setGravity(false);
-            ACTIVE_ANIMAL_PULLERS.put(living.getUniqueId(), this);
-
-            this.currentAngle = this.orbitAngle % 360f;
-            this.element.updateRotation(this.currentAngle, 0);
-
-            float furnitureRad = (float) Math.toRadians(-furniture().position().yRot());
-            float animRad = (float) Math.toRadians(orbitAngle);
-            float radius = currentRadius;
-            Vector3f targetOffset = new Vector3f(-radius, 0f, -0.5f);
-            targetOffset.rotateY(furnitureRad + animRad);
-            org.bukkit.Location loc = living.getLocation();
-            loc.setX(furniture().position().x() + targetOffset.x);
-            loc.setY(furniture().position().y());
-            loc.setZ(furniture().position().z() + targetOffset.z);
-            living.teleport(loc);
-        } else {
-            this.animating = false;
-            furniture().setUnsaved();
-            this.element.updateRotation(this.currentAngle, 0);
+        if (!(entity instanceof LivingEntity living)) {
+            abortRestore();
+            return;
         }
+        // 这里跑在家具所属 region 动物可能归别的 region isValid setAI 都走 getHandle 跨 region 直接抛
+        FoliaUtil.runEntity(living, () -> attachRestoredAnimal(living), this::abortRestore);
+    }
+
+    private void attachRestoredAnimal(LivingEntity living) {
+        this.animalWasAI = this.savedAnimalWasAI;
+        // 找到了但已死 没什么可还原的 磨盘退回静止即可
+        if (!living.isValid()) {
+            abortRestore();
+            return;
+        }
+        this.pullingAnimal = living;
+        MillstoneAnimals.Profile profile = MillstoneAnimals.instance().resolve(living);
+        if (profile != null) {
+            this.currentSeconds = (float) profile.secondsPerRevolution();
+            this.currentRadius = (float) profile.orbitRadius();
+        }
+        living.setAI(false);
+        living.setGravity(false);
+        ACTIVE_ANIMAL_PULLERS.put(living.getUniqueId(), this);
+
+        this.currentAngle = this.orbitAngle % 360f;
+        this.element.updateRotation(this.currentAngle, 0);
+
+        Location loc = living.getLocation();
+        moveToOrbit(loc, currentRadius, orbitAngle);
+        FoliaUtil.teleport(living, loc);
+    }
+
+    // 动物已不在或已永久移除 磨盘退回静止
+    private void abortRestore() {
+        this.animating = false;
+        furniture().setUnsaved();
+        this.element.updateRotation(this.currentAngle, 0);
     }
 
     @Override
     public void onUnload(boolean isStopping) {
         if (isStopping) {
-            if (pullingPlayer != null) {
-                unregister(pullingPlayer.uuid());
-            }
             if (pullingAnimal != null) {
                 ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
             }
         } else {
-            if (pullingPlayer != null) {
-                unregister(pullingPlayer.uuid());
-                pullingPlayer = null;
-            }
             if (pullingAnimal != null) {
                 ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
                 if (pullingAnimal.isValid()) {
@@ -1168,13 +1134,14 @@ public class MillstoneController extends FurnitureController {
 
         ListTag grindTag = new ListTag();
         for (int i = 0; i < GRIND_SLOTS; i++) {
-            if (grindItems[i].isEmpty()) {
+            Tag itemTag = BlockEntityNbt.itemTag(grindItems[i]);
+            if (itemTag == null) {
                 continue;
             }
             CompoundTag e = new CompoundTag();
             e.putInt(K_SLOT, i);
-            e.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(grindItems[i].minecraftItem()));
-            e.putInt(K_PROGRESS, grindProgress[i]);
+            e.put(K_ITEM, itemTag);
+            e.putFloat(K_PROGRESS, grindDegrees[i]);
             e.putInt(K_ROTATIONS, requiredRotations[i]);
             grindTag.add(e);
         }
@@ -1187,9 +1154,10 @@ public class MillstoneController extends FurnitureController {
     public void loadCustomData(CompoundTag tag) {
         for (int i = 0; i < GRIND_SLOTS; i++) {
             grindItems[i] = Item.empty();
-            grindProgress[i] = 0;
+            grindDegrees[i] = 0f;
             requiredRotations[i] = 0;
         }
+        filledSlots = 0;
 
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data == null) return;
@@ -1218,16 +1186,27 @@ public class MillstoneController extends FurnitureController {
                     continue;
                 }
                 Object nms = ItemStackUtils.parseMinecraftItem(e.getCompound(K_ITEM), gdv);
-                if (nms != null) {
-                    grindItems[slot] = ItemStackUtils.wrap(nms);
-                    grindProgress[slot] = e.getInt(K_PROGRESS, 0);
-                    requiredRotations[slot] = e.getInt(K_ROTATIONS, behavior.grindRotations);
+                Item loaded = nms == null ? Item.empty() : ItemStackUtils.wrap(nms);
+                if (ItemUtils.isEmpty(loaded)) {
+                    continue;
                 }
+                // 同一 slot 在存档里出现两次时只计一次 多计会让 grindIsEmpty 永假 磨盘空转不停
+                if (grindItems[slot].isEmpty()) {
+                    filledSlots++;
+                }
+                grindItems[slot] = loaded;
+                grindDegrees[slot] = e.getFloat(K_PROGRESS, 0f);
+                requiredRotations[slot] = Math.max(1, e.getInt(K_ROTATIONS, behavior.grindRotations));
             }
         }
     }
 
     public WorldPosition position() {
         return furniture().position();
+    }
+
+    // 关服只做纯内存清理 静态表不清会连着旧 ClassLoader 一起泄漏
+    public static void clearAll() {
+        ACTIVE_ANIMAL_PULLERS.clear();
     }
 }
