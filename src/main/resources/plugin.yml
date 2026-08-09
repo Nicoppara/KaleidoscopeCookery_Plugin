@@ -18,11 +18,5 @@ permissions:
     description: 允许用 /kcrecipe edit 编辑食谱
     default: op
 
-dependencies:
-  server:
-    CraftEngine:
-      load: BEFORE
-      required: true
-    PlaceholderAPI:
-      load: BEFORE
-      required: false
+depend: [CraftEngine]
+softdepend: [Dominion, PlaceholderAPI]

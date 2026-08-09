@@ -32,6 +32,11 @@ public enum DishQuality {
         return "lore.kaleidoscopecookery.quality." + name().toLowerCase();
     }
 
+    public static DishQuality fromDeviation(int deviation) {
+        int index = Math.min(values().length - 1, Math.max(0, deviation));
+        return values()[index];
+    }
+
     // 档位按 minScore 降序声明 第一个够得着的就是结果
     public static DishQuality of(double score) {
         for (DishQuality quality : values()) {

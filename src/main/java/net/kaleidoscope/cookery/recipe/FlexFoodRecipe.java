@@ -5,8 +5,7 @@ import net.momirealms.craftengine.core.util.Key;
 import java.util.List;
 import java.util.Map;
 
-// 模糊配方 perfect 是理想配比向量 走并集余弦取最近邻 不是约束满足
-// 所以材料集互为子集也不遮蔽 唯一约束是方向两两不同 norm 与 totalWeight 是解析期烤好的派生量
+// perfect 同时声明必需食材和理想配比 norm 与 totalWeight 在解析期预计算
 public record FlexFoodRecipe(
         Key id,
         Key result,

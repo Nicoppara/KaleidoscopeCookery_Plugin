@@ -48,7 +48,6 @@ public final class RecipeUtils {
     private static final String TEXT_INGREDIENTS = "tooltip.kaleidoscopecookery.recipe_item.ingredient";
     private static final String TEXT_OUTPUT = "tooltip.kaleidoscopecookery.recipe_item.output";
     private static final String TEXT_REQUIRED_LIQUID = "tooltip.kaleidoscopecookery.recipe_item.required_liquid";
-    private static final String TEXT_USE = "tooltip.kaleidoscopecookery.recipe_item.use";
     private static final String TEXT_TITLE = "item.kaleidoscopecookery.recipe_item.title";
 
     // getItemMeta 每次都从 NBT 重建一份 只取一次
@@ -193,8 +192,6 @@ public final class RecipeUtils {
             lore.add(Component.empty());
             lore.add(label(TEXT_REQUIRED_LIQUID).append(Component.space()).append(image(liquid)));
         }
-        lore.add(Component.translatable(TEXT_USE).color(NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-
         meta.lore(lore);
         meta.displayName(Component.translatable(TEXT_TITLE, NamedTextColor.WHITE, resultName, applianceName)
                 .decoration(TextDecoration.ITALIC, false));
