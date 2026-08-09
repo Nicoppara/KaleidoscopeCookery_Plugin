@@ -18,8 +18,8 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class FoodRecipeRegistry {
     private record AccurateKey(ApplianceType cook, Key input) {}
 
-    // 只有完全不沾边才不出菜 加了一堆杂料仍该出最近的那道菜 只是品质掉到生疏
-    private static final double DEFAULT_MIN_FLEX_SCORE = 0.15;
+    // 必需食材齐全后允许任意杂料 默认不再用相似度阈值拒绝成菜
+    private static final double DEFAULT_MIN_FLEX_SCORE = 0.0;
 
     private static final FoodRecipeRegistry INSTANCE = new FoodRecipeRegistry();
     private final List<FlexFoodRecipe> flexRecipes = new CopyOnWriteArrayList<>();

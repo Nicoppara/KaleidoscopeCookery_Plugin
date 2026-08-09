@@ -170,7 +170,7 @@ public final class ScarecrowController extends FurnitureController {
         if (ItemUtils.isEmpty(inHand)) {
             return takeSlot(player, ScarecrowElement.SLOT_HEAD);
         }
-        if (!isHeadWearable(inHand)) {
+        if (!isHeadItem(inHand)) {
             return InteractionResult.PASS;
         }
         return putSlot(player, ScarecrowElement.SLOT_HEAD, inHand);
@@ -190,15 +190,13 @@ public final class ScarecrowController extends FurnitureController {
         return InteractionResult.PASS;
     }
 
-    // 草帽是 leather_helmet 加 equippable 只按颅骨判会漏 且它有耐久会被 isTool 抢进手里
-    private boolean isHeadWearable(Item item) {
+    private boolean isHeadItem(Item item) {
         Material material = material(item);
         if (material == null) {
             return false;
         }
         String name = material.name();
-        return name.endsWith("_HEAD") || name.endsWith("_SKULL") || name.endsWith("_HELMET")
-                || material == Material.CARVED_PUMPKIN;
+        return material.isItem() && (name.endsWith("_HEAD") || name.endsWith("_SKULL"));
     }
 
     // 创造模式只在空槽放且不扣物品 手里超过一个时只能放进空槽 正好一个时才交换
@@ -241,7 +239,7 @@ public final class ScarecrowController extends FurnitureController {
     // 要判物品自己的最大耐久
     // Material#getMaxDurability 是原版基材的耐久 自定义工具挂在无耐久基材上时会漏判
     private boolean isTool(Item item) {
-        return !isHeadWearable(item) && item.maxDamage() > 0;
+        return !isHeadItem(item) && item.maxDamage() > 0;
     }
 
     private Material material(Item item) {

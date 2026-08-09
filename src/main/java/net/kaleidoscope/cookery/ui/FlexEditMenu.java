@@ -26,8 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// 模糊食谱编辑页 perfect 是理想配比向量 匹配走并集余弦取最近邻 见 FoodRecipeRegistry.bestMatch
-// 缺料与乱加料都只会拉低得分 所以这里不需要必需/可选那套约束 只编辑配比本身
+// 模糊食谱编辑页 perfect 同时声明必需食材和理想配比
 public final class FlexEditMenu {
 
     // 盛装容器的常用预设 顺序即 dialog 上按钮的顺序

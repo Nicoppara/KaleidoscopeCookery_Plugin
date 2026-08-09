@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// 模糊配方的可变编辑态 perfect 是理想配比向量 匹配走并集余弦 见 FoodRecipeRegistry.bestMatch
+// 模糊配方的可变编辑态 perfect 同时声明必需食材和理想配比
 // 只在单个玩家的 UI 会话内存活 不共享不并发
 public final class FlexRecipeDraft {
     private final ApplianceType cook;

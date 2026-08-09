@@ -823,6 +823,25 @@ KaleidoscopeCookeryAPI.recipeMenuHooks().provider(new RecipeMenuProvider() {
 | `accurate_foods` | 蒸笼 / 石磨 / 烤肉塔的精准配方 | `configuration/recipe/accurate.yml` 等 |
 | `chopping_board_raws` | 砧板配方 | `configuration/recipe/chopping_board.yml` 等 |
 | `teapot_liquid` / `tea_cup` / `teapot_result` | 茶壶液体、杯中展示、茶配方 | `configuration/recipe/teapot.yml` |
+| `dish_carrier` | 吃完退还什么容器 | `configuration/dish/dish_carrier.yml` |
+
+---
+
+## 🥣 退还容器 `dish_carrier`
+
+吃完一道菜退还碗、茶杯、竹筒这类容器。物品菜与家具菜两条进食路径查同一张表，不往物品里存 NBT，所以改完 `/ce reload all` 老物品也跟着走。
+
+炒锅与高汤锅的模糊配方自带 `carrier`，会自动进表，**不用在这里重复写**。合成、蒸笼、茶壶这三条路没有 `carrier` 字段，只能在这里补：
+
+```yaml
+# configuration/dish/dish_carrier.yml
+dish_carrier:
+  kaleidoscopecookery:barley_tea: kaleidoscopecookery:empty_cup
+  kaleidoscopecookery:bamboo_tube_rice: minecraft:bamboo
+  kaleidoscopecookery:braised_beef_rice_bowl: minecraft:bowl
+```
+
+键是成品 id，值是退还的物品 id，两边都支持原版与 CraftEngine 自定义物品。同一个成品在这里和模糊配方里都写了的话，**以这里为准**。
 
 ---
 
