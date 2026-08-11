@@ -1,236 +1,224 @@
 package net.kaleidoscope.cookery.block.entity;
-import net.kaleidoscope.cookery.util.BlockEntityNbt;
-import net.kaleidoscope.cookery.block.behavior.ChoppingBoardBehavior;
 
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import net.kaleidoscope.cookery.block.behavior.ChoppingBoardBehavior;
+import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
+import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
+import net.kaleidoscope.cookery.recipe.ApplianceType;
+import net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
+import net.kaleidoscope.cookery.util.DropUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
+import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
-import net.momirealms.craftengine.libraries.nbt.Tag;
-import net.kaleidoscope.cookery.util.DropUtils;
-import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
-import net.momirealms.craftengine.core.util.ItemUtils;
-import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
-import net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe;
-import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
-
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 public class ChoppingBoardController extends BlockEntityController {
-    private static final String DATA_KEY = "kaleidoscopecookery:chopping_board";
-    private static final String K_BLOCK_ENTITY_TAG = "BlockEntityTag";
-    private static final String K_DATA_VERSION = "data_version";
-    private static final String K_STAGE = "stage";
-    private static final String K_ITEM = "item";
+   private static final String DATA_KEY = "kaleidoscopecookery:chopping_board";
+   private static final String K_BLOCK_ENTITY_TAG = "BlockEntityTag";
+   private static final String K_DATA_VERSION = "data_version";
+   private static final String K_STAGE = "stage";
+   private static final String K_ITEM = "item";
+   private final ChoppingBoardBehavior behavior;
+   private final ChoppingBoardElement element;
+   private Item placedItem = Item.empty();
+   private int currentStage = 0;
 
-    private final ChoppingBoardBehavior behavior;
-    private final ChoppingBoardElement element;
-    private Item placedItem = Item.empty();
-    // 当前切割阶段
-    private int currentStage = 0;
+   public ChoppingBoardController(BlockEntity blockEntity, ChoppingBoardBehavior behavior) {
+      super(blockEntity);
+      this.behavior = behavior;
+      this.element = new ChoppingBoardElement(
+         this, new WorldPosition(null, super.blockEntity.pos.x() + 0.5F, super.blockEntity.pos.y() + 0.625F, super.blockEntity.pos.z() + 0.5F)
+      );
+   }
 
-    public ChoppingBoardController(BlockEntity blockEntity, ChoppingBoardBehavior behavior) {
-        super(blockEntity);
-        this.behavior = behavior;
-        // 展示实体置于方块中心上方
-        this.element = new ChoppingBoardElement(this, new WorldPosition(
-                null, (float) super.blockEntity.pos.x() + 0.5f,
-                (float) super.blockEntity.pos.y() + 0.625f,
-                (float) super.blockEntity.pos.z() + 0.5f
-        ));
-    }
+   public float facingYawRadians() {
+      Property<Direction> facingProperty = this.behavior.getFacingProperty();
+      if (facingProperty == null) {
+         return 0.0F;
+      }
 
-    public float facingYawRadians() {
-        if (behavior.getFacingProperty() == null) {
-            return 0f;
-        }
-        Direction f = super.blockEntity.blockState.get(behavior.getFacingProperty());
-        int data2D = switch (f) {
-            case WEST -> 1;
-            case NORTH -> 2;
-            case EAST -> 3;
-            default -> 0;
-        };
-        float yaw = (float) Math.toRadians(data2D * 90);
-        if (f == Direction.NORTH || f == Direction.SOUTH) {
-            yaw += (float) Math.PI;
-        }
-        return yaw;
-    }
+      Direction f = BlockStates.value(super.blockEntity.blockState, facingProperty, facingProperty.defaultValue());
 
-    @Override
-    public <C extends BlockEntityController> BlockEntityTicker<C> createBlockEntityTicker(
-            CEWorld world, ImmutableBlockState blockState) {
-        return null;
-    }
+      int data2D = switch (f) {
+         case WEST -> 1;
+         case NORTH -> 2;
+         case EAST -> 3;
+         default -> 0;
+      };
+      float yaw = (float)Math.toRadians(data2D * 90);
+      if (f == Direction.NORTH || f == Direction.SOUTH) {
+         yaw += (float) Math.PI;
+      }
 
-    public void refreshDynamicElement(BiConsumer<ChoppingBoardElement, Player> consumer) {
-        TrackedPlayers.forEach(super.blockEntity, trackedPlayer -> consumer.accept(this.element, trackedPlayer));
-    }
+      return yaw;
+   }
 
-    public void refreshElementState() {
-        this.element.prepareUpdate();
-        refreshDynamicElement(ChoppingBoardElement::update);
-    }
+   public <C extends BlockEntityController> BlockEntityTicker<C> createBlockEntityTicker(CEWorld world, ImmutableBlockState blockState) {
+      return null;
+   }
 
-    public boolean isEmpty() {
-        return currentStage == 0 || placedItem.isEmpty();
-    }
+   public void refreshDynamicElement(BiConsumer<ChoppingBoardElement, Player> consumer) {
+      TrackedPlayers.forEach(super.blockEntity, trackedPlayer -> consumer.accept(this.element, trackedPlayer));
+   }
 
-    // 该物品是否允许放上砧板
-    public boolean canChop(Item food) {
-        return ApplianceFoodRegistry.instance().isAllowed(ApplianceType.CHOPPING_BOARD, food.id());
-    }
+   public void refreshElementState() {
+      this.element.prepareUpdate();
+      this.refreshDynamicElement(ChoppingBoardElement::update);
+   }
 
-    public Item placedItem() {
-        return placedItem;
-    }
+   public boolean isEmpty() {
+      return this.currentStage == 0 || this.placedItem.isEmpty();
+   }
 
-    public int currentStage() {
-        return currentStage;
-    }
+   public boolean canChop(Item food) {
+      return ApplianceFoodRegistry.instance().isAllowed(ApplianceType.CHOPPING_BOARD, food.id());
+   }
 
-    // 当前阶段的展示模型 无料或配方没给模型时返回 null
-    // 返回 null 不代表不显示 调用方会退回展示放上去的物品本身
-    public String currentStageModel() {
-        if (isEmpty()) {
-            return null;
-        }
-        ChoppingBoardRecipe recipe = recipe();
-        if (recipe == null) {
-            return null;
-        }
-        int idx = Math.min(currentStage, recipe.stage()) - 1;
-        if (idx < 0 || idx >= recipe.values().size()) {
-            return null;
-        }
-        return recipe.values().get(idx);
-    }
+   public Item placedItem() {
+      return this.placedItem;
+   }
 
-    private ChoppingBoardRecipe recipe() {
-        if (placedItem.isEmpty()) {
-            return null;
-        }
-        return FoodRecipeRegistry.instance().findChoppingByInput(placedItem.id());
-    }
+   public int currentStage() {
+      return this.currentStage;
+   }
 
-    public boolean place(Item food) {
-        if (!isEmpty() || !canChop(food)) {
-            return false;
-        }
-        this.placedItem = food.copyWithCount(1);
-        this.currentStage = 1;
-        refreshElementState();
-        super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
-        return true;
-    }
+   public String currentStageModel() {
+      if (this.isEmpty()) {
+         return null;
+      }
 
-    public CutResult cut() {
-        if (isEmpty()) {
-            return CutResult.NOTHING;
-        }
-        ChoppingBoardRecipe recipe = recipe();
-        if (recipe == null) {
-            return CutResult.NOTHING;
-        }
+      ChoppingBoardRecipe recipe = this.recipe();
+      if (recipe == null) {
+         return null;
+      }
 
-        if (currentStage < recipe.stage()) {
-            currentStage++;
-            refreshElementState();
-            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
-            return CutResult.ADVANCED;
-        }
+      int idx = Math.min(this.currentStage, recipe.stage()) - 1;
+      return idx >= 0 && idx < recipe.values().size() ? recipe.values().get(idx) : null;
+   }
 
-        for (Item result : FoodRecipeRegistry.instance().rollChoppingResults(recipe)) {
-            if (!result.isEmpty()) {
-                DropUtils.dropAtCenter(super.blockEntity, result);
-            }
-        }
-        clearBoard();
-        return CutResult.FINISHED;
-    }
+   private ChoppingBoardRecipe recipe() {
+      return this.placedItem.isEmpty() ? null : FoodRecipeRegistry.instance().findChoppingByInput(this.placedItem.id());
+   }
 
-    public Item takeBack() {
-        if (isEmpty()) {
-            return Item.empty();
-        }
-        Item ret = placedItem;
-        clearBoard();
-        return ret;
-    }
+   public boolean place(Item food) {
+      if (this.isEmpty() && this.canChop(food)) {
+         this.placedItem = food.copyWithCount(1);
+         this.currentStage = 1;
+         this.refreshElementState();
+         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+         return true;
+      } else {
+         return false;
+      }
+   }
 
-    private void clearBoard() {
-        this.placedItem = Item.empty();
-        this.currentStage = 0;
-        refreshElementState();
-        super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
-    }
+   public ChoppingBoardController.CutResult cut() {
+      if (this.isEmpty()) {
+         return ChoppingBoardController.CutResult.NOTHING;
+      }
 
-    // 切割结果
-    public enum CutResult { NOTHING, ADVANCED, FINISHED }
+      ChoppingBoardRecipe recipe = this.recipe();
+      if (recipe == null) {
+         return ChoppingBoardController.CutResult.NOTHING;
+      }
 
-    @Override
-    public boolean hasElement() {
-        return true;
-    }
+      if (this.currentStage < recipe.stage()) {
+         this.currentStage++;
+         this.refreshElementState();
+         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+         return ChoppingBoardController.CutResult.ADVANCED;
+      }
 
-    @Override
-    public void gatherElements(Consumer<BlockEntityElement> consumer) {
-        consumer.accept(element);
-    }
+      for (Item result : FoodRecipeRegistry.instance().rollChoppingResults(recipe)) {
+         if (!result.isEmpty()) {
+            DropUtils.dropAtCenter(super.blockEntity, result);
+         }
+      }
 
-    @Override
-    public void onRemove() {
-        if (!placedItem.isEmpty()) {
-            DropUtils.dropOnRemove(super.blockEntity, placedItem);
-        }
-        super.onRemove();
-    }
+      this.clearBoard();
+      return ChoppingBoardController.CutResult.FINISHED;
+   }
 
-    @Override
-    public void loadCustomDataFromItem(Item item) {
-        Object nmsItem = item.minecraftItem();
-        Tag tag = ItemStackUtils.saveMinecraftItemStackAsTag(nmsItem);
-        if (tag instanceof CompoundTag compoundTag && compoundTag.containsKey(K_BLOCK_ENTITY_TAG)) {
-            loadCustomData(compoundTag.getCompound(K_BLOCK_ENTITY_TAG));
-        }
-    }
+   public Item takeBack() {
+      if (this.isEmpty()) {
+         return Item.empty();
+      }
 
-    @Override
-    public void saveCustomData(CompoundTag tag) {
-        if (isEmpty()) {
-            return;
-        }
-        CompoundTag data = new CompoundTag();
-        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
-        data.putInt(K_STAGE, currentStage);
-        BlockEntityNbt.putItem(data, K_ITEM, placedItem);
-        tag.put(DATA_KEY, data);
-    }
+      Item ret = this.placedItem;
+      this.clearBoard();
+      return ret;
+   }
 
-    @Override
-    public void loadCustomData(CompoundTag tag) {
-        CompoundTag data = tag.getCompound(DATA_KEY);
-        if (data == null) {
-            return;
-        }
-        this.currentStage = data.getInt(K_STAGE, 0);
-        this.placedItem = BlockEntityNbt.getItem(data, K_ITEM, BlockEntityNbt.dataVersion(data));
-        if (this.placedItem.isEmpty()) {
+   private void clearBoard() {
+      this.placedItem = Item.empty();
+      this.currentStage = 0;
+      this.refreshElementState();
+      super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+   }
+
+   public boolean hasElement() {
+      return true;
+   }
+
+   public void gatherElements(Consumer<BlockEntityElement> consumer) {
+      consumer.accept(this.element);
+   }
+
+   public void onRemove() {
+      if (!this.placedItem.isEmpty()) {
+         DropUtils.dropOnRemove(super.blockEntity, this.placedItem);
+      }
+
+      super.onRemove();
+   }
+
+   public void loadCustomDataFromItem(Item item) {
+      Object nmsItem = item.minecraftItem();
+      if (ItemStackUtils.saveMinecraftItemStackAsTag(nmsItem) instanceof CompoundTag compoundTag && compoundTag.containsKey("BlockEntityTag")) {
+         this.loadCustomData(compoundTag.getCompound("BlockEntityTag"));
+      }
+   }
+
+   public void saveCustomData(CompoundTag tag) {
+      if (!this.isEmpty()) {
+         CompoundTag data = new CompoundTag();
+         data.putInt("data_version", VersionHelper.WORLD_VERSION);
+         data.putInt("stage", this.currentStage);
+         BlockEntityNbt.putItem(data, "item", this.placedItem);
+         tag.put("kaleidoscopecookery:chopping_board", data);
+      }
+   }
+
+   public void loadCustomData(CompoundTag tag) {
+      CompoundTag data = tag.getCompound("kaleidoscopecookery:chopping_board");
+      if (data != null) {
+         this.currentStage = data.getInt("stage", 0);
+         this.placedItem = BlockEntityNbt.getItem(data, "item", BlockEntityNbt.dataVersion(data));
+         if (this.placedItem.isEmpty()) {
             this.currentStage = 0;
-        }
-        this.element.refreshPackets();
-    }
+         }
+
+         this.element.refreshPackets();
+      }
+   }
+
+   public enum CutResult {
+      NOTHING,
+      ADVANCED,
+      FINISHED;
+   }
 }

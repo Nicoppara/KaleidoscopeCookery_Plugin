@@ -1,14 +1,21 @@
 package net.kaleidoscope.cookery.block.entity;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import net.kaleidoscope.cookery.block.behavior.FruitBasketBehavior;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.entity.cat.FruitBasketCatGoal;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
+import net.kaleidoscope.cookery.util.ChunkIndex;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
-import net.kaleidoscope.cookery.util.BlockEntityNbt;
-import net.kaleidoscope.cookery.util.ChunkIndex;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
@@ -19,270 +26,260 @@ import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.WorldPosition;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.ListTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.component.ItemContainerContentsProxy;
+import org.bukkit.World;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.function.Consumer;
-
-// 果篮方块实体 8 槽存物 放/取/破坏
 public final class FruitBasketController extends BlockEntityController {
-    private static final int SLOTS = 8;
-    private static final String DATA_KEY = "kaleidoscopecookery:fruit_basket";
-    private static final String K_DATA_VERSION = "data_version";
-    private static final String K_ITEMS = "items";
-    private static final String K_SLOT = "slot";
-    private static final String K_ITEM = "item";
+   private static final int SLOTS = 8;
+   private static final String DATA_KEY = "kaleidoscopecookery:fruit_basket";
+   private static final String K_DATA_VERSION = "data_version";
+   private static final String K_ITEMS = "items";
+   private static final String K_SLOT = "slot";
+   private static final String K_ITEM = "item";
+   private final FruitBasketBehavior behavior;
+   private final Item[] items = new Item[8];
+   private final Item[] lastItems = new Item[8];
+   private final FruitBasketElement element;
+   private WorldPosition[] positions;
+   private boolean positionsInitialized;
+   private boolean creativeBreak;
+   private static final ChunkIndex<FruitBasketController> INDEX = new ChunkIndex<>();
+   public static final int SEARCH_RADIUS = 6;
 
-    private final FruitBasketBehavior behavior;
-    private final Item[] items = new Item[SLOTS];
-    private final Item[] lastItems = new Item[SLOTS];
-    private final FruitBasketElement element;
-    private WorldPosition[] positions;
-    private boolean positionsInitialized;
-    private boolean creativeBreak;
+   public void markCreativeBreak() {
+      this.creativeBreak = true;
+   }
 
-    public void markCreativeBreak() {
-        this.creativeBreak = true;
-    }
+   public FruitBasketController(BlockEntity blockEntity, FruitBasketBehavior behavior) {
+      super(blockEntity);
+      this.behavior = behavior;
+      Arrays.fill(this.items, Item.empty());
+      Arrays.fill(this.lastItems, Item.empty());
+      this.element = new FruitBasketElement(this);
+   }
 
-    public FruitBasketController(BlockEntity blockEntity, FruitBasketBehavior behavior) {
-        super(blockEntity);
-        this.behavior = behavior;
-        Arrays.fill(this.items, Item.empty());
-        Arrays.fill(this.lastItems, Item.empty());
-        this.element = new FruitBasketElement(this);
-    }
+   public boolean hasElement() {
+      return true;
+   }
 
-    @Override
-    public boolean hasElement() {
-        return true;
-    }
+   public void gatherElements(Consumer<BlockEntityElement> consumer) {
+      consumer.accept(this.element);
+   }
 
-    @Override
-    public void gatherElements(Consumer<BlockEntityElement> consumer) {
-        consumer.accept(this.element);
-    }
+   Item[] slotItems() {
+      return this.items;
+   }
 
-    Item[] slotItems() {
-        return this.items;
-    }
+   Item[] slotLastItems() {
+      return this.lastItems;
+   }
 
-    Item[] slotLastItems() {
-        return this.lastItems;
-    }
+   public static void forEachNear(World world, int blockX, int blockZ, Predicate<FruitBasketController> action) {
+      INDEX.forEach(world, blockX, blockZ, controller -> controller.blockEntity().isValid() && action.test(controller));
+   }
 
-    // 猫找果篮以前是每 2 秒扫 13x3x13 共 507 格 每格一次自定义方块解析 一百只猫就是每 2 秒五万次
-    // 改成果篮自己登记进区块索引 猫只查自己那一个桶 登记半径要覆盖猫的搜索半径
-    private static final ChunkIndex<FruitBasketController> INDEX = new ChunkIndex<>();
-    // 猫的水平搜索半径 登记侧要按它铺开 两边必须一致
-    public static final int SEARCH_RADIUS = 6;
+   void unregisterFromIndex() {
+      INDEX.unregister(this);
+      this.positionsInitialized = false;
+   }
 
-    // 登记与注销挂在元素的 activate/deactivate 上 那对钩子随区块激活停用成对触发
-    // isValid 只是兜底 万一有没走到 deactivate 的路径 查询时顺手摘掉
-    public static void forEachNear(org.bukkit.World world, int blockX, int blockZ,
-                                   java.util.function.Predicate<FruitBasketController> action) {
-        INDEX.forEach(world, blockX, blockZ,
-                controller -> controller.blockEntity().isValid() && action.test(controller));
-    }
+   public static void clearIndex() {
+      INDEX.clear();
+   }
 
-    void unregisterFromIndex() {
-        INDEX.unregister(this);
-        this.positionsInitialized = false;
-    }
+   public void ensurePositionsInitialized() {
+      if (!this.positionsInitialized && super.blockEntity.world != null) {
+         INDEX.register(this, (World)super.blockEntity.world.world().platformWorld(), super.blockEntity.pos.x, super.blockEntity.pos.z, 6);
+         Direction facing = BlockStates.value(super.blockEntity.blockState, this.behavior.getFacingProperty(), Direction.SOUTH);
+         int rotation = facing.data2d() * 90;
+         Quaternionf facingRot = new Quaternionf().rotateY((float)Math.toRadians(-rotation));
+         WorldPosition[] p = new WorldPosition[8];
 
-    public static void clearIndex() {
-        INDEX.clear();
-    }
-
-    public void ensurePositionsInitialized() {
-        if (positionsInitialized || super.blockEntity.world == null) {
-            return;
-        }
-        INDEX.register(this, (org.bukkit.World) super.blockEntity.world.world().platformWorld(),
-                super.blockEntity.pos.x, super.blockEntity.pos.z, SEARCH_RADIUS);
-        Direction facing = behavior.getFacingProperty() != null
-                ? super.blockEntity.blockState.get(behavior.getFacingProperty()) : Direction.SOUTH;
-        int rotation = facing.data2d() * 90;
-        Quaternionf facingRot = new Quaternionf().rotateY((float) Math.toRadians(-rotation));
-
-        WorldPosition[] p = new WorldPosition[SLOTS];
-        for (int i = 0; i < SLOTS; i++) {
+         for (int i = 0; i < 8; i++) {
             int row = i / 4;
             int col = i % 4;
-            float localX = -0.4f + 0.15f * (col + 1);
-            float localZ = -0.15f + 0.32f * row + (i % 2 == 0 ? -0.01f : 0.01f);
-            Vector3f v = facingRot.transform(new Vector3f(localX, 0.3f, localZ));
-            p[i] = new WorldPosition(super.blockEntity.world.world,
-                    (float) (super.blockEntity.pos.x + 0.5 + v.x),
-                    (float) (super.blockEntity.pos.y + v.y),
-                    (float) (super.blockEntity.pos.z + 0.5 + v.z));
-        }
+            float localX = -0.4F + 0.15F * (col + 1);
+            float localZ = -0.15F + 0.32F * row + (i % 2 == 0 ? -0.01F : 0.01F);
+            Vector3f v = facingRot.transform(new Vector3f(localX, 0.3F, localZ));
+            p[i] = new WorldPosition(
+               super.blockEntity.world.world,
+               (float)(super.blockEntity.pos.x + 0.5 + v.x),
+               super.blockEntity.pos.y + v.y,
+               (float)(super.blockEntity.pos.z + 0.5 + v.z)
+            );
+         }
 
-        Quaternionf leftRot = new Quaternionf()
-                .rotateY((float) Math.toRadians(-rotation - 90))
-                .rotateX((float) Math.toRadians(30));
+         Quaternionf leftRot = new Quaternionf().rotateY((float)Math.toRadians(-rotation - 90)).rotateX((float)Math.toRadians(30.0));
+         this.positions = p;
+         this.element.configure(p, leftRot);
 
-        this.positions = p;
-        this.element.configure(p, leftRot);
-        for (int i = 0; i < SLOTS; i++) {
-            this.element.refreshItem(i, items[i]);
-        }
-        this.positionsInitialized = true;
-    }
+         for (int i = 0; i < 8; i++) {
+            this.element.refreshItem(i, this.items[i]);
+         }
 
-    // 放入 先合并到相同物品 再填空槽
-    public int putOn(Item held) {
-        if (held.isEmpty()) {
-            return 0;
-        }
-        int remaining = held.count();
-        int placed = 0;
-        for (int i = 0; i < SLOTS && remaining > 0; i++) {
-            if (!items[i].isEmpty() && items[i].isSimilar(held)) {
-                int room = items[i].maxStackSize() - items[i].count();
-                if (room > 0) {
-                    int move = Math.min(room, remaining);
-                    items[i] = items[i].copyWithCount(items[i].count() + move);
-                    remaining -= move;
-                    placed += move;
-                }
+         this.positionsInitialized = true;
+      }
+   }
+
+   public int putOn(Item held) {
+      if (held.isEmpty()) {
+         return 0;
+      }
+
+      int remaining = held.count();
+      int placed = 0;
+
+      for (int i = 0; i < 8 && remaining > 0; i++) {
+         if (!this.items[i].isEmpty() && this.items[i].isSimilar(held)) {
+            int room = this.items[i].maxStackSize() - this.items[i].count();
+            if (room > 0) {
+               int move = Math.min(room, remaining);
+               this.items[i] = this.items[i].copyWithCount(this.items[i].count() + move);
+               remaining -= move;
+               placed += move;
             }
-        }
-        for (int i = 0; i < SLOTS && remaining > 0; i++) {
-            if (items[i].isEmpty()) {
-                int move = Math.min(held.maxStackSize(), remaining);
-                items[i] = held.copyWithCount(move);
-                remaining -= move;
-                placed += move;
-            }
-        }
-        if (placed > 0) {
-            refresh();
-        }
-        return placed;
-    }
+         }
+      }
 
-    // 取出最后放入的 后放先出
-    public Item takeOut() {
-        for (int i = SLOTS - 1; i >= 0; i--) {
-            if (!items[i].isEmpty()) {
-                Item taken = items[i];
-                items[i] = Item.empty();
-                refresh();
-                return taken;
-            }
-        }
-        return Item.empty();
-    }
+      for (int i = 0; i < 8 && remaining > 0; i++) {
+         if (this.items[i].isEmpty()) {
+            int move = Math.min(held.maxStackSize(), remaining);
+            this.items[i] = held.copyWithCount(move);
+            remaining -= move;
+            placed += move;
+         }
+      }
 
-    private void refresh() {
-        ensurePositionsInitialized();
-        for (int i = 0; i < SLOTS; i++) {
-            if (items[i].isSimilar(lastItems[i])) {
-                continue;
-            }
-            element.refreshItem(i, items[i]);
+      if (placed > 0) {
+         this.refresh();
+      }
+
+      return placed;
+   }
+
+   public Item takeOut() {
+      for (int i = 7; i >= 0; i--) {
+         if (!this.items[i].isEmpty()) {
+            Item taken = this.items[i];
+            this.items[i] = Item.empty();
+            this.refresh();
+            return taken;
+         }
+      }
+
+      return Item.empty();
+   }
+
+   private void refresh() {
+      this.ensurePositionsInitialized();
+
+      for (int i = 0; i < 8; i++) {
+         if (!this.items[i].isSimilar(this.lastItems[i])) {
+            this.element.refreshItem(i, this.items[i]);
             int slot = i;
-            if (lastItems[i].isEmpty()) {
-                TrackedPlayers.forEach(super.blockEntity, p -> element.showSlot(p, slot));
-            } else if (items[i].isEmpty()) {
-                TrackedPlayers.forEach(super.blockEntity, p -> element.removeSlot(p, slot));
+            if (this.lastItems[i].isEmpty()) {
+               TrackedPlayers.forEach(super.blockEntity, p -> this.element.showSlot(p, slot));
+            } else if (this.items[i].isEmpty()) {
+               TrackedPlayers.forEach(super.blockEntity, p -> this.element.removeSlot(p, slot));
             } else {
-                TrackedPlayers.forEach(super.blockEntity, p -> element.metaSlot(p, slot));
+               TrackedPlayers.forEach(super.blockEntity, p -> this.element.metaSlot(p, slot));
             }
-        }
-        if (super.blockEntity.world != null) {
-            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
-        }
-        System.arraycopy(items, 0, lastItems, 0, SLOTS);
-    }
+         }
+      }
 
-    @Override
-    public void saveCustomData(CompoundTag tag) {
-        CompoundTag data = new CompoundTag();
-        data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
-        data.put(K_ITEMS, BlockEntityNbt.saveItems(items));
-        tag.put(DATA_KEY, data);
-    }
+      if (super.blockEntity.world != null) {
+         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+      }
 
-    @Override
-    public void loadCustomData(CompoundTag tag) {
-        Arrays.fill(items, Item.empty());
-        CompoundTag data = tag.getCompound(DATA_KEY);
-        if (data != null) {
-            BlockEntityNbt.loadItems(data.getList(K_ITEMS), BlockEntityNbt.dataVersion(data), items);
-        }
-        for (int i = 0; i < SLOTS; i++) {
-            element.refreshItem(i, items[i]);
-        }
-        System.arraycopy(items, 0, lastItems, 0, SLOTS);
-    }
+      System.arraycopy(this.items, 0, this.lastItems, 0, 8);
+   }
 
-    @Override
-    public void loadCustomDataFromItem(Item item) {
-        Arrays.fill(items, Item.empty());
-        Tag container = item.getComponentAsSparrowTag(DataComponentTypes.CONTAINER);
-        if (container instanceof ListTag list) {
-            int version = Config.itemDataFixerUpperFallbackVersion();
-            for (Tag entry : list) {
-                if (!(entry instanceof CompoundTag c)) {
-                    continue;
-                }
-                int slot = c.getInt(K_SLOT, -1);
-                Tag itemTag = c.get(K_ITEM);
-                if (slot < 0 || slot >= SLOTS || itemTag == null) {
-                    continue;
-                }
-                Object nms = ItemStackUtils.parseMinecraftItem(itemTag, version);
-                if (nms != null) {
-                    items[slot] = ItemStackUtils.wrap(nms);
-                }
-            }
-        }
-        ensurePositionsInitialized();
-        for (int i = 0; i < SLOTS; i++) {
-            element.refreshItem(i, items[i]);
-            if (!items[i].isEmpty()) {
-                int slot = i;
-                TrackedPlayers.forEach(super.blockEntity, p -> element.showSlot(p, slot));
-            }
-        }
-        System.arraycopy(items, 0, lastItems, 0, SLOTS);
-    }
+   public void saveCustomData(CompoundTag tag) {
+      CompoundTag data = new CompoundTag();
+      data.putInt("data_version", VersionHelper.WORLD_VERSION);
+      data.put("items", BlockEntityNbt.saveItems(this.items));
+      tag.put("kaleidoscopecookery:fruit_basket", data);
+   }
 
-    @Override
-    public void onRemove() {
-        INDEX.unregister(this);
-        if (super.blockEntity.world != null) {
-            FruitBasketCatGoal.releaseClaim(super.blockEntity.world.world().uuid(),
-                    super.blockEntity.pos.x, super.blockEntity.pos.y, super.blockEntity.pos.z);
-        }
-        if (creativeBreak) {
-            for (Item item : items) {
-                if (!item.isEmpty()) {
-                    DropUtils.dropOnRemove(super.blockEntity, item);
-                }
+   public void loadCustomData(CompoundTag tag) {
+      Arrays.fill(this.items, Item.empty());
+      CompoundTag data = tag.getCompound("kaleidoscopecookery:fruit_basket");
+      if (data != null) {
+         BlockEntityNbt.loadItems(data.getList("items"), BlockEntityNbt.dataVersion(data), this.items);
+      }
+
+      for (int i = 0; i < 8; i++) {
+         this.element.refreshItem(i, this.items[i]);
+      }
+
+      System.arraycopy(this.items, 0, this.lastItems, 0, 8);
+   }
+
+   public void loadCustomDataFromItem(Item item) {
+      Arrays.fill(this.items, Item.empty());
+      if (item.getComponentAsSparrowTag(DataComponentTypes.CONTAINER) instanceof ListTag list) {
+         int version = Config.itemDataFixerUpperFallbackVersion();
+
+         for (Tag entry : list) {
+            if (entry instanceof CompoundTag c) {
+               int slot = c.getInt("slot", -1);
+               Tag itemTag = c.get("item");
+               if (slot >= 0 && slot < 8 && itemTag != null) {
+                  Object nms = ItemStackUtils.parseMinecraftItem(itemTag, version);
+                  if (nms != null) {
+                     this.items[slot] = ItemStackUtils.wrap(nms);
+                  }
+               }
             }
-        } else {
-            Key key = super.blockEntity.blockState.owner().value().id();
-            Item basket = InventoryUtils.createOrEmpty(key);
-            if (!ItemUtils.isEmpty(basket)) {
-                List<Object> nmsItems = new ArrayList<>(SLOTS);
-                for (Item item : items) {
-                    nmsItems.add(item.isEmpty() ? ItemStackProxy.EMPTY : item.minecraftItem());
-                }
-                basket.setExactComponent(DataComponentTypes.CONTAINER, ItemContainerContentsProxy.INSTANCE.fromItems(nmsItems));
-                DropUtils.dropOnRemove(super.blockEntity, basket);
+         }
+      }
+
+      this.ensurePositionsInitialized();
+
+      for (int i = 0; i < 8; i++) {
+         this.element.refreshItem(i, this.items[i]);
+         if (!this.items[i].isEmpty()) {
+            int slot = i;
+            TrackedPlayers.forEach(super.blockEntity, p -> this.element.showSlot(p, slot));
+         }
+      }
+
+      System.arraycopy(this.items, 0, this.lastItems, 0, 8);
+   }
+
+   public void onRemove() {
+      INDEX.unregister(this);
+      if (super.blockEntity.world != null) {
+         FruitBasketCatGoal.releaseClaim(super.blockEntity.world.world().uuid(), super.blockEntity.pos.x, super.blockEntity.pos.y, super.blockEntity.pos.z);
+      }
+
+      if (this.creativeBreak) {
+         for (Item item : this.items) {
+            if (!item.isEmpty()) {
+               DropUtils.dropOnRemove(super.blockEntity, item);
             }
-        }
-        Arrays.fill(items, Item.empty());
-    }
+         }
+      } else {
+         Key key = ((BlockDefinition)super.blockEntity.blockState.owner().value()).id();
+         Item basket = InventoryUtils.createOrEmpty(key);
+         if (!ItemUtils.isEmpty(basket)) {
+            List<Object> nmsItems = new ArrayList<>(8);
+
+            for (Item item : this.items) {
+               nmsItems.add(item.isEmpty() ? ItemStackProxy.EMPTY : item.minecraftItem());
+            }
+
+            basket.setExactComponent(DataComponentTypes.CONTAINER, ItemContainerContentsProxy.INSTANCE.fromItems(nmsItems));
+            DropUtils.dropOnRemove(super.blockEntity, basket);
+         }
+      }
+
+      Arrays.fill(this.items, Item.empty());
+   }
 }
