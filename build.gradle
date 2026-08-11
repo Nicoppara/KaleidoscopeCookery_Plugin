@@ -72,6 +72,12 @@ dependencies {
     compileOnly("me.clip:placeholderapi:2.11.6")
     implementation("net.momirealms:antigrieflib:1.0.11")
     implementation("org.bstats:bstats-bukkit:3.2.1")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    testImplementation("net.momirealms:craft-engine-core:26.7.4")
+    testImplementation("it.unimi.dsi:fastutil:8.5.18")
+    testImplementation("com.google.guava:guava:33.6.0-jre")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 
     nmsVersions.each { sourceSetName, version ->
         def notation = "org.spigotmc:spigot:${version.dependency}"
@@ -114,6 +120,10 @@ java {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release.set(21)
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 nmsVersions.each { sourceSetName, version ->

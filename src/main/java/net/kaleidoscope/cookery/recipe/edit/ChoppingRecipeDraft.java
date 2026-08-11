@@ -16,6 +16,7 @@ public final class ChoppingRecipeDraft {
     public static final int MAX_STAGE = 16;
 
     private final Key originalId;
+    private ChoppingBoardRecipe originalRecipe;
     private Key id;
     private Key input;
     private int stage = DEFAULT_STAGE;
@@ -35,6 +36,7 @@ public final class ChoppingRecipeDraft {
 
     public static ChoppingRecipeDraft editing(ChoppingBoardRecipe recipe) {
         ChoppingRecipeDraft draft = new ChoppingRecipeDraft(recipe.id(), recipe.id());
+        draft.originalRecipe = recipe;
         draft.input = recipe.input();
         draft.stage = recipe.stage();
         draft.mode = recipe.mode();
@@ -55,6 +57,10 @@ public final class ChoppingRecipeDraft {
 
     public Key originalId() {
         return originalId;
+    }
+
+    public ChoppingBoardRecipe originalRecipe() {
+        return originalRecipe;
     }
 
     public Key id() {

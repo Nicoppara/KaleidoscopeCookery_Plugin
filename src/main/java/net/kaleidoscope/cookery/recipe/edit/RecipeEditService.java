@@ -19,13 +19,21 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-// UI 编辑配方的落地点 校验通过后先热更内存注册表 再异步把 YAML 写回
-// 内存注册表用的是并发容器 所以先生效后落盘不需要额外同步 也不需要触发 CE 重载
+// UI 编辑配方的落地点 保存与删除均先落盘再更新运行时
 public final class RecipeEditService {
+    private static final String SAVE_FAILED = "配置文件写入失败，原食谱未修改";
+    private static final String HOT_UPDATE_FAILED = "配置文件已写入，运行时更新失败，请重载配置";
+
     private RecipeEditService() {
+    }
+
+    @FunctionalInterface
+    private interface SaveAction {
+        void run(Runnable afterSave) throws Exception;
     }
 
     // 校验失败返回错误文案 通过返回 null 调用方据此提示玩家
@@ -41,7 +49,7 @@ public final class RecipeEditService {
             return "请先设置至少一个成品";
         }
         if (isTakenId(draft.id(), draft.originalId(),
-                k -> FoodRecipeRegistry.instance().findAccurateById(k) != null)) {
+                k -> RecipeSourceIndex.instance().hasSource(RecipeSourceIndex.Kind.ACCURATE, k))) {
             return "该 id 已被占用";
         }
         return null;
@@ -59,7 +67,9 @@ public final class RecipeEditService {
             return "请先设置至少一种原料";
         }
         if (isTakenId(draft.id(), draft.originalId(),
-                k -> FoodRecipeRegistry.instance().findFlexById(k) != null)) {
+                k -> RecipeSourceIndex.instance().hasSource(
+                        draft.cook() == ApplianceType.STOCKPOT
+                                ? RecipeSourceIndex.Kind.STOCK_FLEX : RecipeSourceIndex.Kind.POT_FLEX, k))) {
             return "该 id 已被占用";
         }
         return null;
@@ -85,91 +95,106 @@ public final class RecipeEditService {
         return null;
     }
 
-    // 保存精准配方 返回错误文案 null 表示已受理
-    public static String saveAccurate(AccurateRecipeDraft draft) {
+    public static CompletableFuture<String> saveAccurate(AccurateRecipeDraft draft) {
         String error = validate(draft);
         if (error != null) {
-            return error;
+            return CompletableFuture.completedFuture(error);
         }
         AccurateFoodRecipe recipe = draft.toRecipe();
         Key oldId = draft.originalId();
-        // 目标文件先定下来 定不下来就整个不动 免得内存生效了却写不回配置
-        Path file = resolveFile(oldId, RecipeFileStore::defaultAccurateFile);
+        Path file = resolveFile(draft.originalRecipe(), RecipeFileStore::defaultAccurateFile);
         if (file == null) {
-            return "找不到可写入的配方文件";
+            return CompletableFuture.completedFuture("找不到可写入的配方文件");
         }
-        if (oldId != null) {
-            AccurateFoodRecipe old = FoodRecipeRegistry.instance().findAccurateById(oldId);
-            FoodRecipeRegistry.instance().removeAccurate(oldId);
-            if (old != null && !old.input().equals(recipe.input())) {
-                dropInputIfUnused(old.cook(), old.input(), k -> accurateUses(old.cook(), k));
-            }
-        }
-        FoodRecipeRegistry.instance().registerAccurate(recipe);
-        ApplianceFoodRegistry.instance().register(recipe.cook(), recipe.input());
-
-        RecipeSourceIndex.instance().put(recipe.id(), file);
+        String oldNode = RecipeSourceIndex.instance().nodePath(draft.originalRecipe());
+        RecipeFileStore.SourceTarget oldTarget = RecipeSourceIndex.instance().target(draft.originalRecipe());
+        String nodePath = resolveNodePath(oldNode, RecipeFileStore.accurateSections(), recipe.id());
+        AccurateFoodRecipe old = draft.originalRecipe();
+        RecipeSourceIndex.Kind kind = RecipeSourceIndex.Kind.ACCURATE;
         Map<String, Object> node = accurateNode(recipe);
-        runAsync(() -> {
-            try {
-                if (oldId != null && !oldId.equals(recipe.id())) {
-                    RecipeFileStore.delete(file, RecipeFileStore.accurateSections(), oldId);
-                    RecipeSourceIndex.instance().remove(oldId);
-                }
-                RecipeFileStore.write(file, RecipeFileStore.accurateSections(), recipe.id(), node);
-            } catch (Exception e) {
-                RecipeFileStore.logFailure("保存", recipe.id(), e);
-            }
-        });
-        return null;
+        return persistThenApply(recipe.id(), kind,
+                afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
+                () -> {
+                    Object replaced = RecipeSourceIndex.instance()
+                            .removeSource(kind, recipe.id(), file, nodePath);
+                    removeMenuRecipe(replaced);
+                    if (replaced != null) {
+                        removeRuntime(kind, recipe.id());
+                    }
+                    if (old != null) {
+                        FoodRecipeRegistry.instance().removeAccurate(oldId);
+                        FoodRecipeRegistry.instance().removeMenuAccurate(old);
+                        RecipeSourceIndex.instance().remove(old);
+                    }
+                    RecipeSourceIndex.instance().restore(kind, recipe.id(), file, nodePath);
+                    boolean duplicate = RecipeSourceIndex.instance()
+                            .hasOtherSource(kind, recipe.id(), file, nodePath);
+                    FoodRecipeRegistry.instance().registerMenuAccurate(recipe);
+                    RecipeSourceIndex.instance().put(kind, recipe.id(), file, nodePath, recipe, duplicate);
+                    if (!duplicate) {
+                        FoodRecipeRegistry.instance().registerAccurate(recipe);
+                        ApplianceFoodRegistry.instance().register(recipe.cook(), recipe.input());
+                    }
+                    if (old != null && !old.input().equals(recipe.input())) {
+                        dropInputIfUnused(old.cook(), old.input(), k -> accurateUses(old.cook(), k));
+                    }
+                });
     }
 
-    public static String saveFlex(FlexRecipeDraft draft) {
+    public static CompletableFuture<String> saveFlex(FlexRecipeDraft draft) {
         String error = validate(draft);
         if (error != null) {
-            return error;
+            return CompletableFuture.completedFuture(error);
         }
         FlexFoodRecipe recipe = draft.toRecipe();
         Key oldId = draft.originalId();
         String[] sections = RecipeFileStore.flexSections(recipe.cook());
-        // 目标文件先定下来 定不下来就整个不动 免得内存生效了却写不回配置
-        Path file = resolveFile(oldId, () -> RecipeFileStore.defaultFlexFile(recipe.cook()));
+        Path file = resolveFile(draft.originalRecipe(), () -> RecipeFileStore.defaultFlexFile(recipe.cook()));
         if (file == null) {
-            return "找不到可写入的配方文件";
+            return CompletableFuture.completedFuture("找不到可写入的配方文件");
         }
-        FlexFoodRecipe old = oldId == null ? null : FoodRecipeRegistry.instance().findFlexById(oldId);
-        if (oldId != null) {
-            FoodRecipeRegistry.instance().removeFlex(oldId);
-        }
-        // 余弦是尺度无关的 理想向量方向相同的两道菜会永远打平 保存前拦下来
-        FlexFoodRecipe clash = FoodRecipeRegistry.instance().findSameDirection(recipe);
+        String oldNode = RecipeSourceIndex.instance().nodePath(draft.originalRecipe());
+        RecipeFileStore.SourceTarget oldTarget = RecipeSourceIndex.instance().target(draft.originalRecipe());
+        String nodePath = resolveNodePath(oldNode, sections, recipe.id());
+        FlexFoodRecipe old = draft.originalRecipe();
+        RecipeSourceIndex.Kind kind = recipe.cook() == ApplianceType.STOCKPOT
+                ? RecipeSourceIndex.Kind.STOCK_FLEX : RecipeSourceIndex.Kind.POT_FLEX;
+        boolean duplicate = RecipeSourceIndex.instance().recipes(kind, recipe.id()).stream()
+                .anyMatch(existing -> existing != old);
+        FlexFoodRecipe clash = duplicate ? null
+                : FoodRecipeRegistry.instance().findSameDirection(recipe, old);
         if (clash != null) {
-            if (old != null) {
-                FoodRecipeRegistry.instance().registerFlex(old);
-            }
-            return "配比方向与 " + clash.id().asString() + " 相同 会永远打平";
+            return CompletableFuture.completedFuture(
+                    "配比方向与 " + clash.id().asString() + " 相同 会永远打平");
         }
-        FoodRecipeRegistry.instance().registerFlex(recipe);
-        // 能配出菜的料就该能下锅 与 FoodRecipeManager.parseFlexRecipe 保持一致
-        // 漏了这步 菜单新建的配方要等下次 reload 才能把食材放进锅里
-        for (Key ingredient : recipe.perfect().keySet()) {
-            ApplianceFoodRegistry.instance().register(recipe.cook(), ingredient);
-        }
-
-        RecipeSourceIndex.instance().put(recipe.id(), file);
         Map<String, Object> node = flexNode(draft);
-        runAsync(() -> {
-            try {
-                if (oldId != null && !oldId.equals(recipe.id())) {
-                    RecipeFileStore.delete(file, sections, oldId);
-                    RecipeSourceIndex.instance().remove(oldId);
-                }
-                RecipeFileStore.write(file, sections, recipe.id(), node);
-            } catch (Exception e) {
-                RecipeFileStore.logFailure("保存", recipe.id(), e);
-            }
-        });
-        return null;
+        return persistThenApply(recipe.id(), kind,
+                afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
+                () -> {
+                    Object replaced = RecipeSourceIndex.instance()
+                            .removeSource(kind, recipe.id(), file, nodePath);
+                    removeMenuRecipe(replaced);
+                    if (replaced != null) {
+                        removeRuntime(kind, recipe.id());
+                    }
+                    if (old != null) {
+                        FoodRecipeRegistry.instance().removeFlex(oldId);
+                        FoodRecipeRegistry.instance().removeMenuFlex(old);
+                        RecipeSourceIndex.instance().remove(old);
+                    }
+                    RecipeSourceIndex.instance().restore(kind, recipe.id(), file, nodePath);
+                    boolean currentDuplicate = RecipeSourceIndex.instance()
+                            .hasOtherSource(kind, recipe.id(), file, nodePath);
+                    FoodRecipeRegistry.instance().registerMenuFlex(recipe);
+                    RecipeSourceIndex.instance()
+                            .put(kind, recipe.id(), file, nodePath, recipe, currentDuplicate);
+                    if (!currentDuplicate) {
+                        FoodRecipeRegistry.instance().registerFlex(recipe);
+                        for (Key ingredient : recipe.perfect().keySet()) {
+                            ApplianceFoodRegistry.instance().register(recipe.cook(), ingredient);
+                        }
+                    }
+                });
     }
 
     public static String validate(ChoppingRecipeDraft draft) {
@@ -178,7 +203,7 @@ public final class RecipeEditService {
             return idError;
         }
         if (isTakenId(draft.id(), draft.originalId(),
-                k -> FoodRecipeRegistry.instance().findChoppingById(k) != null)) {
+                k -> RecipeSourceIndex.instance().hasSource(RecipeSourceIndex.Kind.CHOPPING, k))) {
             return "该 id 已被占用";
         }
         if (draft.input() == null) {
@@ -196,7 +221,7 @@ public final class RecipeEditService {
             return idError;
         }
         if (isTakenId(draft.id(), draft.originalId(),
-                k -> FoodRecipeRegistry.instance().findTeapotById(k) != null)) {
+                k -> RecipeSourceIndex.instance().hasSource(RecipeSourceIndex.Kind.TEAPOT, k))) {
             return "该 id 已被占用";
         }
         if (draft.fluid() == null) {
@@ -218,151 +243,268 @@ public final class RecipeEditService {
         return null;
     }
 
-    public static String saveChopping(ChoppingRecipeDraft draft) {
+    public static CompletableFuture<String> saveChopping(ChoppingRecipeDraft draft) {
         String error = validate(draft);
         if (error != null) {
-            return error;
+            return CompletableFuture.completedFuture(error);
         }
         ChoppingBoardRecipe recipe = draft.toRecipe();
         Key oldId = draft.originalId();
-        Path file = resolveFile(oldId, RecipeFileStore::defaultChoppingFile);
+        Path file = resolveFile(draft.originalRecipe(), RecipeFileStore::defaultChoppingFile);
         if (file == null) {
-            return "找不到可写入的配方文件";
+            return CompletableFuture.completedFuture("找不到可写入的配方文件");
         }
-        ChoppingBoardRecipe oldChopping = oldId == null ? null
-                : FoodRecipeRegistry.instance().findChoppingById(oldId);
-        if (oldId != null) {
-            FoodRecipeRegistry.instance().removeChopping(oldId);
-        }
-        FoodRecipeRegistry.instance().registerChopping(recipe);
-        ApplianceFoodRegistry.instance().register(ApplianceType.CHOPPING_BOARD, recipe.input());
-        if (oldChopping != null && !oldChopping.input().equals(recipe.input())) {
-            dropInputIfUnused(ApplianceType.CHOPPING_BOARD, oldChopping.input(),
-                    RecipeEditService::choppingUses);
-        }
-        RecipeSourceIndex.instance().put(recipe.id(), file);
-
+        String oldNode = RecipeSourceIndex.instance().nodePath(draft.originalRecipe());
+        RecipeFileStore.SourceTarget oldTarget = RecipeSourceIndex.instance().target(draft.originalRecipe());
+        String nodePath = resolveNodePath(oldNode, RecipeFileStore.choppingSections(), recipe.id());
+        ChoppingBoardRecipe oldChopping = draft.originalRecipe();
+        RecipeSourceIndex.Kind kind = RecipeSourceIndex.Kind.CHOPPING;
         Map<String, Object> node = choppingNode(draft);
-        String[] sections = RecipeFileStore.choppingSections();
-        runAsync(() -> {
-            try {
-                if (oldId != null && !oldId.equals(recipe.id())) {
-                    RecipeFileStore.delete(file, sections, oldId);
-                    RecipeSourceIndex.instance().remove(oldId);
-                }
-                RecipeFileStore.write(file, sections, recipe.id(), node);
-            } catch (Exception e) {
-                RecipeFileStore.logFailure("保存", recipe.id(), e);
-            }
-        });
-        return null;
+        return persistThenApply(recipe.id(), kind,
+                afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
+                () -> {
+                    Object replaced = RecipeSourceIndex.instance()
+                            .removeSource(kind, recipe.id(), file, nodePath);
+                    removeMenuRecipe(replaced);
+                    if (replaced != null) {
+                        removeRuntime(kind, recipe.id());
+                    }
+                    if (oldChopping != null) {
+                        FoodRecipeRegistry.instance().removeChopping(oldId);
+                        FoodRecipeRegistry.instance().removeMenuChopping(oldChopping);
+                        RecipeSourceIndex.instance().remove(oldChopping);
+                    }
+                    RecipeSourceIndex.instance().restore(kind, recipe.id(), file, nodePath);
+                    boolean duplicate = RecipeSourceIndex.instance()
+                            .hasOtherSource(kind, recipe.id(), file, nodePath);
+                    FoodRecipeRegistry.instance().registerMenuChopping(recipe);
+                    RecipeSourceIndex.instance().put(kind, recipe.id(), file, nodePath, recipe, duplicate);
+                    if (!duplicate) {
+                        FoodRecipeRegistry.instance().registerChopping(recipe);
+                        ApplianceFoodRegistry.instance()
+                                .register(ApplianceType.CHOPPING_BOARD, recipe.input());
+                    }
+                    if (oldChopping != null && !oldChopping.input().equals(recipe.input())) {
+                        dropInputIfUnused(ApplianceType.CHOPPING_BOARD, oldChopping.input(),
+                                RecipeEditService::choppingUses);
+                    }
+                });
     }
 
-    public static String saveTeapot(TeapotRecipeDraft draft) {
+    public static CompletableFuture<String> saveTeapot(TeapotRecipeDraft draft) {
         String error = validate(draft);
         if (error != null) {
-            return error;
+            return CompletableFuture.completedFuture(error);
         }
         TeapotRecipe recipe = draft.toRecipe();
         Key oldId = draft.originalId();
-        Path file = resolveFile(oldId, RecipeFileStore::defaultTeapotFile);
+        Path file = resolveFile(draft.originalRecipe(), RecipeFileStore::defaultTeapotFile);
         if (file == null) {
-            return "找不到可写入的配方文件";
+            return CompletableFuture.completedFuture("找不到可写入的配方文件");
         }
-        TeapotRecipe oldTeapot = oldId == null ? null
-                : FoodRecipeRegistry.instance().findTeapotById(oldId);
-        if (oldId != null) {
-            FoodRecipeRegistry.instance().removeTeapot(oldId);
-        }
-        FoodRecipeRegistry.instance().registerTeapot(recipe);
-        ApplianceFoodRegistry.instance().register(ApplianceType.TEAPOT, recipe.input());
-        if (oldTeapot != null && !oldTeapot.input().equals(recipe.input())) {
-            dropInputIfUnused(ApplianceType.TEAPOT, oldTeapot.input(), RecipeEditService::teapotUses);
-        }
-        RecipeSourceIndex.instance().put(recipe.id(), file);
-
+        String oldNode = RecipeSourceIndex.instance().nodePath(draft.originalRecipe());
+        RecipeFileStore.SourceTarget oldTarget = RecipeSourceIndex.instance().target(draft.originalRecipe());
+        String nodePath = resolveNodePath(oldNode, RecipeFileStore.teapotSections(), recipe.id());
+        TeapotRecipe oldTeapot = draft.originalRecipe();
+        RecipeSourceIndex.Kind kind = RecipeSourceIndex.Kind.TEAPOT;
         Map<String, Object> node = teapotNode(draft);
-        String[] sections = RecipeFileStore.teapotSections();
-        runAsync(() -> {
-            try {
-                if (oldId != null && !oldId.equals(recipe.id())) {
-                    RecipeFileStore.delete(file, sections, oldId);
-                    RecipeSourceIndex.instance().remove(oldId);
+        return persistThenApply(recipe.id(), kind,
+                afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
+                () -> {
+                    Object replaced = RecipeSourceIndex.instance()
+                            .removeSource(kind, recipe.id(), file, nodePath);
+                    removeMenuRecipe(replaced);
+                    if (replaced != null) {
+                        removeRuntime(kind, recipe.id());
+                    }
+                    if (oldTeapot != null) {
+                        FoodRecipeRegistry.instance().removeTeapot(oldId);
+                        FoodRecipeRegistry.instance().removeMenuTeapot(oldTeapot);
+                        RecipeSourceIndex.instance().remove(oldTeapot);
+                    }
+                    RecipeSourceIndex.instance().restore(kind, recipe.id(), file, nodePath);
+                    boolean duplicate = RecipeSourceIndex.instance()
+                            .hasOtherSource(kind, recipe.id(), file, nodePath);
+                    FoodRecipeRegistry.instance().registerMenuTeapot(recipe);
+                    RecipeSourceIndex.instance().put(kind, recipe.id(), file, nodePath, recipe, duplicate);
+                    if (!duplicate) {
+                        FoodRecipeRegistry.instance().registerTeapot(recipe);
+                        ApplianceFoodRegistry.instance().register(ApplianceType.TEAPOT, recipe.input());
+                    }
+                    if (oldTeapot != null && !oldTeapot.input().equals(recipe.input())) {
+                        dropInputIfUnused(ApplianceType.TEAPOT, oldTeapot.input(),
+                                RecipeEditService::teapotUses);
+                    }
+                });
+    }
+
+    private static CompletableFuture<String> persistThenApply(Key id, RecipeSourceIndex.Kind kind,
+                                                               SaveAction save, Runnable hotUpdate) {
+        CompletableFuture<String> result = new CompletableFuture<>();
+        try {
+            runAsync(() -> {
+                try {
+                    save.run(() -> RecipeSourceIndex.instance().afterCurrentLoad(kind, () -> {
+                        try {
+                            hotUpdate.run();
+                            result.complete(null);
+                        } catch (RuntimeException error) {
+                            RecipeFileStore.logFailure("热更新", id, error);
+                            result.complete(HOT_UPDATE_FAILED);
+                        }
+                    }));
+                } catch (Exception error) {
+                    RecipeFileStore.logFailure("保存", id, error);
+                    result.complete(SAVE_FAILED);
                 }
-                RecipeFileStore.write(file, sections, recipe.id(), node);
-            } catch (Exception e) {
-                RecipeFileStore.logFailure("保存", recipe.id(), e);
-            }
-        });
-        return null;
+            });
+        } catch (RuntimeException error) {
+            RecipeFileStore.logFailure("保存", id, error);
+            result.complete(SAVE_FAILED);
+        }
+        return result;
     }
 
-    public static void deleteChopping(ChoppingBoardRecipe recipe) {
-        FoodRecipeRegistry.instance().removeChopping(recipe.id());
-        dropInputIfUnused(ApplianceType.CHOPPING_BOARD, recipe.input(), RecipeEditService::choppingUses);
-        Path file = RecipeSourceIndex.instance().get(recipe.id());
-        if (file == null) {
-            return;
-        }
-        RecipeSourceIndex.instance().remove(recipe.id());
-        runAsync(() -> {
-            try {
-                RecipeFileStore.delete(file, RecipeFileStore.choppingSections(), recipe.id());
-            } catch (Exception e) {
-                RecipeFileStore.logFailure("删除", recipe.id(), e);
-            }
-        });
+    public static CompletableFuture<Boolean> deleteChopping(ChoppingBoardRecipe recipe) {
+        return deleteRecipe(recipe, recipe.id());
     }
 
-    public static void deleteTeapot(TeapotRecipe recipe) {
-        FoodRecipeRegistry.instance().removeTeapot(recipe.id());
-        dropInputIfUnused(ApplianceType.TEAPOT, recipe.input(), RecipeEditService::teapotUses);
-        Path file = RecipeSourceIndex.instance().get(recipe.id());
-        if (file == null) {
-            return;
-        }
-        RecipeSourceIndex.instance().remove(recipe.id());
-        runAsync(() -> {
-            try {
-                RecipeFileStore.delete(file, RecipeFileStore.teapotSections(), recipe.id());
-            } catch (Exception e) {
-                RecipeFileStore.logFailure("删除", recipe.id(), e);
-            }
-        });
+    public static CompletableFuture<Boolean> deleteTeapot(TeapotRecipe recipe) {
+        return deleteRecipe(recipe, recipe.id());
     }
 
-    public static void deleteAccurate(AccurateFoodRecipe recipe) {
-        FoodRecipeRegistry.instance().removeAccurate(recipe.id());
-        dropInputIfUnused(recipe.cook(), recipe.input(), k -> accurateUses(recipe.cook(), k));
-        Path file = resolveFile(recipe.id(), RecipeFileStore::defaultAccurateFile);
-        RecipeSourceIndex.instance().remove(recipe.id());
-        if (file == null) {
-            return;
-        }
-        runAsync(() -> {
-            try {
-                RecipeFileStore.delete(file, RecipeFileStore.accurateSections(), recipe.id());
-            } catch (Exception e) {
-                RecipeFileStore.logFailure("删除", recipe.id(), e);
-            }
-        });
+    public static CompletableFuture<Boolean> deleteAccurate(AccurateFoodRecipe recipe) {
+        return deleteRecipe(recipe, recipe.id());
     }
 
-    public static void deleteFlex(FlexFoodRecipe recipe) {
-        FoodRecipeRegistry.instance().removeFlex(recipe.id());
-        String[] sections = RecipeFileStore.flexSections(recipe.cook());
-        Path file = resolveFile(recipe.id(), () -> RecipeFileStore.defaultFlexFile(recipe.cook()));
-        RecipeSourceIndex.instance().remove(recipe.id());
-        if (file == null) {
-            return;
+    public static CompletableFuture<Boolean> deleteFlex(FlexFoodRecipe recipe) {
+        return deleteRecipe(recipe, recipe.id());
+    }
+
+    // YAML 写盘成功才整理运行时 因此失败时玩家看到的食谱与配置都保持原状
+    private static CompletableFuture<Boolean> deleteRecipe(Object recipe, Key id) {
+        Path file = RecipeSourceIndex.instance().get(recipe);
+        RecipeFileStore.SourceTarget target = RecipeSourceIndex.instance().target(recipe);
+        RecipeSourceIndex.Kind kind = RecipeSourceIndex.instance().kind(recipe);
+        if (file == null || target == null || kind == null) {
+            return CompletableFuture.completedFuture(false);
         }
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
         runAsync(() -> {
             try {
-                RecipeFileStore.delete(file, sections, recipe.id());
+                if (!RecipeFileStore.deleteTarget(file, target)) {
+                    RecipeFileStore.logFailure("删除", id,
+                            new IllegalStateException("找不到该食谱在配置中的真实来源"));
+                    result.complete(false);
+                    return;
+                }
             } catch (Exception e) {
-                RecipeFileStore.logFailure("删除", recipe.id(), e);
+                RecipeFileStore.logFailure("删除", id, e);
+                result.complete(false);
+                return;
             }
+
+            RecipeSourceIndex sourceIndex = RecipeSourceIndex.instance();
+            sourceIndex.markDeleted(kind, id, file, target);
+            sourceIndex.afterCurrentLoad(kind, () -> {
+                try {
+                    applyHotDeletion(recipe, kind, id, file, target);
+                    result.complete(true);
+                } catch (RuntimeException error) {
+                    // 文件已经删除 此处失败不能再向玩家谎报配置仍在 下次重载会按磁盘结果收敛
+                    RecipeFileStore.logFailure("热删除", id, error);
+                    result.complete(true);
+                } finally {
+                    RecipeSourceIndex.instance().restore(kind, id, file, target);
+                }
+            });
         });
+        return result;
+    }
+
+    private static void applyHotDeletion(Object selected, RecipeSourceIndex.Kind kind, Key id,
+                                         Path file, RecipeFileStore.SourceTarget target) {
+        RecipeSourceIndex sourceIndex = RecipeSourceIndex.instance();
+        Object current = sourceIndex.removeSource(kind, id, file, target);
+        sourceIndex.remove(selected);
+        removeMenuRecipe(selected);
+        if (current != selected) {
+            removeMenuRecipe(current);
+        }
+        removeRuntime(kind, id);
+
+        List<Object> remaining = sourceIndex.recipes(kind, id);
+        boolean duplicate = remaining.size() > 1;
+        for (Object candidate : remaining) {
+            sourceIndex.duplicate(candidate, duplicate);
+        }
+        if (remaining.size() == 1) {
+            registerRuntime(remaining.getFirst(), kind);
+        }
+
+        if (selected instanceof AccurateFoodRecipe accurate) {
+            dropInputIfUnused(accurate.cook(), accurate.input(),
+                    input -> accurateUses(accurate.cook(), input));
+        } else if (selected instanceof ChoppingBoardRecipe chopping) {
+            dropInputIfUnused(ApplianceType.CHOPPING_BOARD, chopping.input(), RecipeEditService::choppingUses);
+        } else if (selected instanceof TeapotRecipe teapot) {
+            dropInputIfUnused(ApplianceType.TEAPOT, teapot.input(), RecipeEditService::teapotUses);
+        }
+    }
+
+    private static void removeMenuRecipe(Object recipe) {
+        FoodRecipeRegistry registry = FoodRecipeRegistry.instance();
+        if (recipe instanceof AccurateFoodRecipe accurate) {
+            registry.removeMenuAccurate(accurate);
+        } else if (recipe instanceof FlexFoodRecipe flex) {
+            registry.removeMenuFlex(flex);
+        } else if (recipe instanceof ChoppingBoardRecipe chopping) {
+            registry.removeMenuChopping(chopping);
+        } else if (recipe instanceof TeapotRecipe teapot) {
+            registry.removeMenuTeapot(teapot);
+        }
+    }
+
+    private static void removeRuntime(RecipeSourceIndex.Kind kind, Key id) {
+        FoodRecipeRegistry registry = FoodRecipeRegistry.instance();
+        switch (kind) {
+            case ACCURATE -> registry.removeAccurate(id);
+            case POT_FLEX -> registry.removeFlex(ApplianceType.POT, id);
+            case STOCK_FLEX -> registry.removeFlex(ApplianceType.STOCKPOT, id);
+            case CHOPPING -> registry.removeChopping(id);
+            case TEAPOT -> registry.removeTeapot(id);
+        }
+    }
+
+    private static void registerRuntime(Object candidate, RecipeSourceIndex.Kind kind) {
+        FoodRecipeRegistry registry = FoodRecipeRegistry.instance();
+        switch (kind) {
+            case ACCURATE -> {
+                AccurateFoodRecipe recipe = (AccurateFoodRecipe) candidate;
+                registry.registerAccurate(recipe);
+                ApplianceFoodRegistry.instance().register(recipe.cook(), recipe.input());
+            }
+            case POT_FLEX, STOCK_FLEX -> {
+                FlexFoodRecipe recipe = (FlexFoodRecipe) candidate;
+                // 解除重复后仍需遵守模糊配方的同方向冲突规则
+                if (registry.findSameDirection(recipe) == null) {
+                    registry.registerFlex(recipe);
+                    for (Key ingredient : recipe.perfect().keySet()) {
+                        ApplianceFoodRegistry.instance().register(recipe.cook(), ingredient);
+                    }
+                }
+            }
+            case CHOPPING -> {
+                ChoppingBoardRecipe recipe = (ChoppingBoardRecipe) candidate;
+                registry.registerChopping(recipe);
+                ApplianceFoodRegistry.instance().register(ApplianceType.CHOPPING_BOARD, recipe.input());
+            }
+            case TEAPOT -> {
+                TeapotRecipe recipe = (TeapotRecipe) candidate;
+                registry.registerTeapot(recipe);
+                ApplianceFoodRegistry.instance().register(ApplianceType.TEAPOT, recipe.input());
+            }
+        }
     }
 
     // 同一原料可能被同器具的多条配方共用 还有人用就不能摘白名单
@@ -402,8 +544,8 @@ public final class RecipeEditService {
     }
 
     // 已有配方原地改写 新配方才去问 CE 要资源包目录 后者在没加载任何包时会抛
-    private static Path resolveFile(Key existingId, Supplier<Path> fallback) {
-        Path known = existingId == null ? null : RecipeSourceIndex.instance().get(existingId);
+    private static Path resolveFile(Object existingRecipe, Supplier<Path> fallback) {
+        Path known = existingRecipe == null ? null : RecipeSourceIndex.instance().get(existingRecipe);
         if (known != null) {
             return known;
         }
@@ -412,6 +554,15 @@ public final class RecipeEditService {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    private static String resolveNodePath(String oldNode, String[] sectionAliases, Key id) {
+        if (oldNode == null || oldNode.isBlank()) {
+            return sectionAliases[0] + "." + id.asString();
+        }
+        int separator = oldNode.lastIndexOf('.');
+        return (separator < 0 ? sectionAliases[0] : oldNode.substring(0, separator))
+                + "." + id.asString();
     }
 
     // 磁盘 IO 走 CE 的 async 调度器 folia 上 Bukkit 调度器整条链路都是废的

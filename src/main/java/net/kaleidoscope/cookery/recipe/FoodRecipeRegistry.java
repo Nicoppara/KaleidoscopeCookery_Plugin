@@ -23,13 +23,17 @@ public final class FoodRecipeRegistry {
 
     private static final FoodRecipeRegistry INSTANCE = new FoodRecipeRegistry();
     private final List<FlexFoodRecipe> flexRecipes = new CopyOnWriteArrayList<>();
+    private final List<FlexFoodRecipe> menuFlexRecipes = new CopyOnWriteArrayList<>();
     // 最高分低于这个值就不出菜 调用方据此产出迷之炒菜 乱炖自然降级不需要特判
     private volatile double minFlexScore = DEFAULT_MIN_FLEX_SCORE;
     private final List<AccurateFoodRecipe> accurateRecipes = new CopyOnWriteArrayList<>();
+    private final List<AccurateFoodRecipe> menuAccurateRecipes = new CopyOnWriteArrayList<>();
     // 器具加输入唯一确定一条精确配方 注册期建索引 免得热路径全表扫
     private final Map<AccurateKey, AccurateFoodRecipe> accurateIndex = new ConcurrentHashMap<>();
     private final List<ChoppingBoardRecipe> choppingRecipes = new CopyOnWriteArrayList<>();
+    private final List<ChoppingBoardRecipe> menuChoppingRecipes = new CopyOnWriteArrayList<>();
     private final List<TeapotRecipe> teapotRecipes = new CopyOnWriteArrayList<>();
+    private final List<TeapotRecipe> menuTeapotRecipes = new CopyOnWriteArrayList<>();
     private final Map<Key, TeapotLiquid> teapotLiquids = new ConcurrentHashMap<>();
     private volatile TeapotLiquid defaultLiquid;
     private final Map<Key, TeaCup> teaCups = new ConcurrentHashMap<>();
@@ -106,7 +110,14 @@ public final class FoodRecipeRegistry {
 
     // 方向相同即余弦恒等 两道菜会永远打平 注册前查重
     public FlexFoodRecipe findSameDirection(FlexFoodRecipe candidate) {
+        return findSameDirection(candidate, null);
+    }
+
+    public FlexFoodRecipe findSameDirection(FlexFoodRecipe candidate, FlexFoodRecipe excluded) {
         for (FlexFoodRecipe r : flexRecipes) {
+            if (r == excluded) {
+                continue;
+            }
             if (r.cook() != candidate.cook() || r.perfect().size() != candidate.perfect().size()) {
                 continue;
             }
@@ -156,10 +167,38 @@ public final class FoodRecipeRegistry {
         DishCarriers.rebuild(flexRecipes);
     }
 
+    public void registerMenuFlex(FlexFoodRecipe r) {
+        menuFlexRecipes.add(r);
+    }
+
     public void registerAccurate(AccurateFoodRecipe r) {
         accurateRecipes.add(r);
         // 精确配方按 器具 加 输入 唯一确定 注册期建好索引 别在热路径上全表扫
         accurateIndex.putIfAbsent(new AccurateKey(r.cook(), r.input()), r);
+    }
+
+    public void registerMenuAccurate(AccurateFoodRecipe r) {
+        menuAccurateRecipes.add(r);
+    }
+
+    public List<AccurateFoodRecipe> menuAccurateRecipes(ApplianceType cook) {
+        List<AccurateFoodRecipe> out = new ArrayList<>();
+        for (AccurateFoodRecipe r : menuAccurateRecipes) {
+            if (r.cook() == cook) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    public List<FlexFoodRecipe> menuFlexRecipes(ApplianceType cook) {
+        List<FlexFoodRecipe> out = new ArrayList<>();
+        for (FlexFoodRecipe r : menuFlexRecipes) {
+            if (r.cook() == cook) {
+                out.add(r);
+            }
+        }
+        return out;
     }
 
     // 按器具取该器具下的全部精确配方 快照 供编辑与浏览 UI 分页
@@ -200,6 +239,14 @@ public final class FoodRecipeRegistry {
         return removed;
     }
 
+    public boolean removeFlex(ApplianceType cook, Key id) {
+        boolean removed = flexRecipes.removeIf(r -> r.cook() == cook && r.id().equals(id));
+        if (removed) {
+            DishCarriers.rebuild(flexRecipes);
+        }
+        return removed;
+    }
+
     public boolean removeChopping(Key id) {
         return choppingRecipes.removeIf(r -> r.id().equals(id));
     }
@@ -212,8 +259,32 @@ public final class FoodRecipeRegistry {
         return List.copyOf(choppingRecipes);
     }
 
+    public List<ChoppingBoardRecipe> menuChoppingRecipes() {
+        return List.copyOf(menuChoppingRecipes);
+    }
+
     public List<TeapotRecipe> teapotRecipes() {
         return List.copyOf(teapotRecipes);
+    }
+
+    public List<TeapotRecipe> menuTeapotRecipes() {
+        return List.copyOf(menuTeapotRecipes);
+    }
+
+    public void removeMenuAccurate(AccurateFoodRecipe recipe) {
+        menuAccurateRecipes.removeIf(value -> value == recipe);
+    }
+
+    public void removeMenuFlex(FlexFoodRecipe recipe) {
+        menuFlexRecipes.removeIf(value -> value == recipe);
+    }
+
+    public void removeMenuChopping(ChoppingBoardRecipe recipe) {
+        menuChoppingRecipes.removeIf(value -> value == recipe);
+    }
+
+    public void removeMenuTeapot(TeapotRecipe recipe) {
+        menuTeapotRecipes.removeIf(value -> value == recipe);
     }
 
     public ChoppingBoardRecipe findChoppingById(Key id) {
@@ -245,26 +316,38 @@ public final class FoodRecipeRegistry {
         choppingRecipes.add(r);
     }
 
+    public void registerMenuChopping(ChoppingBoardRecipe r) {
+        menuChoppingRecipes.add(r);
+    }
+
     public void clearFlex(ApplianceType cook) {
         flexRecipes.removeIf(r -> r.cook() == cook);
+        menuFlexRecipes.removeIf(r -> r.cook() == cook);
         DishCarriers.rebuild(flexRecipes);
     }
 
     public void clearAccurate() {
         accurateRecipes.clear();
+        menuAccurateRecipes.clear();
         accurateIndex.clear();
     }
 
     public void clearChopping() {
         choppingRecipes.clear();
+        menuChoppingRecipes.clear();
     }
 
     public void registerTeapot(TeapotRecipe r) {
         teapotRecipes.add(r);
     }
 
+    public void registerMenuTeapot(TeapotRecipe r) {
+        menuTeapotRecipes.add(r);
+    }
+
     public void clearTeapot() {
         teapotRecipes.clear();
+        menuTeapotRecipes.clear();
     }
 
     public void registerTeapotLiquid(TeapotLiquid l) {

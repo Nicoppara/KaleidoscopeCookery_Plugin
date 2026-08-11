@@ -1,5 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
 import net.kaleidoscope.cookery.util.FoliaUtil;
+import net.kaleidoscope.cookery.util.BlockStates;
 
 import net.kaleidoscope.cookery.block.behavior.StoveBehavior;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
@@ -44,7 +45,7 @@ public final class StoveController extends BlockEntityController {
 
     private void animateTick(World level, BlockPos pos, ImmutableBlockState state) {
         Property<Boolean> litProperty = behavior.getLitProperty();
-        if (litProperty == null || !state.get(litProperty)) {
+        if (!BlockStates.value(state, litProperty, false)) {
             return;
         }
 
@@ -66,7 +67,7 @@ public final class StoveController extends BlockEntityController {
         double zOffset = offsetRandom;
         Property<Direction> facingProperty = behavior.getFacingProperty();
         if (facingProperty != null) {
-            Direction direction = state.get(facingProperty);
+            Direction direction = BlockStates.value(state, facingProperty, facingProperty.defaultValue());
             Direction.Axis axis = direction.axis();
             xOffset = axis == Direction.Axis.X ? direction.stepX() * 0.52 : offsetRandom;
             zOffset = axis == Direction.Axis.Z ? direction.stepZ() * 0.52 : offsetRandom;

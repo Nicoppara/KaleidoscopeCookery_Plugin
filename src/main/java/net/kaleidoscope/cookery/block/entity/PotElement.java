@@ -20,7 +20,7 @@ import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class PotElement implements BlockEntityElement {
-    private static final int SLOTS = 8;
+    private static final int SLOTS = PotController.MAX_INGREDIENTS;
 
     private final PotController controller;
     private final WorldPosition basePos;

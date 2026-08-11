@@ -15,6 +15,7 @@ public final class AccurateRecipeDraft {
 
     private final ApplianceType cook;
     private final Key originalId;
+    private AccurateFoodRecipe originalRecipe;
     private Key id;
     private Key input;
     private final List<WeightedResult> results = new ArrayList<>();
@@ -34,6 +35,7 @@ public final class AccurateRecipeDraft {
 
     public static AccurateRecipeDraft editing(AccurateFoodRecipe recipe) {
         AccurateRecipeDraft draft = new AccurateRecipeDraft(recipe.cook(), recipe.id(), recipe.id());
+        draft.originalRecipe = recipe;
         draft.input = recipe.input();
         draft.results.addAll(recipe.results());
         draft.rotations = recipe.rotations();
@@ -48,6 +50,10 @@ public final class AccurateRecipeDraft {
 
     public Key originalId() {
         return originalId;
+    }
+
+    public AccurateFoodRecipe originalRecipe() {
+        return originalRecipe;
     }
 
     public ApplianceType cook() {

@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.block.behavior.ShawarmaSpitBehavior;
 
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
@@ -65,7 +66,9 @@ public class ShawarmaSpitController extends BlockEntityController {
     public ShawarmaSpitController(BlockEntity blockEntity, ShawarmaSpitBehavior behavior) {
         super(blockEntity);
         this.behavior = behavior;
-        this.lower = blockEntity.blockState.get(behavior.getHalfProperty()) != DoubleBlockHalf.UPPER;
+        var halfProperty = behavior.getHalfProperty();
+        this.lower = BlockStates.value(blockEntity.blockState, halfProperty, halfProperty.defaultValue())
+                != DoubleBlockHalf.UPPER;
         for (Item[] layer : items) {
             Arrays.fill(layer, Item.empty());
         }
@@ -74,14 +77,15 @@ public class ShawarmaSpitController extends BlockEntityController {
 
     @Override
     public <C extends BlockEntityController> BlockEntityTicker<C> createBlockEntityTicker(CEWorld world, ImmutableBlockState blockState) {
-        if (blockState.get(behavior.getHalfProperty()) == DoubleBlockHalf.UPPER) {
+        var halfProperty = behavior.getHalfProperty();
+        if (BlockStates.value(blockState, halfProperty, halfProperty.defaultValue()) == DoubleBlockHalf.UPPER) {
             return null;
         }
         return createTickerHelper((w, pos, state, controller) -> this.tick());
     }
 
     private boolean isPowered() {
-        return blockEntity.blockState.get(behavior.getPoweredProperty());
+        return BlockStates.value(blockEntity.blockState, behavior.getPoweredProperty(), false);
     }
 
     private boolean hasRaw() {

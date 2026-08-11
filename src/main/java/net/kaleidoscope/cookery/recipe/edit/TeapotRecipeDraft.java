@@ -11,6 +11,7 @@ public final class TeapotRecipeDraft {
     public static final int MAX_COUNT = 64;
 
     private final Key originalId;
+    private TeapotRecipe originalRecipe;
     private Key id;
     private Key fluid;
     private Key input;
@@ -30,6 +31,7 @@ public final class TeapotRecipeDraft {
 
     public static TeapotRecipeDraft editing(TeapotRecipe recipe) {
         TeapotRecipeDraft draft = new TeapotRecipeDraft(recipe.id(), recipe.id());
+        draft.originalRecipe = recipe;
         draft.fluid = recipe.fluid();
         draft.input = recipe.input();
         draft.ingredientCount = recipe.ingredientCount();
@@ -45,6 +47,10 @@ public final class TeapotRecipeDraft {
 
     public Key originalId() {
         return originalId;
+    }
+
+    public TeapotRecipe originalRecipe() {
+        return originalRecipe;
     }
 
     public Key id() {

@@ -3,6 +3,7 @@ package net.kaleidoscope.cookery.item;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Bukkit;
+import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,6 @@ public final class ItemIcons {
 
     // 生成到 CE 的配置目录 由 CE 在解析阶段照常读取
     // 时序上安全 CE 的配置解析延后到所有插件 enable 之后 见 ce_skill 2.8
-    private static final String PACK_NAME = "Kaleidoscope";
     private static final String GENERATED_FILE = "configuration/font/generated_item_icons.yml";
     private static final String TEXTURES = "resourcepack/assets/minecraft/textures";
     // 只扫物品贴图 方块贴图不做图标
@@ -62,18 +62,50 @@ public final class ItemIcons {
         if (ce == null) {
             return;
         }
-        Path packRoot = ce.getDataFolder().toPath().resolve("resources").resolve(PACK_NAME);
         try {
+            Path resourcesRoot = ce.getDataFolder().toPath().resolve("resources");
+            Path packRoot = resolvePackRoot(resourcesRoot);
             Map<String, String> entries = new TreeMap<>();
             collectPackTextures(packRoot, entries);
             collectVanillaIds(packRoot, entries);
             writeConfig(packRoot.resolve(GENERATED_FILE), entries);
             KaleidoscopeCookeryPlugin.instance().getLogger().info(
-                    "[icon] 已生成 " + entries.size() + " 条物品图标字体");
+                    "[icon] 已在资源包 " + packRoot.getFileName() + " 生成 " + entries.size() + " 条物品图标字体");
         } catch (IOException e) {
             KaleidoscopeCookeryPlugin.instance().getLogger().warning(
                     "[icon] 生成物品图标失败 lore 将回退为文字: " + e.getMessage());
         }
+    }
+
+    // 包目录名允许玩家自定义 只认 pack.yml 里的固定命名空间
+    static Path resolvePackRoot(Path resourcesRoot) throws IOException {
+        if (!Files.isDirectory(resourcesRoot)) {
+            throw new IOException("CraftEngine 资源包目录不存在: " + resourcesRoot);
+        }
+        Path matched = null;
+        try (Stream<Path> children = Files.list(resourcesRoot)) {
+            for (Path candidate : children.filter(Files::isDirectory).toList()) {
+                Path metaFile = candidate.resolve("pack.yml");
+                if (!Files.isRegularFile(metaFile)) {
+                    continue;
+                }
+                YamlConfiguration meta = YamlConfiguration.loadConfiguration(metaFile.toFile());
+                if (!meta.getBoolean("enable", true)
+                        || !ItemKeys.NAMESPACE.equals(meta.getString("namespace"))) {
+                    continue;
+                }
+                if (matched != null) {
+                    throw new IOException("存在多个 namespace 为 " + ItemKeys.NAMESPACE
+                            + " 的资源包: " + matched.getFileName() + ", " + candidate.getFileName());
+                }
+                matched = candidate;
+            }
+        }
+        if (matched == null) {
+            throw new IOException("找不到已启用且 pack.yml 中 namespace 为 "
+                    + ItemKeys.NAMESPACE + " 的资源包");
+        }
+        return matched;
     }
 
     // 资源包里 textures/item/** 的每张图各出一条 文件名即物品 id
