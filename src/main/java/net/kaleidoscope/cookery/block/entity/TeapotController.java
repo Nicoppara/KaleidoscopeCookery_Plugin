@@ -2,6 +2,7 @@ package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.util.MessageKeys;
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.block.behavior.TeapotBehavior;
 import net.kaleidoscope.cookery.block.entity.render.PacketBundles;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
@@ -114,7 +115,8 @@ public final class TeapotController extends BlockEntityController {
     }
 
     public float facingYaw() {
-        Direction d = blockEntity.blockState.get(behavior.getFacingProperty());
+        var facingProperty = behavior.getFacingProperty();
+        Direction d = BlockStates.value(blockEntity.blockState, facingProperty, facingProperty.defaultValue());
         return switch (d) {
             case SOUTH -> 0f;
             case EAST -> 90f;

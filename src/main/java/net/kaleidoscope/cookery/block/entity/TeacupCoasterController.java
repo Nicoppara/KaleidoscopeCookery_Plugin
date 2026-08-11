@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.block.entity;
 
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.block.behavior.TeacupCoasterBehavior;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
@@ -65,7 +66,8 @@ public final class TeacupCoasterController extends BlockEntityController {
     }
 
     public Direction facing() {
-        return blockEntity.blockState.get(behavior.getFacingProperty());
+        var facingProperty = behavior.getFacingProperty();
+        return BlockStates.value(blockEntity.blockState, facingProperty, facingProperty.defaultValue());
     }
 
     public float facingYaw() {

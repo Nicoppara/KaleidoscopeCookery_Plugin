@@ -37,6 +37,11 @@ public final class InteractGuard {
         return test(player, Flag.BREAK, (org.bukkit.World) level.platformWorld(), x, y, z);
     }
 
+    // 可取回家具用 家具位置不一定正好落在交互命中的方块坐标上
+    public static boolean canBreak(Player player, WorldPosition pos) {
+        return test(player, Flag.BREAK, (org.bukkit.World) pos.world().platformWorld(), pos.x, pos.y, pos.z);
+    }
+
     // CE 事件回调里拿到的是 Bukkit 对象 没有 CE Player 可用
     public static boolean canPlace(org.bukkit.entity.Player player, Location location) {
         return test(player, Flag.PLACE, location);

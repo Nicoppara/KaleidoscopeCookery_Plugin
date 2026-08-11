@@ -14,6 +14,7 @@ import java.util.Map;
 public final class FlexRecipeDraft {
     private final ApplianceType cook;
     private final Key originalId;
+    private FlexFoodRecipe originalRecipe;
     private Key id;
     private Key result;
     private final Map<Key, Integer> perfect = new LinkedHashMap<>();
@@ -31,6 +32,7 @@ public final class FlexRecipeDraft {
 
     public static FlexRecipeDraft editing(FlexFoodRecipe recipe) {
         FlexRecipeDraft draft = new FlexRecipeDraft(recipe.cook(), recipe.id(), recipe.id());
+        draft.originalRecipe = recipe;
         draft.result = recipe.result();
         draft.perfect.putAll(recipe.perfect());
         draft.liquids.addAll(recipe.liquids());
@@ -44,6 +46,10 @@ public final class FlexRecipeDraft {
 
     public Key originalId() {
         return originalId;
+    }
+
+    public FlexFoodRecipe originalRecipe() {
+        return originalRecipe;
     }
 
     public ApplianceType cook() {

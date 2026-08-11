@@ -4,6 +4,7 @@ import net.kaleidoscope.cookery.block.entity.TableController;
 import net.kaleidoscope.cookery.item.CarpetColors;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.DirectionUtils;
@@ -57,11 +58,11 @@ public final class TableBehavior extends BukkitBlockBehavior implements EntityBl
     }
 
     public int line(ImmutableBlockState state) {
-        return state.get(this.lineProperty);
+        return BlockStates.value(state, this.lineProperty, this.lineProperty.defaultValue());
     }
 
     public int position(ImmutableBlockState state) {
-        return state.get(this.positionProperty);
+        return BlockStates.value(state, this.positionProperty, this.positionProperty.defaultValue());
     }
 
     @Override

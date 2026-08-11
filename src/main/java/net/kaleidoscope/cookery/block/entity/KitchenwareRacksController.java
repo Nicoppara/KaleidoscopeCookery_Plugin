@@ -12,6 +12,7 @@ import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import org.jetbrains.annotations.NotNull;
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 
@@ -137,7 +138,7 @@ public final class KitchenwareRacksController extends BlockEntityController {
     }
 
     private Direction facingOf(ImmutableBlockState state) {
-        return behavior.getFacingProperty() != null ? state.get(behavior.getFacingProperty()) : Direction.NORTH;
+        return BlockStates.value(state, behavior.getFacingProperty(), Direction.NORTH);
     }
 
     @Override

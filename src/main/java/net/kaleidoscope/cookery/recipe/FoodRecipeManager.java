@@ -12,13 +12,16 @@ import net.momirealms.craftengine.core.util.Key;
 import org.jetbrains.annotations.NotNull;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.recipe.edit.RecipeSourceIndex;
+import net.kaleidoscope.cookery.recipe.edit.RecipeFileStore;
 import net.kaleidoscope.cookery.util.ConsoleMessages;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.List;
+import java.util.Set;
 
 // 食谱系统管理器 注册各类配方的配置解析器
 public final class FoodRecipeManager {
@@ -111,14 +114,26 @@ public final class FoodRecipeManager {
     }
 
     private abstract static class CookeryIdParser extends IdSectionConfigParser {
+        private record ClaimedTarget(Path file, RecipeFileStore.SourceTarget target) {
+            private ClaimedTarget {
+                file = file.toAbsolutePath().normalize();
+            }
+        }
+
         private final LoadingStage stage;
         private final List<LoadingStage> dependencies;
         private final String[] sectionIds;
+        private final RecipeSourceIndex.Kind kind;
+        private final Map<Key, List<Path>> occurrences = new LinkedHashMap<>();
+        private final Set<ClaimedTarget> claimedTargets = new LinkedHashSet<>();
+        private boolean loadActive;
         private int count;
 
-        CookeryIdParser(LoadingStage stage, List<LoadingStage> dependencies, String... sectionIds) {
+        CookeryIdParser(LoadingStage stage, List<LoadingStage> dependencies,
+                        RecipeSourceIndex.Kind kind, String... sectionIds) {
             this.stage = stage;
             this.dependencies = dependencies;
+            this.kind = kind;
             this.sectionIds = sectionIds;
         }
 
@@ -145,20 +160,94 @@ public final class FoodRecipeManager {
 
         @Override
         public void preProcess() {
-            count = 0;
-            reset();
+            RecipeSourceIndex.instance().beginLoad(kind);
+            loadActive = true;
+            try {
+                count = 0;
+                occurrences.clear();
+                claimedTargets.clear();
+                reset();
+            } catch (RuntimeException | Error error) {
+                finishLoad();
+                throw error;
+            }
+        }
+
+        @Override
+        public void loadAll() {
+            try {
+                super.loadAll();
+            } catch (RuntimeException | Error error) {
+                finishLoad();
+                throw error;
+            }
+        }
+
+        @Override
+        public void postProcess() {
+            finishLoad();
+        }
+
+        private void finishLoad() {
+            if (loadActive) {
+                loadActive = false;
+                RecipeSourceIndex.instance().endLoad(kind);
+            }
+        }
+
+        @Override
+        protected boolean isDuplicate(Key id, Path filePath, String currentNode) {
+            List<Path> files = occurrences.computeIfAbsent(id, ignored -> new ArrayList<>());
+            files.add(filePath.toAbsolutePath().normalize());
+            if (files.size() > 1) {
+                KaleidoscopeCookeryPlugin.instance().getLogger().severe(
+                        "食谱 ID 重复，所有重复定义均不加载: " + id.asString());
+            }
+            return false;
+        }
+
+        protected final boolean duplicated(Key id) {
+            List<Path> files = occurrences.get(id);
+            return files != null && files.size() > 1;
+        }
+
+        protected final RecipeSourceIndex.Kind kind() {
+            return kind;
         }
 
         @Override
         protected final void parseSection(@NotNull Pack pack, @NotNull Path path,
                                           @NotNull Key id, @NotNull ConfigSection section) {
-            count += parseAndCount(pack, path, id, section);
+            List<RecipeFileStore.SourceTarget> targets = new ArrayList<>(
+                    RecipeFileStore.resolveTargets(kind, id, path, section.path(), section.values()));
+            for (RecipeFileStore.SourceTarget deleted
+                    : RecipeSourceIndex.instance().deletedTargets(kind, id, path)) {
+                if (deleted.generatedNode().equals(section.path()) && !targets.contains(deleted)) {
+                    targets.add(deleted);
+                }
+            }
+            RecipeFileStore.SourceTarget target = null;
+            for (RecipeFileStore.SourceTarget candidate : targets) {
+                if (claimedTargets.add(new ClaimedTarget(path, candidate))) {
+                    target = candidate;
+                    break;
+                }
+            }
+            if (target == null) {
+                target = RecipeFileStore.SourceTarget.unresolved(section.path());
+                claimedTargets.add(new ClaimedTarget(path, target));
+            }
+            if (RecipeSourceIndex.instance().isDeleted(kind, id, path, target)) {
+                return;
+            }
+            count += parseAndCount(pack, path, id, section, target);
         }
 
         protected abstract void reset();
 
         // 返回 1 表示该配方登记成功 校验不过返 0
-        protected abstract int parseAndCount(Pack pack, Path path, Key id, ConfigSection section);
+        protected abstract int parseAndCount(Pack pack, Path path, Key id, ConfigSection section,
+                                             RecipeFileStore.SourceTarget target);
     }
 
     static final class PotFoodRawParser extends CookerySectionParser {
@@ -221,7 +310,9 @@ public final class FoodRecipeManager {
     }
 
     private static boolean parseFlexRecipe(Key id, Path path, ConfigSection section,
-                                           ApplianceType cook, List<Key> liquids) {
+                                           ApplianceType cook, List<Key> liquids,
+                                           RecipeSourceIndex.Kind kind, boolean duplicate,
+                                           RecipeFileStore.SourceTarget target) {
         Key result = section.getNonNullIdentifier("result");
 
         Map<Key, Integer> perfect = new LinkedHashMap<>();
@@ -253,6 +344,11 @@ public final class FoodRecipeManager {
         Key carrier = carrierId == null || carrierId.isEmpty() || AIR.asString().equals(carrierId)
                 ? null : Key.of(carrierId);
         FlexFoodRecipe recipe = FlexFoodRecipe.of(id, result, cook, perfect, liquids, carrier);
+        FoodRecipeRegistry.instance().registerMenuFlex(recipe);
+        RecipeSourceIndex.instance().put(kind, id, path, target, recipe, duplicate);
+        if (duplicate) {
+            return false;
+        }
         // 余弦是尺度无关的 方向相同的两道菜会永远打平 加载期就报出来
         FlexFoodRecipe clash = FoodRecipeRegistry.instance().findSameDirection(recipe);
         if (clash != null) {
@@ -261,7 +357,6 @@ public final class FoodRecipeManager {
             return false;
         }
         FoodRecipeRegistry.instance().registerFlex(recipe);
-        RecipeSourceIndex.instance().put(id, path);
         // 能配出菜的料就该能下锅 白名单直接从 perfect 反推
         for (Key ingredient : perfect.keySet()) {
             ApplianceFoodRegistry.instance().register(cook, ingredient);
@@ -270,59 +365,56 @@ public final class FoodRecipeManager {
     }
 
     // 清空某器具的模糊配方前先摘掉它们的来源登记 避免重载后残留指向旧文件
-    private static void dropFlexSources(ApplianceType cook) {
-        for (FlexFoodRecipe r : FoodRecipeRegistry.instance().flexRecipes(cook)) {
-            RecipeSourceIndex.instance().remove(r.id());
-        }
-    }
-
     static final class PotFlexFoodsParser extends CookeryIdParser {
         PotFlexFoodsParser() {
-            super(POT_FLEX_FOODS, List.of(POT_FOOD_RAW), "pot_flex_foods", "pot-flex-foods");
+            super(POT_FLEX_FOODS, List.of(POT_FOOD_RAW), RecipeSourceIndex.Kind.POT_FLEX,
+                    "pot_flex_foods", "pot-flex-foods");
         }
 
         @Override
         protected void reset() {
-            dropFlexSources(ApplianceType.POT);
+            RecipeSourceIndex.instance().clearKind(kind());
             FoodRecipeRegistry.instance().clearFlex(ApplianceType.POT);
         }
 
         @Override
-        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
-            return parseFlexRecipe(id, path, section, ApplianceType.POT, List.of()) ? 1 : 0;
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section,
+                                    RecipeFileStore.SourceTarget target) {
+            return parseFlexRecipe(id, path, section, ApplianceType.POT, List.of(),
+                    kind(), duplicated(id), target) ? 1 : 0;
         }
     }
 
     static final class StockFlexFoodsParser extends CookeryIdParser {
         StockFlexFoodsParser() {
-            super(STOCK_FLEX_FOODS, List.of(STOCK_FOOD_RAW), "stock_flex_foods", "stock-flex-foods");
+            super(STOCK_FLEX_FOODS, List.of(STOCK_FOOD_RAW), RecipeSourceIndex.Kind.STOCK_FLEX,
+                    "stock_flex_foods", "stock-flex-foods");
         }
 
         @Override
         protected void reset() {
-            dropFlexSources(ApplianceType.STOCKPOT);
+            RecipeSourceIndex.instance().clearKind(kind());
             FoodRecipeRegistry.instance().clearFlex(ApplianceType.STOCKPOT);
         }
 
         @Override
-        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section,
+                                    RecipeFileStore.SourceTarget target) {
             List<Key> liquids = section.getStringList("liquid").stream().map(Key::of).toList();
-            return parseFlexRecipe(id, path, section, ApplianceType.STOCKPOT, liquids) ? 1 : 0;
+            return parseFlexRecipe(id, path, section, ApplianceType.STOCKPOT, liquids,
+                    kind(), duplicated(id), target) ? 1 : 0;
         }
     }
 
     static final class AccurateFoodsParser extends CookeryIdParser {
         AccurateFoodsParser() {
-            super(ACCURATE_FOODS, List.of(LoadingStages.ITEM), "accurate_foods", "accurate-foods");
+            super(ACCURATE_FOODS, List.of(LoadingStages.ITEM), RecipeSourceIndex.Kind.ACCURATE,
+                    "accurate_foods", "accurate-foods");
         }
 
         @Override
         protected void reset() {
-            for (ApplianceType cook : ApplianceType.values()) {
-                for (AccurateFoodRecipe r : FoodRecipeRegistry.instance().accurateRecipes(cook)) {
-                    RecipeSourceIndex.instance().remove(r.id());
-                }
-            }
+            RecipeSourceIndex.instance().clearKind(kind());
             FoodRecipeRegistry.instance().clearAccurate();
             ApplianceFoodRegistry.instance().clear(ApplianceType.STEAMER);
             ApplianceFoodRegistry.instance().clear(ApplianceType.SHAWARMA);
@@ -330,7 +422,8 @@ public final class FoodRecipeManager {
         }
 
         @Override
-        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section,
+                                    RecipeFileStore.SourceTarget target) {
             Key input = section.getNonNullIdentifier("require");
 
             // result 列表写法 每项 物品 权重 扁平标量则单成品满概率 1 比 1
@@ -364,9 +457,15 @@ public final class FoodRecipeManager {
             // 单次产出份数 不配或配非法值都归一到 1
             List<String> lore = section.getStringList("lore");
 
-            FoodRecipeRegistry.instance().registerAccurate(
-                    new AccurateFoodRecipe(id, input, results, cook, rotations, resultCount, lore));
-            RecipeSourceIndex.instance().put(id, path);
+            AccurateFoodRecipe recipe = new AccurateFoodRecipe(
+                    id, input, results, cook, rotations, resultCount, lore);
+            boolean duplicate = duplicated(id);
+            FoodRecipeRegistry.instance().registerMenuAccurate(recipe);
+            RecipeSourceIndex.instance().put(kind(), id, path, target, recipe, duplicate);
+            if (duplicate) {
+                return 0;
+            }
+            FoodRecipeRegistry.instance().registerAccurate(recipe);
             // require 自动放入白名单
             ApplianceFoodRegistry.instance().register(cook, input);
             return 1;
@@ -468,18 +567,21 @@ public final class FoodRecipeManager {
     static final class TeapotResultParser extends CookeryIdParser {
         TeapotResultParser() {
             super(TEAPOT_RESULT, List.of(LoadingStages.ITEM, TEAPOT_LIQUID, TEA_CUP),
+                    RecipeSourceIndex.Kind.TEAPOT,
                     "teapot_result", "teapot-result");
         }
 
         @Override
         protected void reset() {
+            RecipeSourceIndex.instance().clearKind(kind());
             FoodRecipeRegistry.instance().clearTeapot();
             ApplianceFoodRegistry.instance().clear(ApplianceType.TEAPOT);
         }
 
         // fluid 液体类型(如 minecraft:water) require 原料 数量(消耗) result 产物 数量 time 处理 tick
         @Override
-        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section,
+                                    RecipeFileStore.SourceTarget target) {
             Key fluid = section.getNonNullIdentifier("fluid");
             if (!FoodRecipeRegistry.instance().hasTeapotLiquid(fluid)) {
                 KaleidoscopeCookeryPlugin.instance().getLogger().warning(
@@ -496,8 +598,15 @@ public final class FoodRecipeManager {
             }
             int time = section.getInt("time", 200);
 
-            FoodRecipeRegistry.instance().registerTeapot(new TeapotRecipe(
-                    id, fluid, ingredient.item(), ingredient.count(), result.item(), result.count(), time));
+            TeapotRecipe recipe = new TeapotRecipe(
+                    id, fluid, ingredient.item(), ingredient.count(), result.item(), result.count(), time);
+            boolean duplicate = duplicated(id);
+            FoodRecipeRegistry.instance().registerMenuTeapot(recipe);
+            RecipeSourceIndex.instance().put(kind(), id, path, target, recipe, duplicate);
+            if (duplicate) {
+                return 0;
+            }
+            FoodRecipeRegistry.instance().registerTeapot(recipe);
             ApplianceFoodRegistry.instance().register(ApplianceType.TEAPOT, ingredient.item());
             return 1;
         }
@@ -506,17 +615,20 @@ public final class FoodRecipeManager {
     static final class ChoppingBoardRawsParser extends CookeryIdParser {
         ChoppingBoardRawsParser() {
             super(CHOPPING_BOARD_RAWS, List.of(LoadingStages.ITEM),
+                    RecipeSourceIndex.Kind.CHOPPING,
                     "chopping_board_raws", "chopping-board-raws");
         }
 
         @Override
         protected void reset() {
+            RecipeSourceIndex.instance().clearKind(kind());
             FoodRecipeRegistry.instance().clearChopping();
             ApplianceFoodRegistry.instance().clear(ApplianceType.CHOPPING_BOARD);
         }
 
         @Override
-        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section) {
+        protected int parseAndCount(Pack pack, Path path, Key id, ConfigSection section,
+                                    RecipeFileStore.SourceTarget target) {
             Key input = section.getNonNullIdentifier("require");
             int stage = section.getInt("stage", 1);
 
@@ -558,8 +670,15 @@ public final class FoodRecipeManager {
                 return 0;
             }
 
-            FoodRecipeRegistry.instance().registerChopping(
-                    new ChoppingBoardRecipe(id, input, stage, values, mode, results, extras));
+            ChoppingBoardRecipe recipe = new ChoppingBoardRecipe(
+                    id, input, stage, values, mode, results, extras);
+            boolean duplicate = duplicated(id);
+            FoodRecipeRegistry.instance().registerMenuChopping(recipe);
+            RecipeSourceIndex.instance().put(kind(), id, path, target, recipe, duplicate);
+            if (duplicate) {
+                return 0;
+            }
+            FoodRecipeRegistry.instance().registerChopping(recipe);
             ApplianceFoodRegistry.instance().register(ApplianceType.CHOPPING_BOARD, input);
             return 1;
         }

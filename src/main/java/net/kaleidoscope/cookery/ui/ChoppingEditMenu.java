@@ -250,14 +250,17 @@ public final class ChoppingEditMenu {
         Item icon = MenuIcons.icon(MenuButton.SAVE, viewer,
                 MenuIcons.text("保存", NamedTextColor.GREEN));
         return MenuIcons.button(icon, () -> {
-            String error = RecipeEditService.saveChopping(draft);
-            if (error != null) {
-                RecipeMenus.message(bukkitPlayer, error);
-                open(bukkitPlayer, draft);
-                return;
-            }
-            RecipeMenus.message(bukkitPlayer, "已保存 " + draft.id().asString());
-            RecipeListMenu.open(bukkitPlayer, ApplianceType.CHOPPING_BOARD, true);
+            RecipeMenus.message(bukkitPlayer, "正在保存食谱...");
+            RecipeEditService.saveChopping(draft).thenAccept(error ->
+                    MenuTasks.runFor(bukkitPlayer, () -> {
+                        if (error != null) {
+                            RecipeMenus.message(bukkitPlayer, error);
+                            open(bukkitPlayer, draft);
+                            return;
+                        }
+                        RecipeMenus.message(bukkitPlayer, "已保存 " + draft.id().asString());
+                        RecipeListMenu.open(bukkitPlayer, ApplianceType.CHOPPING_BOARD, true);
+                    }));
         });
     }
 
@@ -271,13 +274,20 @@ public final class ChoppingEditMenu {
         return MenuIcons.button(icon, () -> ConfirmMenu.open(bukkitPlayer, "删除砧板食谱",
                 List.of(draft.originalId().asString()),
                 () -> {
-                    ChoppingBoardRecipe existing =
-                            FoodRecipeRegistry.instance().findChoppingById(draft.originalId());
-                    if (existing != null) {
-                        RecipeEditService.deleteChopping(existing);
-                        RecipeMenus.message(bukkitPlayer, "已删除 " + draft.originalId().asString());
+                    ChoppingBoardRecipe existing = draft.originalRecipe();
+                    if (existing == null) {
+                        RecipeMenus.message(bukkitPlayer, "食谱已经不存在");
+                        RecipeListMenu.open(bukkitPlayer, ApplianceType.CHOPPING_BOARD, true);
+                        return;
                     }
-                    RecipeListMenu.open(bukkitPlayer, ApplianceType.CHOPPING_BOARD, true);
+                    RecipeMenus.message(bukkitPlayer, "正在删除食谱...");
+                    RecipeEditService.deleteChopping(existing).thenAccept(success ->
+                            MenuTasks.runFor(bukkitPlayer, () -> {
+                                RecipeMenus.message(bukkitPlayer, success
+                                        ? "已删除 " + draft.originalId().asString()
+                                        : "配置文件写入失败，食谱未删除");
+                                RecipeListMenu.open(bukkitPlayer, ApplianceType.CHOPPING_BOARD, true);
+                            }));
                 },
                 () -> open(bukkitPlayer, draft)));
     }

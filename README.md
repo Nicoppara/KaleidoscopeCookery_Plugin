@@ -86,10 +86,15 @@
 ## 📁 配置目录结构
 
 插件本身只有一个 `plugins/KaleidoscopeCookeryPlugin/config.yml`（控制台语言、食谱菜单外观、bStats 开关）。
-**玩法内容全部在 CraftEngine 资源包里**，路径是 `plugins/CraftEngine/resources/Kaleidoscope/`：
+**玩法内容全部在 CraftEngine 资源包里**，资源包目录名可以自定义，但包根必须有声明固定命名空间的 `pack.yml`：
+
+```yaml
+namespace: kaleidoscopecookery
+```
 
 ```
 Kaleidoscope/
+├── pack.yml                    固定 namespace，插件依靠它定位资源包
 ├── configuration/              ← 所有 yml 配置都在这里
 │   ├── template/               公共模板 改一处全体生效 先看这里
 │   │   ├── block_settings.yml    方块属性模板 硬度 抗性 挖掘工具

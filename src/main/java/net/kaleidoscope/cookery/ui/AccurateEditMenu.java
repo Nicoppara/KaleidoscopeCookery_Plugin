@@ -237,13 +237,17 @@ public final class AccurateEditMenu {
                 MenuIcons.text("保存", NamedTextColor.GREEN),
                 MenuIcons.lore("立即生效 并写回配置文件"));
         return MenuIcons.button(icon, () -> {
-            String error = RecipeEditService.saveAccurate(draft);
-            if (error != null) {
-                RecipeMenus.message(bukkitPlayer, error);
-                reopen(bukkitPlayer, draft);
-                return;
-            }
-            RecipeListMenu.open(bukkitPlayer, draft.cook(), true);
+            RecipeMenus.message(bukkitPlayer, "正在保存食谱...");
+            RecipeEditService.saveAccurate(draft).thenAccept(error ->
+                    MenuTasks.runFor(bukkitPlayer, () -> {
+                        if (error != null) {
+                            RecipeMenus.message(bukkitPlayer, error);
+                            reopen(bukkitPlayer, draft);
+                            return;
+                        }
+                        RecipeMenus.message(bukkitPlayer, "已保存 " + draft.id().asString());
+                        RecipeListMenu.open(bukkitPlayer, draft.cook(), true);
+                    }));
         });
     }
 
@@ -259,12 +263,20 @@ public final class AccurateEditMenu {
                 List.of(draft.originalId().asString()),
                 () -> {
                     // 用 originalId 回查注册表里的原始配方 draft 上的 id 与内容都可能已被改过
-                    AccurateFoodRecipe existing =
-                            FoodRecipeRegistry.instance().findAccurateById(draft.originalId());
-                    if (existing != null) {
-                        RecipeEditService.deleteAccurate(existing);
+                    AccurateFoodRecipe existing = draft.originalRecipe();
+                    if (existing == null) {
+                        RecipeMenus.message(bukkitPlayer, "食谱已经不存在");
+                        RecipeListMenu.open(bukkitPlayer, draft.cook(), true);
+                        return;
                     }
-                    RecipeListMenu.open(bukkitPlayer, draft.cook(), true);
+                    RecipeMenus.message(bukkitPlayer, "正在删除食谱...");
+                    RecipeEditService.deleteAccurate(existing).thenAccept(success ->
+                            MenuTasks.runFor(bukkitPlayer, () -> {
+                                RecipeMenus.message(bukkitPlayer, success
+                                        ? "已删除 " + draft.originalId().asString()
+                                        : "配置文件写入失败，食谱未删除");
+                                RecipeListMenu.open(bukkitPlayer, draft.cook(), true);
+                            }));
                 },
                 () -> reopen(bukkitPlayer, draft)));
     }

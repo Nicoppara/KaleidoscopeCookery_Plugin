@@ -1,5 +1,6 @@
 package net.kaleidoscope.cookery.block.behavior;
 
+import net.momirealms.craftengine.bukkit.api.CraftEngineFurniture;
 import net.momirealms.craftengine.bukkit.entity.furniture.element.ItemDisplayFurnitureElementConfig;
 import net.momirealms.craftengine.bukkit.entity.furniture.element.ItemDisplayFurnitureElement;
 import net.momirealms.craftengine.core.entity.furniture.Furniture;
@@ -9,9 +10,13 @@ import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureBehavi
 import net.momirealms.craftengine.core.entity.furniture.behavior.FurnitureController;
 import net.momirealms.craftengine.core.entity.furniture.element.FurnitureElement;
 import net.momirealms.craftengine.core.entity.furniture.element.FurnitureElementConfig;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
+import net.momirealms.craftengine.core.entity.player.InteractionResult;
+import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.world.context.InteractEntityContext;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
@@ -20,6 +25,7 @@ import net.kaleidoscope.cookery.item.ItemMatch;
 import net.kaleidoscope.cookery.recipe.AccurateFoodRecipe;
 import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.RecipeUtils;
 
 import java.util.LinkedHashMap;
@@ -28,7 +34,6 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 public class RecipeDisplayBehavior extends FurnitureBehaviorTemplate {
-
     public RecipeDisplayBehavior(FurnitureDefinition furniture) {
         super(furniture);
     }
@@ -44,6 +49,31 @@ public class RecipeDisplayBehavior extends FurnitureBehaviorTemplate {
     public static class RecipeDisplayController extends FurnitureController {
         public RecipeDisplayController(Furniture furniture) {
             super(furniture);
+        }
+
+        @Override
+        public InteractionResult useWithoutItem(InteractEntityContext context) {
+            Player player = context.getPlayer();
+            if (player == null || !context.getItem().isEmpty() || !furniture.isValid()
+                    || !InteractGuard.canInteract(player, furniture.position())
+                    || !InteractGuard.canBreak(player, furniture.position())) {
+                return InteractionResult.PASS;
+            }
+
+            Item sourceItem = furniture.persistentData.item().orElse(null);
+            if (sourceItem == null || sourceItem.isEmpty()) {
+                return InteractionResult.PASS;
+            }
+
+            Item returnedItem = sourceItem.copyWithCount(1);
+            CraftEngineFurniture.remove(furniture, player, false, true);
+            if (furniture.isValid()) {
+                return InteractionResult.FAIL;
+            }
+
+            player.setItemInHand(InteractionHand.MAIN_HAND, returnedItem);
+            player.swingHand(InteractionHand.MAIN_HAND);
+            return InteractionResult.SUCCESS_AND_CANCEL;
         }
 
         @Override

@@ -47,7 +47,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class StockpotController extends BlockEntityController {
-    public static final int MAX_INGREDIENTS = 8;
+    public static final int MAX_INGREDIENTS = 9;
     private static final int ANIM_INTERVAL = 4;
     private static final Key[] STOCKPOT_SOUNDS = {
             Key.of("kaleidoscopecookery:stockpot_0"),
@@ -276,7 +276,7 @@ public class StockpotController extends BlockEntityController {
         ImmutableBlockState state = super.blockEntity.blockState;
         StockpotBehavior behavior = state.behavior().getFirst(StockpotBehavior.class);
         if (behavior == null || behavior.getHasLidProperty() == null) return false;
-        return state.get(behavior.getHasLidProperty());
+        return BlockStates.value(state, behavior.getHasLidProperty(), false);
     }
 
     public boolean addLid(Item lidItem) {
@@ -441,8 +441,11 @@ public class StockpotController extends BlockEntityController {
         StockpotBehavior behavior = super.blockEntity.blockState.behavior().getFirst(StockpotBehavior.class);
         if (behavior == null) return;
 
-        ImmutableBlockState newState = super.blockEntity.blockState
-                .with(behavior.getHasLidProperty(), hasLid());
+        ImmutableBlockState newState = BlockStates.with(
+                super.blockEntity.blockState,
+                behavior.getHasLidProperty(),
+                hasLid()
+        );
 
         BlockStates.sync(super.blockEntity, newState);
     }

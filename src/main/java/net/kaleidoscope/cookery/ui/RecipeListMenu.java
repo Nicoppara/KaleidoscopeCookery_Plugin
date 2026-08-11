@@ -17,6 +17,7 @@ import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.WeightedResult;
 import net.kaleidoscope.cookery.recipe.edit.AccurateRecipeDraft;
 import net.kaleidoscope.cookery.recipe.edit.FlexRecipeDraft;
+import net.kaleidoscope.cookery.recipe.edit.RecipeSourceIndex;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.gui.GuiLayout;
@@ -43,13 +44,19 @@ public final class RecipeListMenu {
             return;
         }
         // 配方记录本身是轻量 record 快照整表不贵 真正贵的是每条建一个图标物品
-        List<AccurateFoodRecipe> accurate = FoodRecipeRegistry.instance().accurateRecipes(cook);
-        List<FlexFoodRecipe> flex = FoodRecipeRegistry.instance().flexRecipes(cook);
+        List<AccurateFoodRecipe> accurate = editable
+                ? FoodRecipeRegistry.instance().menuAccurateRecipes(cook)
+                : FoodRecipeRegistry.instance().accurateRecipes(cook);
+        List<FlexFoodRecipe> flex = editable
+                ? FoodRecipeRegistry.instance().menuFlexRecipes(cook)
+                : FoodRecipeRegistry.instance().flexRecipes(cook);
         // 砧板与茶壶各有自己的配方表 不走 accurate/flex 那两条
         List<ChoppingBoardRecipe> chopping = cook == ApplianceType.CHOPPING_BOARD
-                ? FoodRecipeRegistry.instance().choppingRecipes() : List.of();
+                ? (editable ? FoodRecipeRegistry.instance().menuChoppingRecipes()
+                : FoodRecipeRegistry.instance().choppingRecipes()) : List.of();
         List<TeapotRecipe> teapot = cook == ApplianceType.TEAPOT
-                ? FoodRecipeRegistry.instance().teapotRecipes() : List.of();
+                ? (editable ? FoodRecipeRegistry.instance().menuTeapotRecipes()
+                : FoodRecipeRegistry.instance().teapotRecipes()) : List.of();
         int total = accurate.size() + flex.size() + chopping.size() + teapot.size();
 
         GuiLayout layout = new GuiLayout(
@@ -113,6 +120,7 @@ public final class RecipeListMenu {
         lore.add(MenuIcons.text("砧板食谱", NamedTextColor.LIGHT_PURPLE));
         if (editable) {
             lore.add(MenuIcons.gray("id " + recipe.id().asString()));
+            addDuplicateLore(lore, recipe);
         }
         lore.add(MenuIcons.grayWith("原料 ", recipe.input(), ""));
         lore.add(MenuIcons.gray("需要切 " + recipe.stage() + " 刀"));
@@ -144,6 +152,7 @@ public final class RecipeListMenu {
         lore.add(MenuIcons.text("茶壶食谱", NamedTextColor.AQUA));
         if (editable) {
             lore.add(MenuIcons.gray("id " + recipe.id().asString()));
+            addDuplicateLore(lore, recipe);
         }
         lore.add(MenuIcons.grayWith("液体 ", recipe.fluid(), ""));
         lore.add(MenuIcons.grayWith("原料 ", recipe.input(), " x" + recipe.ingredientCount()));
@@ -170,6 +179,7 @@ public final class RecipeListMenu {
         lore.add(MenuIcons.text("精准食谱", NamedTextColor.LIGHT_PURPLE));
         if (editable) {
             lore.add(MenuIcons.gray("id " + recipe.id().asString()));
+            addDuplicateLore(lore, recipe);
         }
         lore.add(MenuIcons.grayWith("原料 ", recipe.input(), ""));
         for (WeightedResult result : recipe.results()) {
@@ -202,6 +212,7 @@ public final class RecipeListMenu {
         lore.add(MenuIcons.text("模糊食谱", NamedTextColor.AQUA));
         if (editable) {
             lore.add(MenuIcons.gray("id " + recipe.id().asString()));
+            addDuplicateLore(lore, recipe);
         }
         lore.add(MenuIcons.gray("理想配比"));
         recipe.perfect().forEach((key, weight) -> lore.add(MenuIcons.grayWith("  ", key, " x" + weight)));
@@ -221,6 +232,13 @@ public final class RecipeListMenu {
                         () -> open(bukkitPlayer, recipe.cook(), false));
             }
         });
+    }
+
+    private static void addDuplicateLore(List<Component> lore, Object recipe) {
+        RecipeSourceIndex index = RecipeSourceIndex.instance();
+        if (index.isDuplicate(recipe)) {
+            lore.add(MenuIcons.text("重复 ID：运行时未加载", NamedTextColor.RED));
+        }
     }
 
 }

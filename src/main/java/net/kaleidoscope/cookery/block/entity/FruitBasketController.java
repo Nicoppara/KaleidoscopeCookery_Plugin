@@ -7,6 +7,7 @@ import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.util.ChunkIndex;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
@@ -108,8 +109,11 @@ public final class FruitBasketController extends BlockEntityController {
         }
         INDEX.register(this, (org.bukkit.World) super.blockEntity.world.world().platformWorld(),
                 super.blockEntity.pos.x, super.blockEntity.pos.z, SEARCH_RADIUS);
-        Direction facing = behavior.getFacingProperty() != null
-                ? super.blockEntity.blockState.get(behavior.getFacingProperty()) : Direction.SOUTH;
+        Direction facing = BlockStates.value(
+                super.blockEntity.blockState,
+                behavior.getFacingProperty(),
+                Direction.SOUTH
+        );
         int rotation = facing.data2d() * 90;
         Quaternionf facingRot = new Quaternionf().rotateY((float) Math.toRadians(-rotation));
 

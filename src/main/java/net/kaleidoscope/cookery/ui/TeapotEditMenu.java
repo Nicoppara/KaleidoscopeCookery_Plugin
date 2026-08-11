@@ -222,14 +222,17 @@ public final class TeapotEditMenu {
         Item icon = MenuIcons.icon(MenuButton.SAVE, viewer,
                 MenuIcons.text("保存", NamedTextColor.GREEN));
         return MenuIcons.button(icon, () -> {
-            String error = RecipeEditService.saveTeapot(draft);
-            if (error != null) {
-                RecipeMenus.message(bukkitPlayer, error);
-                open(bukkitPlayer, draft);
-                return;
-            }
-            RecipeMenus.message(bukkitPlayer, "已保存 " + draft.id().asString());
-            RecipeListMenu.open(bukkitPlayer, ApplianceType.TEAPOT, true);
+            RecipeMenus.message(bukkitPlayer, "正在保存食谱...");
+            RecipeEditService.saveTeapot(draft).thenAccept(error ->
+                    MenuTasks.runFor(bukkitPlayer, () -> {
+                        if (error != null) {
+                            RecipeMenus.message(bukkitPlayer, error);
+                            open(bukkitPlayer, draft);
+                            return;
+                        }
+                        RecipeMenus.message(bukkitPlayer, "已保存 " + draft.id().asString());
+                        RecipeListMenu.open(bukkitPlayer, ApplianceType.TEAPOT, true);
+                    }));
         });
     }
 
@@ -243,12 +246,20 @@ public final class TeapotEditMenu {
         return MenuIcons.button(icon, () -> ConfirmMenu.open(bukkitPlayer, "删除茶壶食谱",
                 List.of(draft.originalId().asString()),
                 () -> {
-                    TeapotRecipe existing = FoodRecipeRegistry.instance().findTeapotById(draft.originalId());
-                    if (existing != null) {
-                        RecipeEditService.deleteTeapot(existing);
-                        RecipeMenus.message(bukkitPlayer, "已删除 " + draft.originalId().asString());
+                    TeapotRecipe existing = draft.originalRecipe();
+                    if (existing == null) {
+                        RecipeMenus.message(bukkitPlayer, "食谱已经不存在");
+                        RecipeListMenu.open(bukkitPlayer, ApplianceType.TEAPOT, true);
+                        return;
                     }
-                    RecipeListMenu.open(bukkitPlayer, ApplianceType.TEAPOT, true);
+                    RecipeMenus.message(bukkitPlayer, "正在删除食谱...");
+                    RecipeEditService.deleteTeapot(existing).thenAccept(success ->
+                            MenuTasks.runFor(bukkitPlayer, () -> {
+                                RecipeMenus.message(bukkitPlayer, success
+                                        ? "已删除 " + draft.originalId().asString()
+                                        : "配置文件写入失败，食谱未删除");
+                                RecipeListMenu.open(bukkitPlayer, ApplianceType.TEAPOT, true);
+                            }));
                 },
                 () -> open(bukkitPlayer, draft)));
     }

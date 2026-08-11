@@ -59,8 +59,8 @@ public final class RecipeUtils {
         return meta != null && meta.getPersistentDataContainer().has(HAS_RECIPE_KEY, PersistentDataType.BYTE);
     }
 
-    // 炒锅与高汤锅的食材上限都是 8 食谱记录再长也没意义 上限同时防伪造 PDC 撑爆循环
-    private static final int MAX_AUTO_FILL_INGREDIENTS = 8;
+    // 按厨具中的最大容量限长 具体厨具仍会在 addIngredient 中执行自己的上限
+    private static final int MAX_AUTO_FILL_INGREDIENTS = 9;
 
     public static boolean tryAutoFill(Player player, ItemStack recipeStack,
                                       Predicate<Item> addIngredient) {

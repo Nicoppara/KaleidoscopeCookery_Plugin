@@ -1,5 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
 import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.block.behavior.ChoppingBoardBehavior;
 
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -53,10 +54,11 @@ public class ChoppingBoardController extends BlockEntityController {
     }
 
     public float facingYawRadians() {
-        if (behavior.getFacingProperty() == null) {
+        var facingProperty = behavior.getFacingProperty();
+        if (facingProperty == null) {
             return 0f;
         }
-        Direction f = super.blockEntity.blockState.get(behavior.getFacingProperty());
+        Direction f = BlockStates.value(super.blockEntity.blockState, facingProperty, facingProperty.defaultValue());
         int data2D = switch (f) {
             case WEST -> 1;
             case NORTH -> 2;

@@ -50,7 +50,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class PotController extends BlockEntityController {
-    private static final int MAX_INGREDIENTS = 8;
+    static final int MAX_INGREDIENTS = 9;
     private static final String DATA_KEY = "kaleidoscopecookery:cooking_pot";
     private static final String K_DATA_VERSION = "data_version";
     private static final String K_SEED = "seed";
@@ -361,13 +361,25 @@ public class PotController extends BlockEntityController {
     }
 
     private void updateBlockState() {
-        if (behavior.getHasOilProperty() == null) return;
-        ImmutableBlockState newState = blockEntity.blockState.with(behavior.getHasOilProperty(), hasOil);
-        if (behavior.getHasBaseProperty() != null) {
-            newState = newState.with(behavior.getHasBaseProperty(), blockEntity.blockState.get(behavior.getHasBaseProperty()));
+        var hasOilProperty = behavior.getHasOilProperty();
+        if (hasOilProperty == null) return;
+        ImmutableBlockState state = blockEntity.blockState;
+        ImmutableBlockState newState = BlockStates.with(state, hasOilProperty, hasOil);
+        var hasBaseProperty = behavior.getHasBaseProperty();
+        if (hasBaseProperty != null) {
+            newState = BlockStates.with(
+                    newState,
+                    hasBaseProperty,
+                    BlockStates.value(state, hasBaseProperty, hasBaseProperty.defaultValue())
+            );
         }
-        if (behavior.getFacingProperty() != null) {
-            newState = newState.with(behavior.getFacingProperty(), blockEntity.blockState.get(behavior.getFacingProperty()));
+        var facingProperty = behavior.getFacingProperty();
+        if (facingProperty != null) {
+            newState = BlockStates.with(
+                    newState,
+                    facingProperty,
+                    BlockStates.value(state, facingProperty, facingProperty.defaultValue())
+            );
         }
         BlockStates.sync(blockEntity, newState);
     }
