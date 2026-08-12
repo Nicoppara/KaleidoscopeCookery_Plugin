@@ -8,7 +8,10 @@ import net.kaleidoscope.cookery.api.ui.RecipeMenuStyle;
 
 import net.kaleidoscope.cookery.recipe.AccurateFoodRecipe;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
+import net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe;
+import net.kaleidoscope.cookery.recipe.ChoppingResult;
 import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
+import net.kaleidoscope.cookery.recipe.TeapotRecipe;
 import net.kaleidoscope.cookery.recipe.WeightedResult;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
@@ -18,6 +21,7 @@ import net.momirealms.craftengine.core.plugin.gui.GuiElement;
 import net.momirealms.craftengine.core.plugin.gui.GuiLayout;
 import net.momirealms.craftengine.core.plugin.gui.Ingredient;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.util.AdventureHelper;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
 
@@ -97,7 +101,7 @@ public final class RecipeDetailMenu {
 
 
     public static void openChopping(org.bukkit.entity.Player bukkitPlayer,
-                                    net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe recipe, Runnable back) {
+                                    ChoppingBoardRecipe recipe, Runnable back) {
         if (RecipeMenuHooks.instance().dispatchDetail(bukkitPlayer, ApplianceType.CHOPPING_BOARD, recipe.id())) {
             return;
         }
@@ -109,7 +113,7 @@ public final class RecipeDetailMenu {
                 MenuIcons.itemName(recipe.input()).colorIfAbsent(NamedTextColor.WHITE),
                 MenuIcons.lore("需要切 " + recipe.stage() + " 刀")));
         List<Item> results = new ArrayList<>();
-        for (net.kaleidoscope.cookery.recipe.ChoppingResult r : recipe.results()) {
+        for (ChoppingResult r : recipe.results()) {
             results.add(MenuIcons.icon(r.key(), viewer,
                     MenuIcons.itemName(r.key()).colorIfAbsent(NamedTextColor.GOLD),
                     MenuIcons.lore("数量 " + r.count(), "权重 " + r.weight())));
@@ -125,7 +129,7 @@ public final class RecipeDetailMenu {
     }
 
     public static void openTeapot(org.bukkit.entity.Player bukkitPlayer,
-                                  net.kaleidoscope.cookery.recipe.TeapotRecipe recipe, Runnable back) {
+                                  TeapotRecipe recipe, Runnable back) {
         if (RecipeMenuHooks.instance().dispatchDetail(bukkitPlayer, ApplianceType.TEAPOT, recipe.id())) {
             return;
         }
@@ -196,7 +200,7 @@ public final class RecipeDetailMenu {
             return base;
         }
         base.loreJson(lore.stream()
-                .map(net.momirealms.craftengine.core.util.AdventureHelper::componentToJson)
+                .map(AdventureHelper::componentToJson)
                 .toList());
         return base;
     }

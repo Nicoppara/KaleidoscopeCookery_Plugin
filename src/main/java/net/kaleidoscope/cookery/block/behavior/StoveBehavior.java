@@ -31,6 +31,7 @@ import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
+import net.kaleidoscope.cookery.item.KitchenShovel;
 
 public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<StoveBehavior> FACTORY = new Factory();
@@ -46,7 +47,8 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
     private static final float SOUND_VOLUME = 1.0f;
     private static final float SOUND_PITCH = 1.0f;
 
-    public Key kitchenShovelNoOilItem = ItemKeys.KITCHEN_SHOVEL_NO_OIL;
+    public Key kitchenShovelItem = ItemKeys.KITCHEN_SHOVEL;
+    public Key kitchenShovelOilModel = ItemKeys.KITCHEN_SHOVEL_OIL_MODEL;
     public int particleInterval = 20;
     public int particleCount = 3;
 
@@ -145,6 +147,11 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
     }
 
     private InteractionResult handleExtinguish(UseOnContext context, ImmutableBlockState state, Player player, InteractionHand hand) {
+        Item shovel = player.getItemInHand(hand);
+        if (KitchenShovel.is(shovel, kitchenShovelItem)
+                && KitchenShovel.hasOil(shovel, kitchenShovelOilModel)) {
+            KitchenShovel.setHasOil(shovel, false, kitchenShovelItem, kitchenShovelOilModel);
+        }
         ImmutableBlockState newState = state.with(litProperty, false);
         LevelWriterProxy.INSTANCE.setBlock(
                 context.getLevel().minecraftWorld(),
@@ -157,6 +164,7 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
                 EXTINGUISH_SOUND,
                 SOUND_VOLUME, SOUND_PITCH
         );
+        KitchenShovel.migrateLegacy(player, hand, shovel, kitchenShovelItem, kitchenShovelOilModel, false);
         player.swingHand(hand);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
@@ -233,7 +241,7 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
                 return true;
             }
         }
-        return ItemMatch.is(item, kitchenShovelNoOilItem);
+        return KitchenShovel.is(item, kitchenShovelItem);
     }
 
     private static class Factory implements BlockBehaviorFactory<StoveBehavior> {
@@ -245,7 +253,7 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
             );
             // facing 用于决定火焰贴在哪一面 可能不存在 缺失时火焰落在中心
             behavior.facingProperty = BlockBehaviorFactory.getOptionalProperty(block, "facing", Direction.class);
-            behavior.kitchenShovelNoOilItem = Key.of(BehaviorConfig.getString(section, behavior.kitchenShovelNoOilItem.asString(), "extinguish_kitchen_shovel_item", "extinguish-kitchen-shovel-item"));
+            behavior.kitchenShovelItem = Key.of(BehaviorConfig.getString(section, behavior.kitchenShovelItem.asString(), "extinguish_kitchen_shovel_item", "extinguish-kitchen-shovel-item"));
             behavior.particleInterval = BehaviorConfig.getInt(section, behavior.particleInterval, "particle_interval", "particle-interval");
             behavior.particleCount = BehaviorConfig.getInt(section, behavior.particleCount, "particle_count", "particle-count");
             return behavior;

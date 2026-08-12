@@ -16,6 +16,7 @@ import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.entity.EquipmentSlot;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.entity.player.Player;
@@ -44,6 +45,7 @@ import net.kaleidoscope.cookery.util.MessageKeys;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
 import net.kaleidoscope.cookery.item.ItemNames;
+import net.kaleidoscope.cookery.item.KitchenShovel;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
@@ -55,6 +57,7 @@ import net.kaleidoscope.cookery.api.PotCookConditions;
 import net.kaleidoscope.cookery.api.event.PotExtractDishEvent;
 
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class PotBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<PotBehavior> FACTORY = new Factory();
@@ -74,8 +77,8 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     public int burntToCharcoalTime = 400;
     public Key oilItem = ItemKeys.OIL;
 
-    public Key shovelNoOilItem = ItemKeys.KITCHEN_SHOVEL_NO_OIL;
-    public Key shovelHasOilItem = ItemKeys.KITCHEN_SHOVEL_HAS_OIL;
+    public Key shovelItem = ItemKeys.KITCHEN_SHOVEL;
+    public Key shovelOilModel = ItemKeys.KITCHEN_SHOVEL_OIL_MODEL;
     // 油壶 一壶多次 耐久即剩余油量 倒空换成空壶
     public Key oilPotItem = ItemKeys.OIL_POT;
     public Key oilPotEmptyItem = ItemKeys.OIL_POT_EMPTY;
@@ -115,14 +118,14 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         InteractionHand toolHand = Hands.toolHand(player, this::isPotTool);
         Item toolItem = player.getItemInHand(toolHand);
         InteractionResult toolResult = InteractionResult.PASS;
-        if (ItemMatch.is(toolItem, shovelHasOilItem)) {
-            toolResult = handleAddOilWithShovel(context, controller, player, toolHand, hasHeatSource);
+        if (KitchenShovel.is(toolItem, shovelItem)) {
+            toolResult = KitchenShovel.hasOil(toolItem, shovelOilModel)
+                    ? handleAddOilWithShovel(context, controller, player, toolHand, toolItem, hasHeatSource)
+                    : handleStirFry(context, controller, player, toolHand, hasHeatSource);
         } else if (ItemMatch.is(toolItem, oilPotItem)) {
             toolResult = handleAddOilWithPot(context, controller, player, toolHand, toolItem, hasHeatSource);
         } else if (ItemMatch.is(toolItem, oilItem)) {
             toolResult = handleAddOil(context, controller, player, toolHand, toolItem, hasHeatSource);
-        } else if (ItemMatch.is(toolItem, shovelNoOilItem)) {
-            toolResult = handleStirFry(context, controller, player, toolHand, hasHeatSource);
         } else if (ItemMatch.is(toolItem, recipeItemNoRecipe) || ItemMatch.is(toolItem, recipeItemHasRecipe)) {
             toolResult = handleRecipe(context, controller, player, toolHand, toolItem, hasHeatSource);
         }
@@ -152,10 +155,9 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
 
     // 锅的工具类物品 锅铲 油瓶 食谱本 这些走副手优先
     private boolean isPotTool(Item item) {
-        return ItemMatch.is(item, shovelHasOilItem)
+        return KitchenShovel.is(item, shovelItem)
                 || ItemMatch.is(item, oilPotItem)
                 || ItemMatch.is(item, oilItem)
-                || ItemMatch.is(item, shovelNoOilItem)
                 || ItemMatch.is(item, recipeItemNoRecipe)
                 || ItemMatch.is(item, recipeItemHasRecipe);
     }
@@ -207,7 +209,8 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     }
 
     // 用带油锅铲倒油
-    private InteractionResult handleAddOilWithShovel(UseOnContext context, PotController controller, Player player, InteractionHand hand, boolean hasHeatSource) {
+    private InteractionResult handleAddOilWithShovel(UseOnContext context, PotController controller, Player player,
+                                                      InteractionHand hand, Item shovel, boolean hasHeatSource) {
         if (controller.hasOil()) {
             player.sendActionBar(Localization.component(MessageKeys.POT_HAS_OIL));
         } else if (controller.stage() == PotStage.DONE || controller.stage() == PotStage.BURNT) {
@@ -216,9 +219,14 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
             player.sendActionBar(Localization.component(MessageKeys.POT_NEED_HEAT));
         } else {
             controller.setHasOil(true);
-            player.setItemInHand(hand, InventoryUtils.createOrEmpty(shovelNoOilItem));
+            if (!KitchenShovel.isLegacy(shovel)) {
+                KitchenShovel.setHasOil(shovel, false, shovelItem, shovelOilModel);
+            }
             context.getLevel().playSound(Vec3d.atCenterOf(context.getClickedPos()), SOUND_ADD_OIL, DEFAULT_VOLUME, 1.0f, SoundSource.BLOCK);
             player.swingHand(hand);
+        }
+        if (KitchenShovel.isLegacy(shovel)) {
+            KitchenShovel.migrateLegacy(player, hand, shovel, shovelItem, shovelOilModel, false);
         }
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
@@ -270,13 +278,18 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
 
     // 翻炒 锅里翻炒不了(空/已完成/动画中)就不挥手 返回 PASS 让调用方继续走主手逻辑
     // 起炒条件没满足时已经提示过玩家 这里吞掉这次右键但不挥手 别让人以为炒了一下
-    private InteractionResult handleStirFry(UseOnContext context, PotController controller, Player player, InteractionHand hand, boolean hasHeatSource) {
+    private InteractionResult handleStirFry(UseOnContext context, PotController controller, Player player,
+                                            InteractionHand hand, boolean hasHeatSource) {
         PotController.StirResult result = controller.stirFry(hasHeatSource, player);
         if (result == PotController.StirResult.IDLE) {
             return InteractionResult.PASS;
         }
         if (result == PotController.StirResult.DENIED) {
             return InteractionResult.SUCCESS_AND_CANCEL;
+        }
+        if (!player.canInstabuild() && ThreadLocalRandom.current().nextDouble() < 0.25) {
+            player.getItemInHand(hand).hurtAndBreak(1, player,
+                    hand == InteractionHand.MAIN_HAND ? EquipmentSlot.MAINHAND : EquipmentSlot.OFFHAND);
         }
         context.getLevel().playSound(Vec3d.atCenterOf(context.getClickedPos()), SOUND_STIR_FRY, DEFAULT_VOLUME, 1.0f, SoundSource.BLOCK);
         player.swingHand(hand);
@@ -408,8 +421,8 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
             b.burntToCharcoalTime = BehaviorConfig.getInt(section, b.burntToCharcoalTime, "burnt_to_charcoal_time", "burnt-to-charcoal-time");
 
             b.oilItem = Key.of(BehaviorConfig.getString(section, b.oilItem.asString(), "oil_item", "oil-item"));
-            b.shovelNoOilItem = Key.of(BehaviorConfig.getString(section, b.shovelNoOilItem.asString(), "shovel_no_oil_item", "shovel-no-oil-item"));
-            b.shovelHasOilItem = Key.of(BehaviorConfig.getString(section, b.shovelHasOilItem.asString(), "shovel_has_oil_item", "shovel-has-oil-item"));
+            b.shovelItem = Key.of(BehaviorConfig.getString(section, b.shovelItem.asString(), "shovel_item", "shovel-item", "shovel_no_oil_item", "shovel-no-oil-item"));
+            b.shovelOilModel = Key.of(BehaviorConfig.getString(section, b.shovelOilModel.asString(), "shovel_oil_model", "shovel-oil-model", "shovel_has_oil_item", "shovel-has-oil-item"));
             b.oilPotItem = Key.of(BehaviorConfig.getString(section, b.oilPotItem.asString(), "oil_pot_item", "oil-pot-item"));
             b.oilPotEmptyItem = Key.of(BehaviorConfig.getString(section, b.oilPotEmptyItem.asString(), "oil_pot_empty_item", "oil-pot-empty-item"));
             b.recipeItemNoRecipe = Key.of(BehaviorConfig.getString(section, b.recipeItemNoRecipe.asString(), "recipe_item_no_recipe", "recipe-item-no-recipe"));

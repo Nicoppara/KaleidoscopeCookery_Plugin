@@ -8,6 +8,7 @@ import net.kaleidoscope.cookery.api.ui.RecipeMenuStyle;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.SoupBaseRegistry;
 import net.kaleidoscope.cookery.recipe.edit.AccurateRecipeDraft;
 import net.kaleidoscope.cookery.recipe.edit.ChoppingRecipeDraft;
 import net.kaleidoscope.cookery.recipe.edit.TeapotRecipeDraft;
@@ -31,7 +32,7 @@ import java.util.function.Consumer;
 
 // 食谱菜单的入口与共用导航 首页选厨具 再进该厨具的配方列表
 public final class RecipeMenus {
-    // 编辑与浏览只支持这五种厨具 砧板与茶壶的数据模型不同 未纳入本菜单
+    // 菜谱菜单支持的厨具
     public static final List<ApplianceType> SUPPORTED = List.of(
             ApplianceType.POT,
             ApplianceType.STOCKPOT,
@@ -106,7 +107,7 @@ public final class RecipeMenus {
 
     // 高汤锅的汤底表入口 桶 -> 液面 加了新桶后各配方的限定汤底里就能选到
     private static GuiElement soupBaseButton(org.bukkit.entity.Player bukkitPlayer, Player viewer) {
-        int count = net.kaleidoscope.cookery.recipe.SoupBaseRegistry.instance().keys().size();
+        int count = SoupBaseRegistry.instance().keys().size();
         return MenuIcons.button(
                 MenuIcons.icon(MenuButton.LIQUID, viewer,
                         MenuIcons.text("汤底表", NamedTextColor.AQUA),

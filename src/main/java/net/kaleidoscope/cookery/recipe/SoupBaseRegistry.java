@@ -2,6 +2,9 @@ package net.kaleidoscope.cookery.recipe;
 
 import net.momirealms.craftengine.core.util.Key;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -65,10 +68,10 @@ public final class SoupBaseRegistry {
 
     // 已登记的桶 按 id 排序 否则每次开菜单顺序都在跳
     // 已登记的汤底桶 编辑器列预设按钮用
-    public java.util.List<Key> keys() {
-        java.util.List<Key> out = new java.util.ArrayList<>(bucketToShow.keySet());
-        out.sort(java.util.Comparator.comparing(Key::asString));
-        return java.util.List.copyOf(out);
+    public List<Key> keys() {
+        List<Key> out = new ArrayList<>(bucketToShow.keySet());
+        out.sort(Comparator.comparing(Key::asString));
+        return List.copyOf(out);
     }
 
     public void clear() {

@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.item.listener;
 
 import net.kaleidoscope.cookery.recipe.DishCarriers;
+import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
@@ -38,7 +39,7 @@ public final class DishCarrierListener implements Listener {
         // 玩家所属 region 线程 folia 上也安全
         Player player = BukkitAdaptor.adapt(event.getPlayer());
         event.getPlayer().getScheduler().run(
-                net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin.instance(),
+                KaleidoscopeCookeryPlugin.instance(),
                 task -> InventoryUtils.give(player, container.copyWithCount(1)),
                 null);
     }

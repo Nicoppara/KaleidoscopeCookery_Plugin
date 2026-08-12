@@ -10,14 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Item allow-list built from a config string list. Every entry is either
- * {@code #namespace:tag} for every member of an {@link ItemTags} tag,
- * {@code craftengine:namespace:id} for a CraftEngine custom item, or
- * {@code namespace:id} for a vanilla or other-plugin registry item.
- * Tags are resolved on every test rather than at parse time, so tag files can
- * be reloaded without reloading the behaviors that reference them.
- */
+// 支持标签 CE 自定义物品和注册表物品 标签在匹配时实时解析
 public final class ItemMatcher {
     private static final String CRAFTENGINE_PREFIX = Key.CRAFTENGINE_NAMESPACE + ":";
     private static final ItemMatcher EMPTY = new ItemMatcher(Set.of(), Set.of(), Set.of());
@@ -71,14 +64,6 @@ public final class ItemMatcher {
         return new ItemMatcher(Set.copyOf(registryIds), Set.copyOf(craftEngineIds), Set.copyOf(tags));
     }
 
-    /**
-     * Reads an item list from a behavior config section.
-     *
-     * @param section the behavior section
-     * @param def entries used when none of the keys are present
-     * @param keys accepted config keys, first match wins
-     * @return a matcher over the configured entries
-     */
     public static ItemMatcher fromConfig(ConfigSection section, List<String> def, String... keys) {
         return of(section.getStringList(keys, def));
     }

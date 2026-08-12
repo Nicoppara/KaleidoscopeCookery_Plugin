@@ -654,7 +654,7 @@ public class TrashCanController extends FurnitureController {
     // 一次性静态姿态走这里 必须发给全部追踪玩家 走 rangePlayers 会让视距外的桶永久卡在开盖姿态
     // 只有多帧动画的插值帧才用 rangePlayers 过滤
     private void sendToTracked(Object meta) {
-        furniture().getTrackedBy().forEach(p -> p.sendPacket(meta, false));
+        TrackedPlayers.forEach(furniture().getTrackedBy(), p -> p.sendPacket(meta, false));
     }
 
     // 退出垃圾桶 解除相机 还原模式与头盔 传送回桶顶 恢复交互与掉落物显示

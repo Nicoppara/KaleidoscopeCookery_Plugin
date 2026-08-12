@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.ui.input;
 
 import net.kaleidoscope.cookery.ui.MenuTasks;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.event.EventHandler;
@@ -61,7 +62,7 @@ public final class AnvilTextPrompt implements Listener {
     private static ItemStack namedPaper(String name) {
         ItemStack stack = new ItemStack(Material.PAPER);
         ItemMeta meta = stack.getItemMeta();
-        meta.displayName(net.kyori.adventure.text.Component.text(name));
+        meta.displayName(Component.text(name));
         stack.setItemMeta(meta);
         return stack;
     }

@@ -455,7 +455,6 @@ public final class RiceCropBehavior extends BukkitBlockBehavior
         private static final float DEFAULT_MAX_BONUS = 0.4f;
         private static final float DEFAULT_GROW_SPEED = 0.0625f;
         private static final int DEFAULT_BOOSTER_RADIUS = 1;
-        // 鱼群不会一秒一变 十秒重扫一次足够
         private static final int DEFAULT_BOOSTER_CACHE_TICKS = 2000;
         private static final int DEFAULT_HARVEST_RESET_AGE = 1;
 

@@ -3,7 +3,9 @@ package net.kaleidoscope.cookery.item;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.Plugin;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -51,14 +53,10 @@ public final class ItemIcons {
         return ICONS.get(key);
     }
 
-    public static String font() {
-        return FONT;
-    }
-
     // 启动时跑一次 写配置 + 建索引 失败只是没图标 不该拦住插件启动
     public static void generate() {
         ICONS.clear();
-        org.bukkit.plugin.Plugin ce = Bukkit.getPluginManager().getPlugin("CraftEngine");
+        Plugin ce = Bukkit.getPluginManager().getPlugin("CraftEngine");
         if (ce == null) {
             return;
         }
@@ -151,7 +149,7 @@ public final class ItemIcons {
         for (String id : ids) {
             // 方块的贴图在 block/ 下 item/<id>.png 不存在 生成了就是缺失贴图
             // 认不出的 id 多半是配置里的其它字段 一并跳过
-            org.bukkit.Material material = org.bukkit.Material.matchMaterial("minecraft:" + id);
+            Material material = Material.matchMaterial("minecraft:" + id);
             if (material == null || material.isBlock()) {
                 continue;
             }

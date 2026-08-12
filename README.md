@@ -269,7 +269,7 @@ behaviors:
 | 标签 | 用在哪 |
 | ---- | ------ |
 | `kaleidoscopecookery:kitchen_knife` | 砧板认哪些东西算菜刀 |
-| `kaleidoscopecookery:kitchen_shovel` | 锅铲 |
+| `kaleidoscopecookery:kitchen_shovel_no_oil` | 锅铲 |
 | `kaleidoscopecookery:oil_pot` | 油壶 |
 | `kaleidoscopecookery:range_harvest_tool` | 哪些工具走范围收割、因而不触发右键单点收割 |
 | `kaleidoscopecookery:kitchenware` | 以上全部 |
@@ -872,8 +872,8 @@ behaviors:
     burnt_to_charcoal_time: 400  # 烧焦后多少 tick 变成木炭
     animation_view_distance: 1   # 翻炒动画发包视距（区块）
     oil_item: kaleidoscopecookery:oil
-    shovel_no_oil_item: kaleidoscopecookery:kitchen_shovel_no_oil
-    shovel_has_oil_item: kaleidoscopecookery:kitchen_shovel_has_oil
+    shovel_item: kaleidoscopecookery:kitchen_shovel_no_oil
+    shovel_oil_model: kaleidoscopecookery:kitchen_shovel_has_oil
     oil_pot_item: kaleidoscopecookery:oil_pot
     oil_pot_empty_item: kaleidoscopecookery:oil_pot_empty
     recipe_item_no_recipe: kaleidoscopecookery:recipe_item_no_recipe
@@ -902,8 +902,8 @@ behaviors:
   - type: kaleidoscopecookery:cooking_enamel_basin
     max_oil: 16                  # 盆的油容量上限
     oil_item: kaleidoscopecookery:oil
-    shovel_no_oil_item: kaleidoscopecookery:kitchen_shovel_no_oil
-    shovel_has_oil_item: kaleidoscopecookery:kitchen_shovel_has_oil
+    shovel_item: kaleidoscopecookery:kitchen_shovel_no_oil
+    shovel_oil_model: kaleidoscopecookery:kitchen_shovel_has_oil
 ```
 
 ### 🍲 高汤锅 `kaleidoscopecookery:stockpot`

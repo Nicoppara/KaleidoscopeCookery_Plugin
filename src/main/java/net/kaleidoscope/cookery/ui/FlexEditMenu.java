@@ -20,6 +20,7 @@ import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
+import org.bukkit.Material;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -217,7 +218,7 @@ public final class FlexEditMenu {
         List<DialogChoicePrompt.Choice> out = new ArrayList<>();
         for (Key key : registered) {
             // 原版物品有现成的翻译键 自定义物品没有 退回 id 的路径段
-            org.bukkit.Material material = org.bukkit.Material.matchMaterial(key.asString());
+        Material material = Material.matchMaterial(key.asString());
             out.add(material == null
                     ? new DialogChoicePrompt.Choice(key.value(), key.asString())
                     : DialogChoicePrompt.Choice.translated(

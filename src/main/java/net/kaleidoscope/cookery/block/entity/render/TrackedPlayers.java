@@ -23,6 +23,12 @@ public final class TrackedPlayers {
         }
     }
 
+    public static void forEach(Iterable<Player> tracked, Consumer<Player> action) {
+        List<Player> players = new ArrayList<>();
+        tracked.forEach(players::add);
+        players.forEach(action);
+    }
+
     // 切比雪夫区块距离都在 chunkRadius 内才算动画可见
     private static boolean withinChunkRange(Player player, int srcChunkX, int srcChunkZ, int chunkRadius) {
         int pcx = ((int) Math.floor(player.x())) >> 4;

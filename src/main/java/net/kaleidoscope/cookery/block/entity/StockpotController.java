@@ -92,6 +92,7 @@ public class StockpotController extends BlockEntityController {
     private Key soupBaseId = ItemKeys.WATER;
     private Item lidItem = Item.empty();
     private long seed = System.currentTimeMillis();
+    private boolean animationRunning;
 
     private final RenderTracker renderTracker = new RenderTracker();
 
@@ -152,23 +153,40 @@ public class StockpotController extends BlockEntityController {
         if (bundle == null) {
             return;
         }
+        animationRunning = true;
         for (Player player : TrackedPlayers.snapshotInRange(super.blockEntity, behavior.animChunkRadius)) {
             player.sendPacket(bundle, false);
         }
     }
 
+    private void stopAnimation() {
+        if (!animationRunning) {
+            return;
+        }
+        animationRunning = false;
+        Object bundle = element.buildStaticIngredientBundle();
+        if (bundle != null) {
+            TrackedPlayers.forEach(super.blockEntity, player -> player.sendPacket(bundle, false));
+        }
+    }
+
     public void tick() {
         if (stage == StockpotStage.PUT_SOUP_BASE) {
+            stopAnimation();
             return;
         }
 
         if (heatCheckTick == 0) heatedCache = hasHeatSource();
         heatCheckTick = (heatCheckTick + 1) % 20;
         if (!heatedCache) {
+            stopAnimation();
             return;
         }
 
         boolean hasLid = hasLid();
+        if (hasLid) {
+            stopAnimation();
+        }
 
         World bWorld = (World) super.blockEntity.world.world().platformWorld();
         long gameTime = bWorld.getGameTime();

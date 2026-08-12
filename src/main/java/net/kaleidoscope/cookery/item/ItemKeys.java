@@ -8,8 +8,8 @@ public final class ItemKeys {
 
     public static final String NAMESPACE = "kaleidoscopecookery";
 
-    public static final Key KITCHEN_SHOVEL_NO_OIL = Key.of("kaleidoscopecookery:kitchen_shovel_no_oil");
-    public static final Key KITCHEN_SHOVEL_HAS_OIL = Key.of("kaleidoscopecookery:kitchen_shovel_has_oil");
+    public static final Key KITCHEN_SHOVEL = Key.of("kaleidoscopecookery:kitchen_shovel_no_oil");
+    public static final Key KITCHEN_SHOVEL_OIL_MODEL = Key.of("kaleidoscopecookery:kitchen_shovel_has_oil");
     public static final Key OIL = Key.of("kaleidoscopecookery:oil");
     public static final Key OIL_POT = Key.of("kaleidoscopecookery:oil_pot");
     public static final Key OIL_POT_EMPTY = Key.of("kaleidoscopecookery:oil_pot_empty");

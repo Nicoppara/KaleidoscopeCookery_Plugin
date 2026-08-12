@@ -18,6 +18,7 @@ import net.momirealms.craftengine.libraries.adventure.text.format.TextDecoration
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 // 菜单图标与常用按钮的构建 图标只在当前页构建 别在这里做任何缓存
 public final class MenuIcons {
@@ -118,10 +119,10 @@ public final class MenuIcons {
 
     private static void hideTooltip(Item item) {
         try {
-            item.setComponent(Key.of("minecraft:tooltip_display"), java.util.Map.of("hide_tooltip", true));
+            item.setComponent(Key.of("minecraft:tooltip_display"), Map.of("hide_tooltip", true));
         } catch (Exception ignored) {
             try {
-                item.setComponent(Key.of("minecraft:hide_tooltip"), java.util.Map.of());
+                item.setComponent(Key.of("minecraft:hide_tooltip"), Map.of());
             } catch (Exception ignored2) {
             }
         }

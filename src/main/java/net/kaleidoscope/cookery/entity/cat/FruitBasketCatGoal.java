@@ -1,7 +1,6 @@
 package net.kaleidoscope.cookery.entity.cat;
 
 import net.kaleidoscope.cookery.block.entity.FruitBasketController;
-import net.momirealms.craftengine.core.world.BlockPos;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
@@ -160,23 +159,21 @@ public final class FruitBasketCatGoal implements Goal<Cat> {
         // 只查猫自己那一个区块桶 果篮在 ensurePositionsInitialized 时按 SEARCH_RADIUS 铺开登记过
         Location[] bestHolder = {null};
         double[] bestSqHolder = {Double.MAX_VALUE};
-        FruitBasketController.forEachNear(w, cx, cz, controller -> {
-            BlockPos pos = controller.blockEntity().pos;
+        FruitBasketController.forEachNear(w, cx, cz, pos -> {
             if (Math.abs(pos.x() - cx) > H_RADIUS || Math.abs(pos.y() - cy) > V_RADIUS
                     || Math.abs(pos.z() - cz) > H_RADIUS) {
-                return true;
+                return;
             }
             Location bl = new Location(w, pos.x(), pos.y(), pos.z());
             Claim c = resolveClaim(posOf(bl));
             if (c != null && (c.cat().equals(self) || c.tamed() || !tamed)) {
-                return true;
+                return;
             }
             double sq = bl.distanceSquared(base);
             if (sq < bestSqHolder[0]) {
                 bestSqHolder[0] = sq;
                 bestHolder[0] = bl;
             }
-            return true;
         });
         best = bestHolder[0];
 

@@ -31,6 +31,7 @@ import net.momirealms.craftengine.proxy.minecraft.world.level.LevelAccessorProxy
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelWriterProxy;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
+import org.bukkit.Material;
 
 // 悬挂串 辣椒串蘑菇串这类从天花板往下接的方块
 // 空手或手持产物右键采摘 未剪过先转成剪过态 已剪过再摘就整段消失
@@ -99,7 +100,7 @@ public final class HangingStringBehavior extends BukkitBlockBehavior {
     // applyPhysics 必须开 否则挂在下面那几节收不到 updateShape 会留在半空
     private static void removeAt(World world, BlockPos pos) {
         org.bukkit.World bukkitWorld = (org.bukkit.World) world.platformWorld();
-        bukkitWorld.getBlockAt(pos.x(), pos.y(), pos.z()).setType(org.bukkit.Material.AIR, true);
+        bukkitWorld.getBlockAt(pos.x(), pos.y(), pos.z()).setType(Material.AIR, true);
     }
 
     // 挂在上方 顶端接天花板的坚固下表面 其余接同种方块
