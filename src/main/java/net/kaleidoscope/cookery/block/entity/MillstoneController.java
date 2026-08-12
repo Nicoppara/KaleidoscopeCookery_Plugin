@@ -465,6 +465,9 @@ public class MillstoneController extends FurnitureController {
 
     public void stopSpinning(Player leadRecipient) {
         if (pullingAnimal != null) {
+            settleAnimalRotation();
+        }
+        if (pullingAnimal != null) {
             ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
             if (pullingAnimal.isValid()) {
                 pullingAnimal.setAI(animalWasAI);
@@ -515,9 +518,12 @@ public class MillstoneController extends FurnitureController {
             currentAngle += anglePerTick * VISUAL_UPDATE_INTERVAL;
             element.updateRotation(currentAngle, VISUAL_UPDATE_INTERVAL);
         }
+        float previousOrbitAngle = orbitAngle;
         orbitAngle += anglePerTick;
 
         if (!moveAnimal()) {
+            orbitAngle = previousOrbitAngle;
+            stopSpinning();
             return;
         }
         if (rawTick % SHOVE_INTERVAL == 0) {
@@ -527,6 +533,17 @@ public class MillstoneController extends FurnitureController {
         rawTick++;
         advanceGrind(anglePerTick);
         wrapOrbitAngle();
+        if (grindIsEmpty()) {
+            settleAnimalRotation();
+        }
+    }
+
+    private void settleAnimalRotation() {
+        if (Float.compare(currentAngle, orbitAngle) != 0) {
+            currentAngle = orbitAngle;
+            furniture().setUnsaved();
+        }
+        element.updateFinalRotation(currentAngle);
     }
 
     // 玩家推磨 磨杆跟手 玩家绕磨心走多少度磨就转多少度 松手即停
@@ -537,7 +554,7 @@ public class MillstoneController extends FurnitureController {
             if (pushVisualPending) {
                 pushVisualPending = false;
                 pushVisualTick = 0;
-                element.updateRotation(currentAngle, 0);
+                element.updateFinalRotation(currentAngle);
             }
             return;
         }
@@ -554,6 +571,11 @@ public class MillstoneController extends FurnitureController {
         rawTick++;
         advanceGrind(advance);
         wrapOrbitAngle();
+        if (grindIsEmpty() && pushVisualPending) {
+            pushVisualPending = false;
+            pushVisualTick = 0;
+            element.updateFinalRotation(currentAngle);
+        }
     }
 
     private void grindEffects() {
@@ -721,18 +743,18 @@ public class MillstoneController extends FurnitureController {
 
     // 生物拉磨移动；返回 false 表示已停止
     private boolean moveAnimal() {
-        if (!pullingAnimal.isValid() || pullingAnimal.isDead()) { stopSpinning(); return false; }
+        if (!pullingAnimal.isValid() || pullingAnimal.isDead()) return false;
 
         // getLocation 每次都新建一个 Location 这是每 tick 路径 只取一次
         Location currentLoc = pullingAnimal.getLocation();
         WorldPosition pos = furniture().position();
-        if (Math.abs(currentLoc.getY() - pos.y) > 1.0) { stopSpinning(); return false; }
+        if (Math.abs(currentLoc.getY() - pos.y) > 1.0) return false;
 
         Vector3f targetOffset = orbitOffset();
         double targetX = pos.x + targetOffset.x;
         double targetZ = pos.z + targetOffset.z;
 
-        if (!canStandAt(targetX, currentLoc.getY(), targetZ)) { stopSpinning(); return false; }
+        if (!canStandAt(targetX, currentLoc.getY(), targetZ)) return false;
 
         double dx = targetX - currentLoc.getX();
         double dz = targetZ - currentLoc.getZ();
@@ -1095,7 +1117,7 @@ public class MillstoneController extends FurnitureController {
     private void abortRestore() {
         this.animating = false;
         furniture().setUnsaved();
-        this.element.updateRotation(this.currentAngle, 0);
+        this.element.updateFinalRotation(this.currentAngle);
     }
 
     @Override

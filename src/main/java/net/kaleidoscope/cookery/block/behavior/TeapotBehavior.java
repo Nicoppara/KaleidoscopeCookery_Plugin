@@ -35,6 +35,7 @@ import net.kaleidoscope.cookery.item.ItemMatch;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.SupportStateUtils;
+import org.bukkit.GameMode;
 public final class TeapotBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<TeapotBehavior> FACTORY = new Factory();
 
@@ -172,7 +173,7 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
             return false;
         }
         org.bukkit.entity.Player player = NmsBridgeProvider.bridge().bukkitPlayer(nmsPlayer);
-        return player != null && player.getGameMode() == org.bukkit.GameMode.CREATIVE;
+        return player != null && player.getGameMode() == GameMode.CREATIVE;
     }
 
     private boolean canHangChains(Object level, Object abovePos, Object aboveState) {

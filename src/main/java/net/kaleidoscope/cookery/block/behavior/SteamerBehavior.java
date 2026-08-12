@@ -43,6 +43,7 @@ import net.momirealms.craftengine.core.world.context.UseOnContext;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.ListTag;
+import org.bukkit.inventory.ItemStack;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.momirealms.craftengine.proxy.minecraft.core.Vec3iProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
@@ -625,7 +626,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         if (c.isFullOfFinishedProducts()) {
             org.bukkit.entity.Player bukkitPlayer = bukkitPlayer(nmsPlayer);
             if (bukkitPlayer != null) {
-                List<org.bukkit.inventory.ItemStack> products = c.finishedProductStacks();
+                List<ItemStack> products = c.finishedProductStacks();
                 BlockPos pos = LocationUtils.fromBlockPos(args[1]);
                 Location location = new Location((org.bukkit.World) ceWorld.world().platformWorld(), pos.x(), pos.y(), pos.z());
                 boolean cancelled = EventUtils.fireAndCheckCancel(new SteamerBreakFullEvent(bukkitPlayer, location, products));

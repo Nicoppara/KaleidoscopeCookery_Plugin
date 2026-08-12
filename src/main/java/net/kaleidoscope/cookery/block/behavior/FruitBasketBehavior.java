@@ -27,6 +27,7 @@ import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
+import org.bukkit.GameMode;
 
 public final class FruitBasketBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<FruitBasketBehavior> FACTORY = new Factory();
@@ -71,7 +72,7 @@ public final class FruitBasketBehavior extends BukkitBlockBehavior implements En
     private static boolean isCreativePlayer(Object nmsPlayer) {
         if (nmsPlayer == null) return false;
         org.bukkit.entity.Player player = NmsBridgeProvider.bridge().bukkitPlayer(nmsPlayer);
-        return player != null && player.getGameMode() == org.bukkit.GameMode.CREATIVE;
+        return player != null && player.getGameMode() == GameMode.CREATIVE;
     }
 
     @Override

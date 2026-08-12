@@ -3,19 +3,16 @@ package net.kaleidoscope.cookery.util;
 import org.bukkit.Chunk;
 import org.bukkit.World;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-// 按世界加区块分桶的空间索引 登记时把覆盖半径内的每个区块都挂上
-// 查询只看自己那个桶 不做实体扫描 代价压在低频的登记侧 两层表跨 region 线程共享
+// 登记时按覆盖区块分桶 查询只读取当前区块
 public final class ChunkIndex<T> {
     private final Map<UUID, Map<Long, Set<T>>> byWorld = new ConcurrentHashMap<>();
-    // 摘除必须用登记时那批 key 对象被旋转或移位后按现位置反算会摘不掉 留下永久悬挂引用
     private final Map<T, Registration> registrations = new ConcurrentHashMap<>();
 
     public void register(T value, World world, int blockX, int blockZ, int radius) {
@@ -59,9 +56,7 @@ public final class ChunkIndex<T> {
         }
     }
 
-    // 遍历该坐标所在桶里的登记者 predicate 返回 false 视为该项已失效 顺手摘掉
-    // 方块实体在区块卸载时不会有回调来注销 只能靠查询时惰性清理
-    public void forEach(World world, int blockX, int blockZ, Predicate<T> action) {
+    public void forEach(World world, int blockX, int blockZ, Consumer<T> action) {
         Map<Long, Set<T>> buckets = this.byWorld.get(world.getUID());
         if (buckets == null || buckets.isEmpty()) {
             return;
@@ -70,17 +65,8 @@ public final class ChunkIndex<T> {
         if (bucket == null) {
             return;
         }
-        List<T> stale = null;
         for (T value : bucket) {
-            if (!action.test(value)) {
-                if (stale == null) {
-                    stale = new ArrayList<>(2);
-                }
-                stale.add(value);
-            }
-        }
-        if (stale != null) {
-            stale.forEach(this::unregister);
+            action.accept(value);
         }
     }
 

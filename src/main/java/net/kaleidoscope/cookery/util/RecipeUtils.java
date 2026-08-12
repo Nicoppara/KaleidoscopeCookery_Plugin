@@ -227,8 +227,7 @@ public final class RecipeUtils {
         return component;
     }
 
-    // 1.21.9+ 用 sprite 直接引图集贴图 不需注册字体 老版本回退成 CE 字体图像 见 ItemIcons
-    // 两条路找不到对应条目时都退成物品名 总比画一个空白或缺失贴图强
+    // 未扫描到图标时回退为物品名
     private static Component image(Key key) {
         String icon = ItemIcons.iconId(key);
         if (icon == null) {

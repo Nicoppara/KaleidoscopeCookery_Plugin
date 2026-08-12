@@ -5,6 +5,7 @@ import io.papermc.paper.registry.data.dialog.ActionButton;
 import io.papermc.paper.registry.data.dialog.DialogBase;
 import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.action.DialogActionCallback;
+import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import net.kaleidoscope.cookery.ui.MenuTasks;
 import net.kyori.adventure.text.Component;
@@ -73,7 +74,7 @@ public final class DialogChoicePrompt {
         Dialog dialog = Dialog.create(builder -> builder.empty()
                 .base(DialogBase.builder(Component.text(title))
                         .canCloseWithEscape(true)
-                        .body(List.of(io.papermc.paper.registry.data.dialog.body.DialogBody
+                        .body(List.of(DialogBody
                                 .plainMessage(Component.text(description))))
                         .build())
                 .type(DialogType.multiAction(buttons, null, 2)));

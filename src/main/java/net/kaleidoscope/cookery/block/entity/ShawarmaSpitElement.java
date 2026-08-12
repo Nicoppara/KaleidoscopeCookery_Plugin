@@ -117,24 +117,35 @@ public final class ShawarmaSpitElement implements BlockEntityElement {
         if (!controller.isActive()) {
             return;
         }
+        Object bundle = buildRotationBundle(20);
+        if (bundle == null) {
+            return;
+        }
+        for (Player p : TrackedPlayers.snapshotInRange(controller.blockEntity(), behavior.animChunkRadius)) {
+            p.sendPacket(bundle, false);
+        }
+    }
+
+    public void updateFinalRotation() {
+        Object bundle = buildRotationBundle(0);
+        if (bundle != null) {
+            TrackedPlayers.forEach(controller.blockEntity(), player -> player.sendPacket(bundle, false));
+        }
+    }
+
+    private Object buildRotationBundle(int durationTicks) {
         Item[][] items = controller.getItems();
         List<Object> updates = new ArrayList<>();
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
                 int id = idx(l, s);
                 if (!items[l][s].isEmpty() && display.spawn(id) != null) {
-                    rotationPackets[id] = buildRotation(s, display.id(id), 20);
+                    rotationPackets[id] = buildRotation(s, display.id(id), durationTicks);
                     updates.add(rotationPackets[id]);
                 }
             }
         }
-        if (updates.isEmpty()) {
-            return;
-        }
-        Object bundle = PacketBundles.of(updates);
-        for (Player p : TrackedPlayers.snapshotInRange(controller.blockEntity(), behavior.animChunkRadius)) {
-            p.sendPacket(bundle, false);
-        }
+        return updates.isEmpty() ? null : PacketBundles.of(updates);
     }
 
     public void refreshAllItems() {

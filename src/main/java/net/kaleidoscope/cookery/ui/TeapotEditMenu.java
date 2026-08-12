@@ -21,6 +21,7 @@ import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
 import net.momirealms.craftengine.libraries.adventure.text.format.TextDecoration;
+import org.bukkit.Material;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -103,7 +104,7 @@ public final class TeapotEditMenu {
             return MenuIcons.iconKey(MenuButton.LIQUID);
         }
         Key bucket = Key.of(fluid.namespace(), fluid.value() + "_bucket");
-        return org.bukkit.Material.matchMaterial(bucket.asString()) == null
+        return Material.matchMaterial(bucket.asString()) == null
                 ? MenuIcons.iconKey(MenuButton.LIQUID) : bucket;
     }
 

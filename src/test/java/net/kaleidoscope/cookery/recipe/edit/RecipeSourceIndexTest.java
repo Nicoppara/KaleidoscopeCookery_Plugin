@@ -362,6 +362,50 @@ class RecipeSourceIndexTest {
         assertTrue(targets.get(1).factory());
     }
 
+    @Test
+    void resolvesShawarmaFactoryNamespaces(@TempDir Path folder) throws Exception {
+        Path file = folder.resolve("generated_shawarma.yml");
+        Files.writeString(file, """
+                config_factory#shawarma_recipes:
+                  instances:
+                    - from: beef
+                      to: cooked_beef
+                    - from: raw_lamb_chops
+                      from_ns: kaleidoscopecookery
+                      to: cooked_lamb_chops
+                      to_ns: kaleidoscopecookery
+                  blueprint:
+                    accurate_foods:
+                      kaleidoscopecookery:shawarma_${to}_from_${from}:
+                        require: "${from_ns:-minecraft}:${from}"
+                        result: "${to_ns:-minecraft}:${to}"
+                        result_count: 1
+                        cook: shawarma
+                """);
+
+        assertShawarmaTarget(file, "cooked_beef", "beef",
+                "minecraft:beef", "minecraft:cooked_beef");
+        assertShawarmaTarget(file, "cooked_lamb_chops", "raw_lamb_chops",
+                "kaleidoscopecookery:raw_lamb_chops", "kaleidoscopecookery:cooked_lamb_chops");
+    }
+
+    private static void assertShawarmaTarget(Path file, String resultName, String inputName,
+                                             String input, String result) {
+        Key id = Key.of("kaleidoscopecookery:shawarma_" + resultName + "_from_" + inputName);
+        String node = "accurate_foods." + id.asString();
+        Map<String, Object> expanded = new LinkedHashMap<>();
+        expanded.put("require", input);
+        expanded.put("result", result);
+        expanded.put("result_count", 1);
+        expanded.put("cook", "shawarma");
+
+        List<RecipeFileStore.SourceTarget> targets = RecipeFileStore.resolveTargets(
+                RecipeSourceIndex.Kind.ACCURATE, id, file, node, expanded);
+
+        assertEquals(1, targets.size());
+        assertTrue(targets.getFirst().factory());
+    }
+
     private static void assertFactoryTarget(Path file, RecipeSourceIndex.Kind kind,
                                             String rawId, String section) {
         Key id = Key.of(rawId);

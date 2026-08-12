@@ -7,6 +7,7 @@ import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemMatch;
+import net.kaleidoscope.cookery.item.KitchenShovel;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.user.BukkitServerPlayer;
@@ -18,6 +19,7 @@ import net.momirealms.craftengine.core.block.behavior.EntityBlock;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.sound.SoundSource;
@@ -29,6 +31,7 @@ import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
 public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBlock {
@@ -40,8 +43,8 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
 
     public int maxOil = 16;
     public Key oilItem = ItemKeys.OIL;
-    public Key shovelNoOilItem = ItemKeys.KITCHEN_SHOVEL_NO_OIL;
-    public Key shovelHasOilItem = ItemKeys.KITCHEN_SHOVEL_HAS_OIL;
+    public Key shovelItem = ItemKeys.KITCHEN_SHOVEL;
+    public Key shovelOilModel = ItemKeys.KITCHEN_SHOVEL_OIL_MODEL;
 
     private int controllerId;
 
@@ -72,24 +75,30 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
         EnamelBasinController controller = blockEntity.controller.get(EnamelBasinController.class, this.controllerId);
         // 工具操作副手优先 取油只认主手
         ItemStack mainItem = bukkitPlayer.getInventory().getItemInMainHand();
-        org.bukkit.inventory.EquipmentSlot toolSlot =
+        EquipmentSlot toolSlot =
                 Hands.toolHandBukkit(bukkitPlayer, this::isBasinTool);
         ItemStack toolItem = bukkitPlayer.getInventory().getItem(toolSlot);
         boolean isSneaking = bukkitPlayer.isSneaking();
 
         // 敲击瓷盆 木棍或潜行厨铲 工具
-        if (toolItem != null && (toolItem.getType() == Material.STICK
-                || (isCustomItem(toolItem, shovelNoOilItem) && isSneaking))) {
-            return handleEasterEgg(world, pos, bukkitPlayer, toolSlot);
+        boolean shovelEasterEgg = isShovel(toolItem) && !shovelHasOil(toolItem) && isSneaking;
+        if (toolItem != null && (toolItem.getType() == Material.STICK || shovelEasterEgg)) {
+            InteractionResult result = handleEasterEgg(world, pos, bukkitPlayer, toolSlot);
+            if (shovelEasterEgg) {
+                migrateLegacy(toolItem, player, toolSlot, false);
+            }
+            return result;
         }
 
         // 没开盖子先开盖
         if (controller.isClosed()) {
-            return handleToggleOpen(controller, world, pos, bukkitPlayer);
+            InteractionResult result = handleToggleOpen(controller, world, pos, bukkitPlayer);
+            migrateLegacy(toolItem, player, toolSlot, false);
+            return result;
         }
 
         // 工具手没触发动作时要落到下面的主手逻辑 别截断
-        if (isCustomItem(toolItem, shovelNoOilItem) || isCustomItem(toolItem, shovelHasOilItem)) {
+        if (isShovel(toolItem)) {
             InteractionResult toolResult = handleShovel(toolItem, controller, world, pos, bukkitPlayer, player, toolSlot);
             if (toolResult != InteractionResult.PASS) {
                 return toolResult;
@@ -109,7 +118,9 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
         }
 
         // 空手或其他 关盖子
-        return handleClose(controller, world, pos, bukkitPlayer);
+        InteractionResult result = handleClose(controller, world, pos, bukkitPlayer);
+        migrateLegacy(toolItem, player, toolSlot, false);
+        return result;
     }
 
     // 瓷盆的工具类物品 厨铲 油瓶 木棍 走副手优先
@@ -118,13 +129,12 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
             return false;
         }
         return stack.getType() == Material.STICK
-                || isCustomItem(stack, shovelNoOilItem)
-                || isCustomItem(stack, shovelHasOilItem)
+                || isShovel(stack)
                 || isCustomItem(stack, oilItem);
     }
 
     private InteractionResult handleEasterEgg(CEWorld world, BlockPos pos, Player bukkitPlayer,
-                                              org.bukkit.inventory.EquipmentSlot slot) {
+                                              EquipmentSlot slot) {
         playSound(world, pos, OPEN_CLOSE_SOUND_KEY, DEFAULT_VOLUME, 0.8f);
         Hands.swing(bukkitPlayer, slot);
         return InteractionResult.SUCCESS_AND_CANCEL;
@@ -163,7 +173,7 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
     private InteractionResult handleAddOil(ItemStack heldItem, EnamelBasinController controller,
                                            CEWorld world, BlockPos pos, Player bukkitPlayer,
                                            BukkitServerPlayer player,
-                                           org.bukkit.inventory.EquipmentSlot slot) {
+                                           EquipmentSlot slot) {
         int canAdd = maxOil - controller.getOilCount();
         if (canAdd <= 0) {
             return InteractionResult.PASS;
@@ -182,13 +192,10 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
     // 厨铲无油从盆中沾油 有油把油倒入盆中
     private InteractionResult handleShovel(ItemStack heldItem, EnamelBasinController controller,
                                            CEWorld world, BlockPos pos, Player bukkitPlayer, BukkitServerPlayer player,
-                                           org.bukkit.inventory.EquipmentSlot slot) {
-        boolean dipping = isCustomItem(heldItem, shovelNoOilItem);
+                                           EquipmentSlot slot) {
+        Item shovel = BukkitItemManager.instance().wrap(heldItem);
+        boolean dipping = !KitchenShovel.hasOil(shovel, shovelOilModel);
         if (dipping ? controller.getOilCount() <= 0 : controller.getOilCount() >= maxOil) {
-            return InteractionResult.PASS;
-        }
-        // 先备好替换后的厨铲 key 失效时不能扣掉油却不换铲
-        if (!swapShovel(dipping ? shovelHasOilItem : shovelNoOilItem, bukkitPlayer, player, slot)) {
             return InteractionResult.PASS;
         }
         if (dipping) {
@@ -196,19 +203,38 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
         } else {
             controller.addOil(1);
         }
+        if (KitchenShovel.isLegacy(shovel)) {
+            InteractionHand hand = slot == EquipmentSlot.OFF_HAND
+                    ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+            KitchenShovel.migrateLegacy(player, hand, shovel, shovelItem, shovelOilModel, dipping);
+        } else {
+            KitchenShovel.setHasOil(shovel, dipping, shovelItem, shovelOilModel);
+            bukkitPlayer.getInventory().setItem(slot, ItemStackUtils.getBukkitStack(shovel));
+        }
         playSound(world, pos, OIL_SOUND_KEY, DEFAULT_VOLUME, 0.8f);
         Hands.swing(bukkitPlayer, slot);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    private boolean swapShovel(Key shovelKey, Player bukkitPlayer, BukkitServerPlayer player,
-                               org.bukkit.inventory.EquipmentSlot slot) {
-        Item newShovel = InventoryUtils.createOrEmpty(shovelKey);
-        if (ItemUtils.isEmpty(newShovel)) {
+    private boolean isShovel(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) {
             return false;
         }
-        bukkitPlayer.getInventory().setItem(slot, ItemStackUtils.getBukkitStack(newShovel));
-        return true;
+        return KitchenShovel.is(BukkitItemManager.instance().wrap(item), shovelItem);
+    }
+
+    private boolean shovelHasOil(ItemStack item) {
+        return KitchenShovel.hasOil(BukkitItemManager.instance().wrap(item), shovelOilModel);
+    }
+
+    private void migrateLegacy(ItemStack item, BukkitServerPlayer player, EquipmentSlot slot, boolean hasOil) {
+        if (item == null || item.getType() == Material.AIR) {
+            return;
+        }
+        InteractionHand hand = slot == EquipmentSlot.OFF_HAND
+                ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        KitchenShovel.migrateLegacy(player, hand, BukkitItemManager.instance().wrap(item),
+                shovelItem, shovelOilModel, hasOil);
     }
 
     private boolean isCustomItem(ItemStack item, Key expectedKey) {
@@ -239,8 +265,8 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
             EnamelBasinBehavior b = new EnamelBasinBehavior(block);
             b.maxOil = BehaviorConfig.getInt(section, b.maxOil, "max_oil", "max-oil");
             b.oilItem = Key.of(BehaviorConfig.getString(section, b.oilItem.asString(), "oil_item", "oil-item"));
-            b.shovelNoOilItem = Key.of(BehaviorConfig.getString(section, b.shovelNoOilItem.asString(), "shovel_no_oil_item", "shovel-no-oil-item"));
-            b.shovelHasOilItem = Key.of(BehaviorConfig.getString(section, b.shovelHasOilItem.asString(), "shovel_has_oil_item", "shovel-has-oil-item"));
+            b.shovelItem = Key.of(BehaviorConfig.getString(section, b.shovelItem.asString(), "shovel_item", "shovel-item", "shovel_no_oil_item", "shovel-no-oil-item"));
+            b.shovelOilModel = Key.of(BehaviorConfig.getString(section, b.shovelOilModel.asString(), "shovel_oil_model", "shovel-oil-model", "shovel_has_oil_item", "shovel-has-oil-item"));
             return b;
         }
     }

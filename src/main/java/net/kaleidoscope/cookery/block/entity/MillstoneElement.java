@@ -108,6 +108,17 @@ public final class MillstoneElement implements FurnitureElement {
         invalidateMeta();
     }
 
+    public void updateFinalRotation(float angle) {
+        float yaw = baseYawRad();
+        Object bundlePacket = PacketBundles.of(List.of(
+                model.stick1Meta(stick1Id, yaw, angle, 0),
+                model.stick2Meta(stick2Id, yaw, angle, 0),
+                model.stoneMeta(stoneId, yaw, angle, 0)));
+        TrackedPlayers.forEach(controller.furniture().getTrackedBy(),
+                player -> player.sendPacket(bundlePacket, false));
+        invalidateMeta();
+    }
+
     private void buildGrindSlotPackets(int slot, Item item) {
         Object spawn = ItemDisplayPackets.at(basePos).spawn(grindDisplay.id(slot), grindDisplay.uuid(slot));
         grindDisplay.setPackets(slot, spawn, model.grindStaticMeta(grindDisplay.id(slot), item));

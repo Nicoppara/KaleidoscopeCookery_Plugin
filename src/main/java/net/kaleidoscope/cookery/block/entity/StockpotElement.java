@@ -146,6 +146,16 @@ public final class StockpotElement implements BlockEntityElement {
         return packets.isEmpty() ? null : PacketBundles.of(packets);
     }
 
+    public Object buildStaticIngredientBundle() {
+        List<Object> packets = new ArrayList<>();
+        for (int i = 0; i < controller.ingredients().size(); i++) {
+            if (display.meta(i) != null) {
+                packets.add(display.meta(i));
+            }
+        }
+        return packets.isEmpty() ? null : PacketBundles.of(packets);
+    }
+
     private void refreshLiquidAndFishPackets() {
         String id = controller.soupBaseId().asString();
 
@@ -213,7 +223,7 @@ public final class StockpotElement implements BlockEntityElement {
         types.put("minecraft:pufferfish_bucket", getEntityTypeByKey("minecraft:pufferfish"));
         types.put("minecraft:axolotl_bucket", getEntityTypeByKey("minecraft:axolotl"));
         types.put("minecraft:tadpole_bucket", getEntityTypeByKey("minecraft:frog"));
-        types.values().removeIf(java.util.Objects::isNull);
+        types.values().removeIf(Objects::isNull);
         return Map.copyOf(types);
     }
 

@@ -44,7 +44,7 @@ public final class ScarecrowController extends FurnitureController {
     private static final String DATA_KEY = "kaleidoscopecookery:scarecrow";
     private static final String K_ITEMS = "items";
 
-    private static final ChunkIndex<ScarecrowController> INDEX = new ChunkIndex<>();
+    private static final ChunkIndex<Protection> INDEX = new ChunkIndex<>();
 
     private final Item[] items = new Item[ScarecrowElement.SLOTS];
     private final ScarecrowElement element;
@@ -55,6 +55,7 @@ public final class ScarecrowController extends FurnitureController {
     private int tickCounter;
     private UUID perchUuid;
     private volatile long lastInteractNanos;
+    private Protection indexedProtection;
     // 点亮的那一格 家具被旋转过后按现位置反算会清错格 所以记下点灯时那个坐标
     private BlockPos litPos;
 
@@ -71,21 +72,12 @@ public final class ScarecrowController extends FurnitureController {
 
 
     public static boolean protects(World world, int x, int y, int z) {
-        return INDEX.anyMatch(world, x, z, controller -> controller.covers(x, y, z));
+        return INDEX.anyMatch(world, x, z, protection -> protection.covers(x, y, z));
     }
 
     // 关服只做纯内存清理 region 与实体调度器不会自己清
     public static void clearIndex() {
         INDEX.clear();
-    }
-
-    private boolean covers(int x, int y, int z) {
-        WorldPosition position = furniture().position();
-        double dx = position.x - (x + 0.5);
-        double dy = position.y - (y + 0.5);
-        double dz = position.z - (z + 0.5);
-        double radius = this.behavior.protectionRadius;
-        return dx * dx + dy * dy + dz * dz <= radius * radius;
     }
 
     // 副手挂着灯笼就在灯笼那一格放一个真的 light 方块 取下或移除时熄掉
@@ -114,9 +106,20 @@ public final class ScarecrowController extends FurnitureController {
     }
 
     private void addToIndex() {
+        removeFromIndex();
         WorldPosition position = furniture().position();
-        INDEX.register(this, (World) position.world().platformWorld(),
+        World world = (World) position.world().platformWorld();
+        this.indexedProtection = new Protection(
+                position.x, position.y, position.z, this.behavior.protectionRadius);
+        INDEX.register(this.indexedProtection, world,
                 (int) Math.floor(position.x), (int) Math.floor(position.z), this.behavior.protectionRadius);
+    }
+
+    private void removeFromIndex() {
+        if (this.indexedProtection != null) {
+            INDEX.unregister(this.indexedProtection);
+            this.indexedProtection = null;
+        }
     }
 
 
@@ -380,7 +383,7 @@ public final class ScarecrowController extends FurnitureController {
 
     @Override
     public void onUnload(boolean isStopping) {
-        INDEX.unregister(this);
+        removeFromIndex();
         // 这里跑在区块系统的实体状态变更回调里 移除实体会被 Paper 拒绝并刷一整页栈
         // 锚点是 setPersistent(false) 的 跟着区块一起消失 忘掉 uuid 就行
         this.perchUuid = null;
@@ -396,7 +399,7 @@ public final class ScarecrowController extends FurnitureController {
 
     @Override
     public void preRemove(Player player) {
-        INDEX.unregister(this);
+        removeFromIndex();
         releasePerch();
         clearLight();
         WorldPosition position = furniture().position();
@@ -422,5 +425,26 @@ public final class ScarecrowController extends FurnitureController {
         }
         BlockEntityNbt.loadSlots(data.getList(K_ITEMS), BlockEntityNbt.dataVersion(data), this.items);
         this.element.rebuild();
+    }
+
+    private static final class Protection {
+        private final double x;
+        private final double y;
+        private final double z;
+        private final double radius;
+
+        private Protection(double x, double y, double z, double radius) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.radius = radius;
+        }
+
+        private boolean covers(int blockX, int blockY, int blockZ) {
+            double dx = this.x - (blockX + 0.5);
+            double dy = this.y - (blockY + 0.5);
+            double dz = this.z - (blockZ + 0.5);
+            return dx * dx + dy * dy + dz * dz <= this.radius * this.radius;
+        }
     }
 }

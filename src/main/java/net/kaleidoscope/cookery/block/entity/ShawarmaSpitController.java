@@ -116,6 +116,9 @@ public class ShawarmaSpitController extends BlockEntityController {
 
     public void tick() {
         if (!isActive()) {
+            if (wasActive) {
+                element.updateFinalRotation();
+            }
             wasActive = false;
             return;
         }

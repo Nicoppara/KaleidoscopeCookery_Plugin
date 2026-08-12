@@ -5,6 +5,7 @@ import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.momirealms.craftengine.core.pack.Pack;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
+import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.plugin.config.ConfigValue;
 import net.momirealms.craftengine.core.plugin.config.template.ArgumentString;
 import net.momirealms.craftengine.core.plugin.config.template.argument.PlainStringTemplateArgument;
@@ -559,8 +560,7 @@ public final class RecipeFileStore {
                                                                    int index, Map<String, Object> instance) {
         Map<String, TemplateArgument> result = new HashMap<>();
         String path = factoryKey + "." + instancesKey + "[" + index + "]";
-        net.momirealms.craftengine.core.plugin.config.ConfigSection section =
-                net.momirealms.craftengine.core.plugin.config.ConfigSection.of(path, instance);
+        ConfigSection section = ConfigSection.of(path, instance);
         for (String key : section.keySet()) {
             ConfigValue value = section.getValue(key);
             result.put(key, TemplateArguments.fromConfig(value));
