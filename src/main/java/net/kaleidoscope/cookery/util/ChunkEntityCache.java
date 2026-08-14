@@ -70,11 +70,13 @@ public final class ChunkEntityCache {
         if (cached != null && now - cached.stamp < this.ttlNanos) {
             return cached;
         }
-        // 非当前区域不刷新过期快照
+        // 不归当前 region 就用旧快照 宁可少加速也不能抛 邻块常常属于别的 region
         if (!Bukkit.isOwnedByCurrentRegion(world, chunkX, chunkZ)) {
-            return null;
+            return cached;
         }
+        // getChunkAt 会强制加载 未加载的区块里也不会有实体 直接丢掉旧快照
         if (!world.isChunkLoaded(chunkX, chunkZ)) {
+            snapshots.remove(key, cached);
             return null;
         }
         Snapshot fresh = scan(world, chunkX, chunkZ, now);

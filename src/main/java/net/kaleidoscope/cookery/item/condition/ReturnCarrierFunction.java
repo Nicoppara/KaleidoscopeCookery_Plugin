@@ -2,20 +2,20 @@ package net.kaleidoscope.cookery.item.condition;
 
 import net.kaleidoscope.cookery.recipe.DishCarriers;
 import net.kaleidoscope.cookery.util.InventoryUtils;
-import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.plugin.context.Context;
 import net.momirealms.craftengine.core.plugin.context.function.Function;
 import net.momirealms.craftengine.core.plugin.context.function.FunctionFactory;
 import net.momirealms.craftengine.core.plugin.context.parameter.DirectContextParameters;
 import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.world.WorldPosition;
 
 import java.util.Optional;
 
 // 家具菜吃完退还盛装容器 挂在 dish 模板的 eat_functions 上
 // 容器查 DishCarriers 即配方的 carrier 改配方立刻生效 eaten_pools 只留额外掉落物
+// 掉落点取上下文位置 与同一段里的 drop_loot 一致 碗和骨头落在一起
 public final class ReturnCarrierFunction<CTX extends Context> implements Function<CTX> {
 
     // 菜品 id 从配置里写死 家具菜的上下文里没有成品物品这个参数
@@ -31,15 +31,15 @@ public final class ReturnCarrierFunction<CTX extends Context> implements Functio
         if (carrier == null) {
             return;
         }
-        Optional<Player> player = ctx.getOptionalParameter(DirectContextParameters.PLAYER);
-        if (player.isEmpty()) {
+        Optional<WorldPosition> position = ctx.getOptionalParameter(DirectContextParameters.POSITION);
+        if (position.isEmpty()) {
             return;
         }
         Item container = InventoryUtils.createOrEmpty(carrier);
         if (ItemUtils.isEmpty(container)) {
             return;
         }
-        InventoryUtils.give(player.get(), container.copyWithCount(1));
+        position.get().world().dropItemNaturally(position.get(), container.copyWithCount(1));
     }
 
     public static <CTX extends Context> FunctionFactory<CTX, ReturnCarrierFunction<CTX>> factory() {

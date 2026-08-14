@@ -31,7 +31,6 @@ import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 
 import java.util.Arrays;
 import java.util.function.Consumer;

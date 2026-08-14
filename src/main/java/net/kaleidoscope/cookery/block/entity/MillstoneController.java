@@ -31,7 +31,6 @@ import net.momirealms.craftengine.core.util.UUIDUtils;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.core.world.context.InteractEntityContext;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.ListTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
@@ -40,7 +39,6 @@ import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -120,6 +118,7 @@ public class MillstoneController extends FurnitureController {
     private static final int EJECT_PICKUP_DELAY = 10;
     // 摘绳掉出的拴绳的搜索范围 与刚落地的判定阈值 收绳任务最迟下一 tick 执行
     private static final double LEAD_DROP_SEARCH_RADIUS = 1;
+    private static final int LEAD_DROP_SEARCH_CHUNK_RADIUS = 1;
     private static final int FRESH_DROP_MAX_TICKS = 2;
 
     private int pushVisualTick;
@@ -466,8 +465,6 @@ public class MillstoneController extends FurnitureController {
     public void stopSpinning(Player leadRecipient) {
         if (pullingAnimal != null) {
             settleAnimalRotation();
-        }
-        if (pullingAnimal != null) {
             ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
             if (pullingAnimal.isValid()) {
                 pullingAnimal.setAI(animalWasAI);
@@ -969,7 +966,11 @@ public class MillstoneController extends FurnitureController {
     }
 
     // 摘绳掉出的那根拴绳 只认刚落地的单个 否则会把玩家自己扔在旁边的拴绳一并吃掉
+    // 调度只保证 dropLoc 本格归本 region AABB 还会外扩一格 跨出去 getNearbyEntities 就抛
     private static void removeFreshLeadDrop(Location dropLoc) {
+        if (!Bukkit.isOwnedByCurrentRegion(dropLoc, LEAD_DROP_SEARCH_CHUNK_RADIUS)) {
+            return;
+        }
         for (Entity e : dropLoc.getWorld().getNearbyEntities(
                 dropLoc, LEAD_DROP_SEARCH_RADIUS, LEAD_DROP_SEARCH_RADIUS, LEAD_DROP_SEARCH_RADIUS)) {
             if (!(e instanceof org.bukkit.entity.Item dropped) || dropped.getTicksLived() > FRESH_DROP_MAX_TICKS) {

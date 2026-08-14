@@ -3,6 +3,7 @@ package net.kaleidoscope.cookery.recipe.edit;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
+import net.kaleidoscope.cookery.recipe.FoodGroups;
 import net.momirealms.craftengine.core.pack.Pack;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
@@ -38,6 +39,12 @@ import java.util.concurrent.ConcurrentHashMap;
 // 全部方法都做磁盘 IO 必须在 async 调度器上调用 见 RecipeEditService
 public final class RecipeFileStore {
     private static final String RECIPE_FOLDER = "recipe";
+    private static final String TAG_FOLDER = "tag";
+    private static final String FOOD_GROUP_FILE = "food_groups.yml";
+    private static final String ITEM_TAGS_SECTION = "item_tags";
+    private static final String EQUIVALENT_SECTION = "equivalent_foods";
+    private static final String SEASONING_SECTION = "seasonings";
+    private static final String GROUP_TAGS_KEY = "tags";
 
     private static final String[] ACCURATE_SECTIONS = {"accurate_foods", "accurate-foods"};
     private static final String[] POT_FLEX_SECTIONS = {"pot_flex_foods", "pot-flex-foods"};
@@ -135,6 +142,72 @@ public final class RecipeFileStore {
 
     public static Path defaultFlexFile(ApplianceType cook) {
         return recipeFolder().resolve(cook == ApplianceType.STOCKPOT ? STOCKPOT_FILE : POT_FILE);
+    }
+
+    public static Path defaultFoodGroupFile() {
+        return pack().configurationFolder().resolve(TAG_FOLDER).resolve(FOOD_GROUP_FILE);
+    }
+
+    // 一个分组要同时改三处 标签成员 以及两张用途表里的归属
+    // 三处都在同一个文件同一把锁内改完 免得只写了一半
+    public static void writeFoodGroup(Key tag, List<Key> members, FoodGroups.Kind kind) throws IOException {
+        writeFoodGroup(defaultFoodGroupFile().toAbsolutePath().normalize(), tag, members, kind);
+    }
+
+    static void writeFoodGroup(Path file, Key tag, List<Key> members, FoodGroups.Kind kind) throws IOException {
+        synchronized (fileLock(file)) {
+            Files.createDirectories(file.getParent());
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file.toFile());
+            ConfigurationSection tags = config.getConfigurationSection(ITEM_TAGS_SECTION);
+            if (tags == null) {
+                tags = config.createSection(ITEM_TAGS_SECTION);
+            }
+            tags.set(tag.asString(), members.stream().map(Key::asString).toList());
+            setGroupMembership(config, tag, kind);
+            saveAtomic(config, file);
+        }
+    }
+
+    public static void deleteFoodGroup(Key tag) throws IOException {
+        deleteFoodGroup(defaultFoodGroupFile().toAbsolutePath().normalize(), tag);
+    }
+
+    static void deleteFoodGroup(Path file, Key tag) throws IOException {
+        synchronized (fileLock(file)) {
+            if (!file.toFile().isFile()) {
+                return;
+            }
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file.toFile());
+            ConfigurationSection tags = config.getConfigurationSection(ITEM_TAGS_SECTION);
+            if (tags != null) {
+                tags.set(tag.asString(), null);
+            }
+            setGroupMembership(config, tag, null);
+            saveAtomic(config, file);
+        }
+    }
+
+    // kind 为空表示从两张表里都摘掉
+    private static void setGroupMembership(YamlConfiguration config, Key tag, FoodGroups.Kind kind) {
+        String entry = "#" + tag.asString();
+        for (FoodGroups.Kind candidate : FoodGroups.Kind.values()) {
+            String section = candidate == FoodGroups.Kind.EQUIVALENT
+                    ? EQUIVALENT_SECTION : SEASONING_SECTION;
+            ConfigurationSection group = config.getConfigurationSection(section);
+            List<String> list = group == null
+                    ? new ArrayList<>() : new ArrayList<>(group.getStringList(GROUP_TAGS_KEY));
+            list.remove(entry);
+            if (candidate == kind) {
+                list.add(entry);
+            }
+            if (list.isEmpty() && group == null) {
+                continue;
+            }
+            if (group == null) {
+                group = config.createSection(section);
+            }
+            group.set(GROUP_TAGS_KEY, list);
+        }
     }
 
     // 汤底表是 stock_food_raw.liquid 下的一个列表 不是 id 键控的节点

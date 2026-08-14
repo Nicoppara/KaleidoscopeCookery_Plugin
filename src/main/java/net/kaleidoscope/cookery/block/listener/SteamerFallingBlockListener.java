@@ -3,7 +3,6 @@ import net.kaleidoscope.cookery.util.FoliaUtil;
 
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
-import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;

@@ -2,6 +2,7 @@ package net.kaleidoscope.cookery.item.listener;
 
 import net.kaleidoscope.cookery.recipe.DishCarriers;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
+import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
@@ -35,12 +36,12 @@ public final class DishCarrierListener implements Listener {
         if (ItemUtils.isEmpty(container)) {
             return;
         }
-        // MONITOR 阶段物品还没被扣 直接 give 会和原版的扣除撞车 延到下一 tick
+        // MONITOR 阶段物品还没被扣 这时动背包会和原版的扣除撞车 延到下一 tick
         // 玩家所属 region 线程 folia 上也安全
         Player player = BukkitAdaptor.adapt(event.getPlayer());
         event.getPlayer().getScheduler().run(
                 KaleidoscopeCookeryPlugin.instance(),
-                task -> InventoryUtils.give(player, container.copyWithCount(1)),
+                task -> DropUtils.dropAtPlayer(player, container.copyWithCount(1)),
                 null);
     }
 }

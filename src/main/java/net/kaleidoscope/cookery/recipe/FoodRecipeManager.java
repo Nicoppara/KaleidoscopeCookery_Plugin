@@ -3,7 +3,6 @@ package net.kaleidoscope.cookery.recipe;
 import net.momirealms.craftengine.core.pack.Pack;
 import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
-import net.momirealms.craftengine.core.plugin.config.ConfigValue;
 import net.momirealms.craftengine.core.plugin.config.IdSectionConfigParser;
 import net.momirealms.craftengine.core.plugin.config.SectionConfigParser;
 import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
@@ -28,6 +27,9 @@ public final class FoodRecipeManager {
 
     // 空手盛出的哨兵值 配置里写 minecraft:air 等同于不写 carrier
     private static final Key AIR = Key.of("minecraft:air");
+
+    static final String[] USE_EQUIVALENT_FOODS = {"use_equivalent_foods", "use-equivalent-foods"};
+    static final String[] USE_SEASONINGS = {"use_seasonings", "use-seasonings"};
 
     public static final LoadingStage POT_FOOD_RAW = new LoadingStage("pot food raw");
     public static final LoadingStage STOCK_FOOD_RAW = new LoadingStage("stock food raw");
@@ -343,7 +345,11 @@ public final class FoodRecipeManager {
         String carrierId = section.getString("carrier", (String) null);
         Key carrier = carrierId == null || carrierId.isEmpty() || AIR.asString().equals(carrierId)
                 ? null : Key.of(carrierId);
-        FlexFoodRecipe recipe = FlexFoodRecipe.of(id, result, cook, perfect, liquids, carrier);
+        // 两张组表默认对所有菜生效 只有明确写 false 的菜才退回按具体物品严格匹配
+        boolean useEquivalent = section.getBoolean(USE_EQUIVALENT_FOODS, true);
+        boolean useSeasonings = section.getBoolean(USE_SEASONINGS, true);
+        FlexFoodRecipe recipe = FlexFoodRecipe.of(id, result, cook, perfect, liquids, carrier,
+                useEquivalent, useSeasonings);
         FoodRecipeRegistry.instance().registerMenuFlex(recipe);
         RecipeSourceIndex.instance().put(kind, id, path, target, recipe, duplicate);
         if (duplicate) {

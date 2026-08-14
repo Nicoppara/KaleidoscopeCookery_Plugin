@@ -8,5 +8,10 @@ public enum ApplianceType {
     SHAWARMA,
     MILLSTONE,
     CHOPPING_BOARD,
-    TEAPOT
+    TEAPOT;
+
+    // 走模糊配方的厨具 等效食物表与调味品表只对这两个有意义 其余是一进一出的精确配方
+    public boolean usesFlexRecipes() {
+        return this == POT || this == STOCKPOT;
+    }
 }

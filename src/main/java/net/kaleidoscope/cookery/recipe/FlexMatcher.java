@@ -17,101 +17,143 @@ import java.util.Map;
 public final class FlexMatcher {
     private FlexMatcher() {}
 
-    // 一次匹配的结果 配方 品质 份数
     public record Match(FlexFoodRecipe recipe, DishQuality quality, int portions) {}
 
     // 必需食材齐全后优先覆盖种类最多的配方 同组再按理想比例取最近邻
     public static Match bestMatch(List<FlexFoodRecipe> recipes, double minScore,
                                   ApplianceType type, List<Key> ingredientIds, Key liquid) {
-        if (ingredientIds == null || ingredientIds.isEmpty()) {
+        if (ingredientIds.isEmpty()) {
             return null;
         }
-        Map<Key, Integer> counts = new HashMap<>();
-        for (Key ingredient : ingredientIds) {
-            counts.merge(ingredient, 1, Integer::sum);
-        }
-        double actualNorm = actualNorm(counts);
-        if (actualNorm <= 0) {
-            return null;
-        }
+        // 两个开关组合出四种视图 一次烹饪里锅内食材不变 按组合建一次复用
+        View[] views = new View[4];
 
         FlexFoodRecipe best = null;
+        View bestView = null;
+        Ideal bestIdeal = null;
         double bestCos = -1;
         int bestSpecificity = -1;
         for (FlexFoodRecipe recipe : recipes) {
-            if (!eligible(recipe, type, liquid, counts)) {
+            if (recipe.cook() != type || recipe.norm() <= 0) {
                 continue;
             }
-            double cos = cosine(recipe, counts, actualNorm);
-            int specificity = recipe.perfect().size();
+            if (!recipe.liquids().isEmpty() && (liquid == null || !recipe.liquids().contains(liquid))) {
+                continue;
+            }
+            View view = view(views, ingredientIds, recipe);
+            if (view == null) {
+                continue;
+            }
+            Ideal ideal = ideal(recipe, view);
+            if (ideal.norm() <= 0 || !hasAllRequired(view, ideal)) {
+                continue;
+            }
+            double cos = cosine(view, ideal);
+            int specificity = ideal.weights().size();
             // 同分时按注册顺序取先者 配置顺序就是最终优先级
             if (specificity > bestSpecificity || specificity == bestSpecificity && cos > bestCos) {
                 bestSpecificity = specificity;
                 bestCos = cos;
                 best = recipe;
+                bestView = view;
+                bestIdeal = ideal;
             }
         }
         if (best == null || bestCos < minScore) {
             return null;
         }
 
-        int portions = portions(best, counts);
-        int deviation = requiredDeviation(best, counts, portions) + extraIngredientCount(best, counts);
+        int portions = portions(bestView, bestIdeal);
+        int deviation = requiredDeviation(bestView, bestIdeal, portions) + extraIngredientCount(bestView, bestIdeal);
         return new Match(best, DishQuality.fromDeviation(deviation), portions);
     }
 
-    private static double actualNorm(Map<Key, Integer> counts) {
+    // 调味品已剔除 等效开启时键已归一成标签
+    private record View(Map<Key, Integer> counts, double norm, boolean canonical) {}
+
+    // 与 View 同一套键下的理想配比 等效关闭时就是 perfect 本身
+    private record Ideal(Map<Key, Integer> weights, double norm) {}
+
+    private static View view(View[] cache, List<Key> ingredientIds, FlexFoodRecipe recipe) {
+        FoodGroups groups = FoodGroups.instance();
+        boolean equivalent = recipe.useEquivalentFoods() && groups.hasEquivalents();
+        boolean seasoning = recipe.useSeasonings() && groups.hasSeasonings();
+        int index = (equivalent ? 1 : 0) | (seasoning ? 2 : 0);
+        if (cache[index] != null) {
+            return cache[index];
+        }
+        Map<Key, Integer> counts = new HashMap<>();
+        for (Key ingredient : ingredientIds) {
+            if (seasoning && groups.isSeasoning(ingredient)) {
+                continue;
+            }
+            counts.merge(equivalent ? groups.canonical(ingredient) : ingredient, 1, Integer::sum);
+        }
+        double norm = norm(counts.values());
+        // 一锅全是调味品 这条视图下没有有效食材 用它的配方一律不成立
+        View built = norm <= 0 ? null : new View(counts, norm, equivalent);
+        cache[index] = built;
+        return built;
+    }
+
+    // 同一等效组里的两种必需食材会被归并成一项 权重相加 范数必须跟着重算
+    private static Ideal ideal(FlexFoodRecipe recipe, View view) {
+        if (!view.canonical()) {
+            return new Ideal(recipe.perfect(), recipe.norm());
+        }
+        FoodGroups groups = FoodGroups.instance();
+        Map<Key, Integer> weights = new HashMap<>(recipe.perfect().size());
+        for (Map.Entry<Key, Integer> e : recipe.perfect().entrySet()) {
+            weights.merge(groups.canonical(e.getKey()), e.getValue(), Integer::sum);
+        }
+        return new Ideal(weights, norm(weights.values()));
+    }
+
+    private static double norm(Iterable<Integer> values) {
         double square = 0;
-        for (int count : counts.values()) {
-            square += (double) count * count;
+        for (int value : values) {
+            square += (double) value * value;
         }
         return Math.sqrt(square);
     }
 
-    private static boolean eligible(FlexFoodRecipe recipe, ApplianceType type, Key liquid,
-                                    Map<Key, Integer> counts) {
-        if (recipe.cook() != type || recipe.norm() <= 0) {
-            return false;
-        }
-        if (!recipe.liquids().isEmpty() && (liquid == null || !recipe.liquids().contains(liquid))) {
-            return false;
-        }
-        for (Key ingredient : recipe.perfect().keySet()) {
-            if (!counts.containsKey(ingredient)) {
+    private static boolean hasAllRequired(View view, Ideal ideal) {
+        for (Key ingredient : ideal.weights().keySet()) {
+            if (!view.counts().containsKey(ingredient)) {
                 return false;
             }
         }
         return true;
     }
 
-    private static double cosine(FlexFoodRecipe recipe, Map<Key, Integer> counts, double actualNorm) {
+    private static double cosine(View view, Ideal ideal) {
         double dot = 0;
-        for (Map.Entry<Key, Integer> e : recipe.perfect().entrySet()) {
-            dot += (double) e.getValue() * counts.get(e.getKey());
+        for (Map.Entry<Key, Integer> e : ideal.weights().entrySet()) {
+            dot += (double) e.getValue() * view.counts().get(e.getKey());
         }
-        return dot / (actualNorm * recipe.norm());
+        return dot / (view.norm() * ideal.norm());
     }
 
-    private static int portions(FlexFoodRecipe recipe, Map<Key, Integer> counts) {
+    private static int portions(View view, Ideal ideal) {
         int portions = Integer.MAX_VALUE;
-        for (Map.Entry<Key, Integer> e : recipe.perfect().entrySet()) {
-            portions = Math.min(portions, counts.get(e.getKey()) / e.getValue());
+        for (Map.Entry<Key, Integer> e : ideal.weights().entrySet()) {
+            portions = Math.min(portions, view.counts().get(e.getKey()) / e.getValue());
         }
         return Math.max(1, portions);
     }
 
-    private static int requiredDeviation(FlexFoodRecipe recipe, Map<Key, Integer> counts, int portions) {
+    private static int requiredDeviation(View view, Ideal ideal, int portions) {
         int deviation = 0;
-        for (Map.Entry<Key, Integer> e : recipe.perfect().entrySet()) {
-            deviation += Math.abs(counts.get(e.getKey()) - e.getValue() * portions);
+        for (Map.Entry<Key, Integer> e : ideal.weights().entrySet()) {
+            deviation += Math.abs(view.counts().get(e.getKey()) - e.getValue() * portions);
         }
         return deviation;
     }
 
-    private static int extraIngredientCount(FlexFoodRecipe recipe, Map<Key, Integer> counts) {
+    private static int extraIngredientCount(View view, Ideal ideal) {
         int extras = 0;
-        for (Map.Entry<Key, Integer> e : counts.entrySet()) {
-            if (!recipe.perfect().containsKey(e.getKey())) {
+        for (Map.Entry<Key, Integer> e : view.counts().entrySet()) {
+            if (!ideal.weights().containsKey(e.getKey())) {
                 extras += e.getValue();
             }
         }

@@ -198,18 +198,19 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
         if (dipping ? controller.getOilCount() <= 0 : controller.getOilCount() >= maxOil) {
             return InteractionResult.PASS;
         }
+        // 先写铲子再动盆 换铲失败时不能扣掉油却不换铲
+        if (KitchenShovel.isLegacy(shovel)) {
+            if (!KitchenShovel.migrateLegacy(player, handOf(slot), shovel, shovelItem, shovelOilModel, dipping)) {
+                return InteractionResult.PASS;
+            }
+        } else {
+            KitchenShovel.setHasOil(shovel, dipping, shovelItem, shovelOilModel);
+            bukkitPlayer.getInventory().setItem(slot, ItemStackUtils.getBukkitStack(shovel));
+        }
         if (dipping) {
             controller.removeOil(1);
         } else {
             controller.addOil(1);
-        }
-        if (KitchenShovel.isLegacy(shovel)) {
-            InteractionHand hand = slot == EquipmentSlot.OFF_HAND
-                    ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-            KitchenShovel.migrateLegacy(player, hand, shovel, shovelItem, shovelOilModel, dipping);
-        } else {
-            KitchenShovel.setHasOil(shovel, dipping, shovelItem, shovelOilModel);
-            bukkitPlayer.getInventory().setItem(slot, ItemStackUtils.getBukkitStack(shovel));
         }
         playSound(world, pos, OIL_SOUND_KEY, DEFAULT_VOLUME, 0.8f);
         Hands.swing(bukkitPlayer, slot);
@@ -231,10 +232,12 @@ public class EnamelBasinBehavior extends BukkitBlockBehavior implements EntityBl
         if (item == null || item.getType() == Material.AIR) {
             return;
         }
-        InteractionHand hand = slot == EquipmentSlot.OFF_HAND
-                ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-        KitchenShovel.migrateLegacy(player, hand, BukkitItemManager.instance().wrap(item),
+        KitchenShovel.migrateLegacy(player, handOf(slot), BukkitItemManager.instance().wrap(item),
                 shovelItem, shovelOilModel, hasOil);
+    }
+
+    private static InteractionHand handOf(EquipmentSlot slot) {
+        return slot == EquipmentSlot.OFF_HAND ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
     }
 
     private boolean isCustomItem(ItemStack item, Key expectedKey) {

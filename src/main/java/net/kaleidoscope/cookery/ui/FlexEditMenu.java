@@ -3,7 +3,7 @@ import net.kaleidoscope.cookery.api.ui.MenuButton;
 
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
-import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.FoodGroups;
 import net.kaleidoscope.cookery.recipe.SoupBaseRegistry;
 import net.kaleidoscope.cookery.recipe.edit.FlexRecipeDraft;
 import net.kaleidoscope.cookery.recipe.edit.RecipeEditService;
@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 // 模糊食谱编辑页 perfect 同时声明必需食材和理想配比
 public final class FlexEditMenu {
@@ -54,7 +55,7 @@ public final class FlexEditMenu {
                 "#PPPPPPP#",
                 "#PPPPPPP#",
                 "#########",
-                "B###S###D");
+                "B#E#S#G#D");
         layout.addIngredient('#', Ingredient.simple(MenuIcons.filler(viewer)));
         layout.addIngredient('R', resultSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('T', idSlot(bukkitPlayer, viewer, draft));
@@ -63,6 +64,8 @@ public final class FlexEditMenu {
         layout.addIngredient('P', perfectSlots(bukkitPlayer, viewer, draft));
         layout.addIngredient('B', MenuIcons.back(viewer,
                 () -> RecipeListMenu.open(bukkitPlayer, draft.cook(), true)));
+        layout.addIngredient('E', equivalentSlot(bukkitPlayer, viewer, draft));
+        layout.addIngredient('G', seasoningSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('S', saveSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('D', deleteSlot(bukkitPlayer, viewer, draft));
 
@@ -152,6 +155,39 @@ public final class FlexEditMenu {
         });
     }
 
+    // 等效食物 开启后 perfect 里写的食材可以被同一等效标签内的任意食材顶替
+    private static GuiElement equivalentSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
+                                             FlexRecipeDraft draft) {
+        return toggleSlot(bukkitPlayer, viewer, draft, MenuButton.EQUIVALENT_FOODS, "等效食物",
+                draft.useEquivalentFoods(), FoodGroups.instance().equivalentTagCount(),
+                "同一等效标签内的食材可以互相顶替",
+                draft::useEquivalentFoods);
+    }
+
+    // 调味品 开启后调味品表里的东西只占位 不进配比 不算杂料 不影响品质
+    private static GuiElement seasoningSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
+                                            FlexRecipeDraft draft) {
+        return toggleSlot(bukkitPlayer, viewer, draft, MenuButton.SEASONINGS, "调味品",
+                draft.useSeasonings(), FoodGroups.instance().seasoningTagCount(),
+                "调味品只占一格 不影响品质",
+                draft::useSeasonings);
+    }
+
+    private static GuiElement toggleSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
+                                         FlexRecipeDraft draft, MenuButton button, String title,
+                                         boolean enabled, int tagCount, String explain,
+                                         Consumer<Boolean> setter) {
+        String state = enabled ? "已开启" : "已关闭";
+        String source = tagCount == 0 ? "配置里还没登记任何标签 开着也不生效" : "已登记 " + tagCount + " 个标签";
+        Item icon = MenuIcons.icon(button, viewer,
+                MenuIcons.text(title + " " + state, enabled ? NamedTextColor.GREEN : NamedTextColor.GRAY),
+                MenuIcons.lore(explain, source, "左键切换"));
+        return MenuIcons.button(icon, () -> {
+            setter.accept(!enabled);
+            open(bukkitPlayer, draft);
+        });
+    }
+
     // 汤底限定只对高汤锅有意义 炒锅没有液体这一维 恒空
     // 图标用列表里第一个汤底本身 写死水桶的话选了岩浆也还是显示水桶
     private static GuiElement liquidSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
@@ -218,7 +254,7 @@ public final class FlexEditMenu {
         List<DialogChoicePrompt.Choice> out = new ArrayList<>();
         for (Key key : registered) {
             // 原版物品有现成的翻译键 自定义物品没有 退回 id 的路径段
-        Material material = Material.matchMaterial(key.asString());
+            Material material = Material.matchMaterial(key.asString());
             out.add(material == null
                     ? new DialogChoicePrompt.Choice(key.value(), key.asString())
                     : DialogChoicePrompt.Choice.translated(

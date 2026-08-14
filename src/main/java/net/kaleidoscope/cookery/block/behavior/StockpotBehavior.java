@@ -78,6 +78,10 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
     public Key bowlItem = ItemKeys.BOWL;
     public Key recipeItemNoRecipe = ItemKeys.RECIPE_ITEM_NO_RECIPE;
     public Key recipeItemHasRecipe = ItemKeys.RECIPE_ITEM_HAS_RECIPE;
+    // 没配出菜的产物与它的盛出容器 容器写 minecraft:air 表示空手就能盛
+    // 原版谜之炖菜自带 use_remainder 吃完会自己退碗 别再登记进 dish_carrier 否则退两个
+    public Key failedResultItem = ItemKeys.SUSPICIOUS_STEW;
+    public Key failedResultCarrier = ItemKeys.BOWL;
 
     public StockpotBehavior(BlockDefinition blockDefinition) {
         super(blockDefinition);
@@ -493,6 +497,8 @@ public final class StockpotBehavior extends BukkitBlockBehavior implements Entit
             behavior.bowlItem = Key.of(BehaviorConfig.getString(section, behavior.bowlItem.asString(), "bowl_item", "bowl-item"));
             behavior.recipeItemNoRecipe = Key.of(BehaviorConfig.getString(section, behavior.recipeItemNoRecipe.asString(), "recipe_item_no_recipe", "recipe-item-no-recipe"));
             behavior.recipeItemHasRecipe = Key.of(BehaviorConfig.getString(section, behavior.recipeItemHasRecipe.asString(), "recipe_item_has_recipe", "recipe-item-has-recipe"));
+            behavior.failedResultItem = BehaviorConfig.getKey(section, behavior.failedResultItem, "failed_result_item", "failed-result-item");
+            behavior.failedResultCarrier = BehaviorConfig.getCarrier(section, behavior.failedResultCarrier, "failed_result_carrier", "failed-result-carrier");
             return behavior;
         }
     }

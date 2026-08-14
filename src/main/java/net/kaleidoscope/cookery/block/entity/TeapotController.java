@@ -16,7 +16,6 @@ import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.Localization;
-import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -341,7 +340,7 @@ public final class TeapotController extends BlockEntityController {
 
     private Item makeResult(TeapotRecipe recipe) {
         Item item = InventoryUtils.createOrEmpty(recipe.result());
-        if (item == null) {
+        if (ItemUtils.isEmpty(item)) {
             return Item.empty();
         }
         return item.copyWithCount(Math.max(1, recipe.resultCount()));

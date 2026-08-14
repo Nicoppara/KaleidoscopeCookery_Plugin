@@ -27,7 +27,6 @@ import net.kaleidoscope.cookery.item.ItemNames;
 import net.kaleidoscope.cookery.item.ItemIcons;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;

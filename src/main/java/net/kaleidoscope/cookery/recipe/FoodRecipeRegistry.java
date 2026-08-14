@@ -1,6 +1,5 @@
 package net.kaleidoscope.cookery.recipe;
 
-import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.util.AdventureHelper;
 import net.kaleidoscope.cookery.util.InventoryUtils;
@@ -229,14 +228,6 @@ public final class FoodRecipeRegistry {
         }
         rebuildAccurateIndex();
         return true;
-    }
-
-    public boolean removeFlex(Key id) {
-        boolean removed = flexRecipes.removeIf(r -> r.id().equals(id));
-        if (removed) {
-            DishCarriers.rebuild(flexRecipes);
-        }
-        return removed;
     }
 
     public boolean removeFlex(ApplianceType cook, Key id) {

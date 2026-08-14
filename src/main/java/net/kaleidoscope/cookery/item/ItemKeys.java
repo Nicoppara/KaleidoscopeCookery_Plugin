@@ -9,7 +9,10 @@ public final class ItemKeys {
     public static final String NAMESPACE = "kaleidoscopecookery";
 
     public static final Key KITCHEN_SHOVEL = Key.of("kaleidoscopecookery:kitchen_shovel_no_oil");
+    // 沾油态的 item_model CE 按物品 id 生成模型定义 所以删旧物品条目前必须留下同名模型
     public static final Key KITCHEN_SHOVEL_OIL_MODEL = Key.of("kaleidoscopecookery:kitchen_shovel_has_oil");
+    // 旧沾油锅铲物品 与上面的模型同名只是历史巧合 1.1.9 删
+    public static final Key KITCHEN_SHOVEL_LEGACY_OILED = KITCHEN_SHOVEL_OIL_MODEL;
     public static final Key OIL = Key.of("kaleidoscopecookery:oil");
     public static final Key OIL_POT = Key.of("kaleidoscopecookery:oil_pot");
     public static final Key OIL_POT_EMPTY = Key.of("kaleidoscopecookery:oil_pot_empty");
@@ -28,6 +31,7 @@ public final class ItemKeys {
 
     public static final Key DARK_CUISINE = Key.of("kaleidoscopecookery:dark_cuisine");
     public static final Key SUSPICIOUS_STIR_FRY = Key.of("kaleidoscopecookery:suspicious_stir_fry");
+    public static final Key SUSPICIOUS_STEW = Key.of("minecraft:suspicious_stew");
 
     public static final Key BOWL = Key.of("minecraft:bowl");
     public static final Key CHARCOAL = Key.of("minecraft:charcoal");

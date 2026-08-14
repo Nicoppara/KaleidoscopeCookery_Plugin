@@ -1,7 +1,9 @@
 package net.kaleidoscope.cookery.recipe.edit;
 
+import net.kaleidoscope.cookery.api.ItemTags;
 import net.kaleidoscope.cookery.recipe.AccurateFoodRecipe;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
+import net.kaleidoscope.cookery.recipe.FoodGroups;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe;
 import net.kaleidoscope.cookery.recipe.ChoppingMode;
@@ -101,44 +103,9 @@ public final class RecipeEditService {
             return CompletableFuture.completedFuture(error);
         }
         AccurateFoodRecipe recipe = draft.toRecipe();
-        Key oldId = draft.originalId();
-        Path file = resolveFile(draft.originalRecipe(), RecipeFileStore::defaultAccurateFile);
-        if (file == null) {
-            return CompletableFuture.completedFuture("找不到可写入的配方文件");
-        }
-        String oldNode = RecipeSourceIndex.instance().nodePath(draft.originalRecipe());
-        RecipeFileStore.SourceTarget oldTarget = RecipeSourceIndex.instance().target(draft.originalRecipe());
-        String nodePath = resolveNodePath(oldNode, RecipeFileStore.accurateSections(), recipe.id());
-        AccurateFoodRecipe old = draft.originalRecipe();
-        RecipeSourceIndex.Kind kind = RecipeSourceIndex.Kind.ACCURATE;
-        Map<String, Object> node = accurateNode(recipe);
-        return persistThenApply(recipe.id(), kind,
-                afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
-                () -> {
-                    Object replaced = RecipeSourceIndex.instance()
-                            .removeSource(kind, recipe.id(), file, nodePath);
-                    removeMenuRecipe(replaced);
-                    if (replaced != null) {
-                        removeRuntime(kind, recipe.id());
-                    }
-                    if (old != null) {
-                        FoodRecipeRegistry.instance().removeAccurate(oldId);
-                        FoodRecipeRegistry.instance().removeMenuAccurate(old);
-                        RecipeSourceIndex.instance().remove(old);
-                    }
-                    RecipeSourceIndex.instance().restore(kind, recipe.id(), file, nodePath);
-                    boolean duplicate = RecipeSourceIndex.instance()
-                            .hasOtherSource(kind, recipe.id(), file, nodePath);
-                    FoodRecipeRegistry.instance().registerMenuAccurate(recipe);
-                    RecipeSourceIndex.instance().put(kind, recipe.id(), file, nodePath, recipe, duplicate);
-                    if (!duplicate) {
-                        FoodRecipeRegistry.instance().registerAccurate(recipe);
-                        ApplianceFoodRegistry.instance().register(recipe.cook(), recipe.input());
-                    }
-                    if (old != null && !old.input().equals(recipe.input())) {
-                        dropInputIfUnused(old.cook(), old.input(), k -> accurateUses(old.cook(), k));
-                    }
-                });
+        return saveRecipe(recipe.id(), draft.originalId(), recipe, draft.originalRecipe(),
+                RecipeSourceIndex.Kind.ACCURATE, RecipeFileStore.accurateSections(),
+                RecipeFileStore::defaultAccurateFile, accurateNode(recipe));
     }
 
     public static CompletableFuture<String> saveFlex(FlexRecipeDraft draft) {
@@ -147,54 +114,29 @@ public final class RecipeEditService {
             return CompletableFuture.completedFuture(error);
         }
         FlexFoodRecipe recipe = draft.toRecipe();
-        Key oldId = draft.originalId();
-        String[] sections = RecipeFileStore.flexSections(recipe.cook());
-        Path file = resolveFile(draft.originalRecipe(), () -> RecipeFileStore.defaultFlexFile(recipe.cook()));
-        if (file == null) {
-            return CompletableFuture.completedFuture("找不到可写入的配方文件");
-        }
-        String oldNode = RecipeSourceIndex.instance().nodePath(draft.originalRecipe());
-        RecipeFileStore.SourceTarget oldTarget = RecipeSourceIndex.instance().target(draft.originalRecipe());
-        String nodePath = resolveNodePath(oldNode, sections, recipe.id());
         FlexFoodRecipe old = draft.originalRecipe();
         RecipeSourceIndex.Kind kind = recipe.cook() == ApplianceType.STOCKPOT
                 ? RecipeSourceIndex.Kind.STOCK_FLEX : RecipeSourceIndex.Kind.POT_FLEX;
+        String clash = findDirectionClash(recipe, old, kind);
+        if (clash != null) {
+            return CompletableFuture.completedFuture(clash);
+        }
+        return saveRecipe(recipe.id(), draft.originalId(), recipe, old,
+                kind, RecipeFileStore.flexSections(recipe.cook()),
+                () -> RecipeFileStore.defaultFlexFile(recipe.cook()), flexNode(draft));
+    }
+
+    // 余弦尺度无关 方向相同的两道菜会永远打平 落盘前先拦下来
+    // 本身就是重复来源的那条不算冲突 它压根不会进运行时注册表
+    private static String findDirectionClash(FlexFoodRecipe recipe, FlexFoodRecipe old,
+                                             RecipeSourceIndex.Kind kind) {
         boolean duplicate = RecipeSourceIndex.instance().recipes(kind, recipe.id()).stream()
                 .anyMatch(existing -> existing != old);
-        FlexFoodRecipe clash = duplicate ? null
-                : FoodRecipeRegistry.instance().findSameDirection(recipe, old);
-        if (clash != null) {
-            return CompletableFuture.completedFuture(
-                    "配比方向与 " + clash.id().asString() + " 相同 会永远打平");
+        if (duplicate) {
+            return null;
         }
-        Map<String, Object> node = flexNode(draft);
-        return persistThenApply(recipe.id(), kind,
-                afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
-                () -> {
-                    Object replaced = RecipeSourceIndex.instance()
-                            .removeSource(kind, recipe.id(), file, nodePath);
-                    removeMenuRecipe(replaced);
-                    if (replaced != null) {
-                        removeRuntime(kind, recipe.id());
-                    }
-                    if (old != null) {
-                        FoodRecipeRegistry.instance().removeFlex(oldId);
-                        FoodRecipeRegistry.instance().removeMenuFlex(old);
-                        RecipeSourceIndex.instance().remove(old);
-                    }
-                    RecipeSourceIndex.instance().restore(kind, recipe.id(), file, nodePath);
-                    boolean currentDuplicate = RecipeSourceIndex.instance()
-                            .hasOtherSource(kind, recipe.id(), file, nodePath);
-                    FoodRecipeRegistry.instance().registerMenuFlex(recipe);
-                    RecipeSourceIndex.instance()
-                            .put(kind, recipe.id(), file, nodePath, recipe, currentDuplicate);
-                    if (!currentDuplicate) {
-                        FoodRecipeRegistry.instance().registerFlex(recipe);
-                        for (Key ingredient : recipe.perfect().keySet()) {
-                            ApplianceFoodRegistry.instance().register(recipe.cook(), ingredient);
-                        }
-                    }
-                });
+        FlexFoodRecipe clash = FoodRecipeRegistry.instance().findSameDirection(recipe, old);
+        return clash == null ? null : "配比方向与 " + clash.id().asString() + " 相同 会永远打平";
     }
 
     public static String validate(ChoppingRecipeDraft draft) {
@@ -249,46 +191,9 @@ public final class RecipeEditService {
             return CompletableFuture.completedFuture(error);
         }
         ChoppingBoardRecipe recipe = draft.toRecipe();
-        Key oldId = draft.originalId();
-        Path file = resolveFile(draft.originalRecipe(), RecipeFileStore::defaultChoppingFile);
-        if (file == null) {
-            return CompletableFuture.completedFuture("找不到可写入的配方文件");
-        }
-        String oldNode = RecipeSourceIndex.instance().nodePath(draft.originalRecipe());
-        RecipeFileStore.SourceTarget oldTarget = RecipeSourceIndex.instance().target(draft.originalRecipe());
-        String nodePath = resolveNodePath(oldNode, RecipeFileStore.choppingSections(), recipe.id());
-        ChoppingBoardRecipe oldChopping = draft.originalRecipe();
-        RecipeSourceIndex.Kind kind = RecipeSourceIndex.Kind.CHOPPING;
-        Map<String, Object> node = choppingNode(draft);
-        return persistThenApply(recipe.id(), kind,
-                afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
-                () -> {
-                    Object replaced = RecipeSourceIndex.instance()
-                            .removeSource(kind, recipe.id(), file, nodePath);
-                    removeMenuRecipe(replaced);
-                    if (replaced != null) {
-                        removeRuntime(kind, recipe.id());
-                    }
-                    if (oldChopping != null) {
-                        FoodRecipeRegistry.instance().removeChopping(oldId);
-                        FoodRecipeRegistry.instance().removeMenuChopping(oldChopping);
-                        RecipeSourceIndex.instance().remove(oldChopping);
-                    }
-                    RecipeSourceIndex.instance().restore(kind, recipe.id(), file, nodePath);
-                    boolean duplicate = RecipeSourceIndex.instance()
-                            .hasOtherSource(kind, recipe.id(), file, nodePath);
-                    FoodRecipeRegistry.instance().registerMenuChopping(recipe);
-                    RecipeSourceIndex.instance().put(kind, recipe.id(), file, nodePath, recipe, duplicate);
-                    if (!duplicate) {
-                        FoodRecipeRegistry.instance().registerChopping(recipe);
-                        ApplianceFoodRegistry.instance()
-                                .register(ApplianceType.CHOPPING_BOARD, recipe.input());
-                    }
-                    if (oldChopping != null && !oldChopping.input().equals(recipe.input())) {
-                        dropInputIfUnused(ApplianceType.CHOPPING_BOARD, oldChopping.input(),
-                                RecipeEditService::choppingUses);
-                    }
-                });
+        return saveRecipe(recipe.id(), draft.originalId(), recipe, draft.originalRecipe(),
+                RecipeSourceIndex.Kind.CHOPPING, RecipeFileStore.choppingSections(),
+                RecipeFileStore::defaultChoppingFile, choppingNode(draft));
     }
 
     public static CompletableFuture<String> saveTeapot(TeapotRecipeDraft draft) {
@@ -297,43 +202,48 @@ public final class RecipeEditService {
             return CompletableFuture.completedFuture(error);
         }
         TeapotRecipe recipe = draft.toRecipe();
-        Key oldId = draft.originalId();
-        Path file = resolveFile(draft.originalRecipe(), RecipeFileStore::defaultTeapotFile);
+        return saveRecipe(recipe.id(), draft.originalId(), recipe, draft.originalRecipe(),
+                RecipeSourceIndex.Kind.TEAPOT, RecipeFileStore.teapotSections(),
+                RecipeFileStore::defaultTeapotFile, teapotNode(draft));
+    }
+
+    // 四类配方保存走同一条路 差异只在 kind sections 默认文件与写盘节点
+    // 运行时的增删都按 kind 与实际类型分派 见 removeRuntime registerRuntime removeMenuRecipe
+    // old 为空表示新建 此时索引里查不到旧来源 各步都会自然跳过
+    private static CompletableFuture<String> saveRecipe(Key id, Key oldId, Object recipe, Object old,
+                                                        RecipeSourceIndex.Kind kind, String[] sections,
+                                                        Supplier<Path> defaultFile,
+                                                        Map<String, Object> node) {
+        Path file = resolveFile(old, defaultFile);
         if (file == null) {
             return CompletableFuture.completedFuture("找不到可写入的配方文件");
         }
-        String oldNode = RecipeSourceIndex.instance().nodePath(draft.originalRecipe());
-        RecipeFileStore.SourceTarget oldTarget = RecipeSourceIndex.instance().target(draft.originalRecipe());
-        String nodePath = resolveNodePath(oldNode, RecipeFileStore.teapotSections(), recipe.id());
-        TeapotRecipe oldTeapot = draft.originalRecipe();
-        RecipeSourceIndex.Kind kind = RecipeSourceIndex.Kind.TEAPOT;
-        Map<String, Object> node = teapotNode(draft);
-        return persistThenApply(recipe.id(), kind,
+        RecipeSourceIndex index = RecipeSourceIndex.instance();
+        RecipeFileStore.SourceTarget oldTarget = index.target(old);
+        String nodePath = resolveNodePath(index.nodePath(old), sections, id);
+        return persistThenApply(id, kind,
                 afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
                 () -> {
-                    Object replaced = RecipeSourceIndex.instance()
-                            .removeSource(kind, recipe.id(), file, nodePath);
+                    Object replaced = index.removeSource(kind, id, file, nodePath);
                     removeMenuRecipe(replaced);
                     if (replaced != null) {
-                        removeRuntime(kind, recipe.id());
+                        removeRuntime(kind, id);
                     }
-                    if (oldTeapot != null) {
-                        FoodRecipeRegistry.instance().removeTeapot(oldId);
-                        FoodRecipeRegistry.instance().removeMenuTeapot(oldTeapot);
-                        RecipeSourceIndex.instance().remove(oldTeapot);
+                    if (old != null) {
+                        removeRuntime(kind, oldId);
+                        removeMenuRecipe(old);
+                        index.remove(old);
                     }
-                    RecipeSourceIndex.instance().restore(kind, recipe.id(), file, nodePath);
-                    boolean duplicate = RecipeSourceIndex.instance()
-                            .hasOtherSource(kind, recipe.id(), file, nodePath);
-                    FoodRecipeRegistry.instance().registerMenuTeapot(recipe);
-                    RecipeSourceIndex.instance().put(kind, recipe.id(), file, nodePath, recipe, duplicate);
+                    index.restore(kind, id, file, nodePath);
+                    boolean duplicate = index.hasOtherSource(kind, id, file, nodePath);
+                    registerMenuRecipe(recipe);
+                    index.put(kind, id, file, nodePath, recipe, duplicate);
                     if (!duplicate) {
-                        FoodRecipeRegistry.instance().registerTeapot(recipe);
-                        ApplianceFoodRegistry.instance().register(ApplianceType.TEAPOT, recipe.input());
+                        registerRuntime(recipe, kind);
                     }
-                    if (oldTeapot != null && !oldTeapot.input().equals(recipe.input())) {
-                        dropInputIfUnused(ApplianceType.TEAPOT, oldTeapot.input(),
-                                RecipeEditService::teapotUses);
+                    // 放在重新登记之后 原料没变时新配方已占着它 stillUsed 恒真 不会误摘
+                    if (old != null) {
+                        dropInputIfUnused(old);
                     }
                 });
     }
@@ -442,13 +352,19 @@ public final class RecipeEditService {
             registerRuntime(remaining.getFirst(), kind);
         }
 
-        if (selected instanceof AccurateFoodRecipe accurate) {
-            dropInputIfUnused(accurate.cook(), accurate.input(),
-                    input -> accurateUses(accurate.cook(), input));
-        } else if (selected instanceof ChoppingBoardRecipe chopping) {
-            dropInputIfUnused(ApplianceType.CHOPPING_BOARD, chopping.input(), RecipeEditService::choppingUses);
-        } else if (selected instanceof TeapotRecipe teapot) {
-            dropInputIfUnused(ApplianceType.TEAPOT, teapot.input(), RecipeEditService::teapotUses);
+        dropInputIfUnused(selected);
+    }
+
+    private static void registerMenuRecipe(Object recipe) {
+        FoodRecipeRegistry registry = FoodRecipeRegistry.instance();
+        if (recipe instanceof AccurateFoodRecipe accurate) {
+            registry.registerMenuAccurate(accurate);
+        } else if (recipe instanceof FlexFoodRecipe flex) {
+            registry.registerMenuFlex(flex);
+        } else if (recipe instanceof ChoppingBoardRecipe chopping) {
+            registry.registerMenuChopping(chopping);
+        } else if (recipe instanceof TeapotRecipe teapot) {
+            registry.registerMenuTeapot(teapot);
         }
     }
 
@@ -504,6 +420,18 @@ public final class RecipeEditService {
                 registry.registerTeapot(recipe);
                 ApplianceFoodRegistry.instance().register(ApplianceType.TEAPOT, recipe.input());
             }
+        }
+    }
+
+    // 模糊配方没有单一原料这一维 它的白名单是从 perfect 整体反推的 这里不参与
+    private static void dropInputIfUnused(Object recipe) {
+        if (recipe instanceof AccurateFoodRecipe accurate) {
+            dropInputIfUnused(accurate.cook(), accurate.input(),
+                    input -> accurateUses(accurate.cook(), input));
+        } else if (recipe instanceof ChoppingBoardRecipe chopping) {
+            dropInputIfUnused(ApplianceType.CHOPPING_BOARD, chopping.input(), RecipeEditService::choppingUses);
+        } else if (recipe instanceof TeapotRecipe teapot) {
+            dropInputIfUnused(ApplianceType.TEAPOT, teapot.input(), RecipeEditService::teapotUses);
         }
     }
 
@@ -597,6 +525,58 @@ public final class RecipeEditService {
         });
     }
 
+    // 磁盘写成功才动运行时 失败则两边都保持原状
+    public static CompletableFuture<String> saveFoodGroup(Key tag, List<Key> members, FoodGroups.Kind kind) {
+        String error = validateFoodGroup(tag, members);
+        if (error != null) {
+            return CompletableFuture.completedFuture(error);
+        }
+        List<Key> snapshot = List.copyOf(members);
+        CompletableFuture<String> result = new CompletableFuture<>();
+        runAsync(() -> {
+            try {
+                RecipeFileStore.writeFoodGroup(tag, snapshot, kind);
+            } catch (Exception e) {
+                RecipeFileStore.logFailure("保存食材分组", tag, e);
+                result.complete(SAVE_FAILED);
+                return;
+            }
+            // 解析器是 add 合并语义 这里必须整体替换 否则删掉的成员残留到下次重载
+            ItemTags.instance().register(tag, snapshot.stream().map(Key::asString).toList());
+            FoodGroups.instance().put(tag, kind);
+            result.complete(null);
+        });
+        return result;
+    }
+
+    public static CompletableFuture<Boolean> deleteFoodGroup(Key tag) {
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        runAsync(() -> {
+            try {
+                RecipeFileStore.deleteFoodGroup(tag);
+            } catch (Exception e) {
+                RecipeFileStore.logFailure("删除食材分组", tag, e);
+                result.complete(false);
+                return;
+            }
+            FoodGroups.instance().remove(tag);
+            ItemTags.instance().remove(tag);
+            result.complete(true);
+        });
+        return result;
+    }
+
+    // 标签 id 会被当成 YamlConfiguration 的二级路径 带点号会写坏文件
+    public static String validateFoodGroup(Key tag, List<Key> members) {
+        if (tag.value().indexOf('.') >= 0 || tag.namespace().indexOf('.') >= 0) {
+            return "标签 id 不能包含点号";
+        }
+        if (members.isEmpty()) {
+            return "分组里至少要有一个物品";
+        }
+        return null;
+    }
+
     private static void runAsync(Runnable task) {
         CraftEngine.instance().scheduler().executeAsync(task);
     }
@@ -681,6 +661,13 @@ public final class RecipeEditService {
         // 省略即空手盛出 不写空值免得配置里多一行没意义的 carrier:
         if (draft.carrier() != null) {
             node.put("carrier", draft.carrier().asString());
+        }
+        // 两张组表默认生效 只写关掉的那一项 免得每条配方都多两行恒真的开关
+        if (!draft.useEquivalentFoods()) {
+            node.put("use_equivalent_foods", false);
+        }
+        if (!draft.useSeasonings()) {
+            node.put("use_seasonings", false);
         }
         return node;
     }

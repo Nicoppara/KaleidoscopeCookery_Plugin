@@ -108,7 +108,7 @@ public final class FruitBasketController extends BlockEntityController {
         World world = (World) super.blockEntity.world.world().platformWorld();
         this.indexedPosition = new BasketPosition(
                 super.blockEntity.pos.x, super.blockEntity.pos.y, super.blockEntity.pos.z);
-        INDEX.register(this.indexedPosition, world,
+        INDEX.register(this.indexedPosition, super.blockEntity::isValid, world,
                 this.indexedPosition.x, this.indexedPosition.z, SEARCH_RADIUS);
         Direction facing = BlockStates.value(
                 super.blockEntity.blockState,

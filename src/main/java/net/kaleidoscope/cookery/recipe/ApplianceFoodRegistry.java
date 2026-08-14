@@ -27,9 +27,34 @@ public final class ApplianceFoodRegistry {
         register(type, Key.of(key));
     }
 
+    // 白名单从各配方 perfect 反推 调味品与等效替身反推不到 但都必须能下锅
     public boolean isAllowed(ApplianceType type, Key key) {
         Set<Key> set = allowed.get(type);
-        return set != null && set.contains(key);
+        if (set != null && set.contains(key)) {
+            return true;
+        }
+        if (!type.usesFlexRecipes()) {
+            return false;
+        }
+        FoodGroups groups = FoodGroups.instance();
+        return groups.isSeasoning(key) || hasEquivalentAllowed(set, groups, key);
+    }
+
+    // 同组里有一个进了白名单整组都能下锅 只在该食材属于某个等效组时才扫
+    private static boolean hasEquivalentAllowed(Set<Key> allowed, FoodGroups groups, Key key) {
+        if (allowed == null || allowed.isEmpty()) {
+            return false;
+        }
+        Key canonical = groups.canonical(key);
+        if (canonical.equals(key)) {
+            return false;
+        }
+        for (Key candidate : allowed) {
+            if (canonical.equals(groups.canonical(candidate))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean isAllowed(ApplianceType type, String key) {

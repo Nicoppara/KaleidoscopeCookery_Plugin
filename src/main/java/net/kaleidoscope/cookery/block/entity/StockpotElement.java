@@ -9,6 +9,7 @@ import net.momirealms.craftengine.bukkit.util.RegistryUtils;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.MiscUtils;
 import net.momirealms.craftengine.core.world.WorldPosition;
@@ -198,7 +199,7 @@ public final class StockpotElement implements BlockEntityElement {
         Key model = currentLiquidModel();
         if (model == null) return null;
         Item item = InventoryUtils.createOrEmpty(model, player);
-        if (item == null) return null;
+        if (ItemUtils.isEmpty(item)) return null;
         item = BukkitItemManager.instance().s2c(item, player).orElse(item);
 
         // interpolation 5 是盛出时液面下降的一次性平滑 不是连续动画 不受动画视距 gate

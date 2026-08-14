@@ -112,6 +112,39 @@ public final class ItemTags {
         return matches(tag, item, 0);
     }
 
+    /**
+     * Tests membership by item id alone, for callers that only carry ids.
+     * Unlike {@link #matches(Key, Item)} there is no vanilla-material fallback,
+     * so a tag listing {@code minecraft:bowl} does not capture a custom item
+     * that merely uses a bowl as its base material.
+     *
+     * @param tag the tag key, without the leading {@code #}
+     * @param itemId the item id, may be {@code null}
+     * @return {@code true} if the id is a member of the tag
+     */
+    public boolean matchesId(Key tag, Key itemId) {
+        return matchesId(tag, itemId, 0);
+    }
+
+    private boolean matchesId(Key tag, Key itemId, int depth) {
+        if (itemId == null || depth > MAX_TAG_DEPTH) {
+            return false;
+        }
+        Tag entry = this.tags.get(tag);
+        if (entry == null) {
+            return false;
+        }
+        if (entry.containsId(itemId.asString())) {
+            return true;
+        }
+        for (Key nested : entry.nestedTags()) {
+            if (matchesId(nested, itemId, depth + 1)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean matches(Key tag, Item item, int depth) {
         if (item == null || item.isEmpty() || depth > MAX_TAG_DEPTH) {
             return false;
@@ -172,6 +205,10 @@ public final class ItemTags {
             List<String> all = new ArrayList<>(first.rawMembers());
             all.addAll(second.rawMembers());
             return of(all);
+        }
+
+        boolean containsId(String id) {
+            return this.registryIds.contains(id) || this.craftEngineIds.contains(id);
         }
 
         boolean matchesDirectly(Item item) {

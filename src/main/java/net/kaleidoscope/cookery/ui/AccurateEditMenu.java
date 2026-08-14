@@ -3,7 +3,6 @@ import net.kaleidoscope.cookery.api.ui.MenuButton;
 
 import net.kaleidoscope.cookery.recipe.AccurateFoodRecipe;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
-import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.WeightedResult;
 import net.kaleidoscope.cookery.recipe.edit.AccurateRecipeDraft;
 import net.kaleidoscope.cookery.recipe.edit.RecipeEditService;
