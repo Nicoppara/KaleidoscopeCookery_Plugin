@@ -147,11 +147,6 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
     }
 
     private InteractionResult handleExtinguish(UseOnContext context, ImmutableBlockState state, Player player, InteractionHand hand) {
-        Item shovel = player.getItemInHand(hand);
-        if (KitchenShovel.is(shovel, kitchenShovelItem)
-                && KitchenShovel.hasOil(shovel, kitchenShovelOilModel)) {
-            KitchenShovel.setHasOil(shovel, false, kitchenShovelItem, kitchenShovelOilModel);
-        }
         ImmutableBlockState newState = state.with(litProperty, false);
         LevelWriterProxy.INSTANCE.setBlock(
                 context.getLevel().minecraftWorld(),
@@ -164,7 +159,6 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
                 EXTINGUISH_SOUND,
                 SOUND_VOLUME, SOUND_PITCH
         );
-        KitchenShovel.migrateLegacy(player, hand, shovel, kitchenShovelItem, kitchenShovelOilModel, false);
         player.swingHand(hand);
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
@@ -241,7 +235,9 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
                 return true;
             }
         }
-        return KitchenShovel.is(item, kitchenShovelItem);
+        // 沾了油的锅铲拍不灭火
+        return KitchenShovel.is(item, kitchenShovelItem)
+                && !KitchenShovel.hasOil(item, kitchenShovelOilModel);
     }
 
     private static class Factory implements BlockBehaviorFactory<StoveBehavior> {
@@ -254,6 +250,7 @@ public class StoveBehavior extends BukkitBlockBehavior implements EntityBlock {
             // facing 用于决定火焰贴在哪一面 可能不存在 缺失时火焰落在中心
             behavior.facingProperty = BlockBehaviorFactory.getOptionalProperty(block, "facing", Direction.class);
             behavior.kitchenShovelItem = Key.of(BehaviorConfig.getString(section, behavior.kitchenShovelItem.asString(), "extinguish_kitchen_shovel_item", "extinguish-kitchen-shovel-item"));
+            behavior.kitchenShovelOilModel = Key.of(BehaviorConfig.getString(section, behavior.kitchenShovelOilModel.asString(), "shovel_oil_model", "shovel-oil-model"));
             behavior.particleInterval = BehaviorConfig.getInt(section, behavior.particleInterval, "particle_interval", "particle-interval");
             behavior.particleCount = BehaviorConfig.getInt(section, behavior.particleCount, "particle_count", "particle-count");
             return behavior;

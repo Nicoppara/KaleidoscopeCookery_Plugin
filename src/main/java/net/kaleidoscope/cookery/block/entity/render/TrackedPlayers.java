@@ -23,6 +23,7 @@ public final class TrackedPlayers {
         }
     }
 
+    // 先快照再回调 回调里可能触发追踪集合变更
     public static void forEach(Iterable<Player> tracked, Consumer<Player> action) {
         List<Player> players = new ArrayList<>();
         tracked.forEach(players::add);

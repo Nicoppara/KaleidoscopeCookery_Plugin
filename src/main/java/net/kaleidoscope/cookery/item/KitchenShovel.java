@@ -14,13 +14,11 @@ public final class KitchenShovel {
     private KitchenShovel() {}
 
     public static boolean is(Item item, Key shovelItem) {
-        return ItemMatch.is(item, shovelItem)
-                || shovelItem.equals(ItemKeys.KITCHEN_SHOVEL)
-                && isLegacy(item);
+        return ItemMatch.is(item, shovelItem) || isLegacy(item);
     }
 
     public static boolean isLegacy(Item item) {
-        return ItemMatch.is(item, ItemKeys.KITCHEN_SHOVEL_OIL_MODEL);
+        return ItemMatch.is(item, ItemKeys.KITCHEN_SHOVEL_LEGACY_OILED);
     }
 
     public static boolean hasOil(Item item, Key oilModel) {
@@ -46,16 +44,19 @@ public final class KitchenShovel {
         }
     }
 
-    // 旧沾油锅铲兼容，1.1.9 删除
-    public static void migrateLegacy(Player player, InteractionHand hand, Item item,
-                                     Key shovelItem, Key oilModel, boolean hasOil) {
+    // 旧沾油锅铲兼容 1.1.9 删除
+    // 返回 false 表示该换铲但 shovelItem 无效 调用方不能继续扣料
+    public static boolean migrateLegacy(Player player, InteractionHand hand, Item item,
+                                        Key shovelItem, Key oilModel, boolean hasOil) {
         if (!isLegacy(item)) {
-            return;
+            return true;
         }
         Item shovel = InventoryUtils.createOrEmpty(shovelItem);
-        if (!ItemUtils.isEmpty(shovel)) {
-            setHasOil(shovel, hasOil, shovelItem, oilModel);
-            player.setItemInHand(hand, shovel);
+        if (ItemUtils.isEmpty(shovel)) {
+            return false;
         }
+        setHasOil(shovel, hasOil, shovelItem, oilModel);
+        player.setItemInHand(hand, shovel);
+        return true;
     }
 }

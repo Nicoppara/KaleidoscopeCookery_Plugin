@@ -3,15 +3,12 @@ import net.kaleidoscope.cookery.util.FoliaUtil;
 
 import net.kaleidoscope.cookery.block.behavior.StockpotBehavior;
 
-import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
-import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.config.Config;
@@ -261,8 +258,8 @@ public class StockpotController extends BlockEntityController {
                 this.resultCarrier = fr.carrier();
                 servings = Math.max(1, fr.count());
             } else {
-                this.result = InventoryUtils.createOrEmpty(ItemKeys.SUSPICIOUS_STIR_FRY).copyWithCount(1);
-                this.resultCarrier = null;
+                this.result = InventoryUtils.createOrEmpty(behavior.failedResultItem).copyWithCount(1);
+                this.resultCarrier = this.result.isEmpty() ? null : behavior.failedResultCarrier;
                 servings = 1;
             }
             servings = Math.min(servings, MAX_INGREDIENTS);

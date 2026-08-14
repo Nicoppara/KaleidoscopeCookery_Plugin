@@ -7,6 +7,7 @@ import net.kaleidoscope.cookery.api.ui.RecipeMenuStyle;
 
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
+import net.kaleidoscope.cookery.recipe.FoodGroups;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.SoupBaseRegistry;
 import net.kaleidoscope.cookery.recipe.edit.AccurateRecipeDraft;
@@ -82,7 +83,7 @@ public final class RecipeMenus {
         GuiLayout layout = new GuiLayout(
                 "#########",
                 "#ABCDEFG#",
-                "####L####");
+                "###L#Z###");
         layout.addIngredient('#', Ingredient.simple(MenuIcons.filler(viewer)));
         char slot = 'A';
         for (ApplianceType cook : SUPPORTED) {
@@ -92,9 +93,12 @@ public final class RecipeMenus {
         while (slot <= 'G') {
             layout.addIngredient(slot++, Ingredient.simple(MenuIcons.filler(viewer)));
         }
-        // 汤底表是全局注册表 不属于任何一条配方 只在编辑模式露出来
+        // 汤底表与食材分组都是全局注册表 不属于任何一条配方 只在编辑模式露出来
         layout.addIngredient('L', Ingredient.simple(editable
                 ? soupBaseButton(bukkitPlayer, viewer)
+                : MenuIcons.filler(viewer)));
+        layout.addIngredient('Z', Ingredient.simple(editable
+                ? foodGroupButton(bukkitPlayer, viewer)
                 : MenuIcons.filler(viewer)));
         Gui gui = BasicGuiImpl.builder()
                 .layout(layout)
@@ -115,6 +119,19 @@ public final class RecipeMenus {
                                 "决定高汤锅能烧什么 以及灶口画成什么液面",
                                 "左键进入编辑")),
                 () -> SoupBaseMenu.open(bukkitPlayer));
+    }
+
+    // 食材分组入口 等效食材与调味品 只影响炒锅与高汤锅的模糊匹配
+    private static GuiElement foodGroupButton(org.bukkit.entity.Player bukkitPlayer, Player viewer) {
+        FoodGroups groups = FoodGroups.instance();
+        return MenuIcons.button(
+                MenuIcons.icon(MenuButton.MODE, viewer,
+                        MenuIcons.text("食材分组", NamedTextColor.AQUA),
+                        MenuIcons.lore("等效食材 " + groups.equivalentTagCount() + " 组"
+                                        + " 调味品 " + groups.seasoningTagCount() + " 组",
+                                "等效食材同组互相顶替 调味品只占位不影响品质",
+                                "左键进入编辑")),
+                () -> FoodGroupMenu.open(bukkitPlayer));
     }
 
     private static GuiElement applianceButton(

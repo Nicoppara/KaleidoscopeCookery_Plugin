@@ -8,7 +8,6 @@ import net.kaleidoscope.cookery.recipe.edit.RecipeEditService;
 import net.kaleidoscope.cookery.ui.input.MenuInput;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.plugin.gui.Gui;
 import net.momirealms.craftengine.core.plugin.gui.GuiElement;
 import net.momirealms.craftengine.core.plugin.gui.GuiLayout;
 import net.momirealms.craftengine.core.plugin.gui.Ingredient;

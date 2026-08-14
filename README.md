@@ -269,7 +269,7 @@ behaviors:
 | 标签 | 用在哪 |
 | ---- | ------ |
 | `kaleidoscopecookery:kitchen_knife` | 砧板认哪些东西算菜刀 |
-| `kaleidoscopecookery:kitchen_shovel_no_oil` | 锅铲 |
+| `kaleidoscopecookery:kitchen_shovel` | 锅铲 |
 | `kaleidoscopecookery:oil_pot` | 油壶 |
 | `kaleidoscopecookery:range_harvest_tool` | 哪些工具走范围收割、因而不触发右键单点收割 |
 | `kaleidoscopecookery:kitchenware` | 以上全部 |
@@ -829,12 +829,15 @@ KaleidoscopeCookeryAPI.recipeMenuHooks().provider(new RecipeMenuProvider() {
 | `chopping_board_raws` | 砧板配方 | `configuration/recipe/chopping_board.yml` 等 |
 | `teapot_liquid` / `tea_cup` / `teapot_result` | 茶壶液体、杯中展示、茶配方 | `configuration/recipe/teapot.yml` |
 | `dish_carrier` | 吃完退还什么容器 | `configuration/dish/dish_carrier.yml` |
+| `equivalent_foods` / `seasonings` | 等效食物表与调味品表 | `configuration/tag/food_groups.yml` |
 
 ---
 
 ## 🥣 退还容器 `dish_carrier`
 
 吃完一道菜退还碗、茶杯、竹筒这类容器。物品菜与家具菜两条进食路径查同一张表，不往物品里存 NBT，所以改完 `/ce reload all` 老物品也跟着走。
+
+容器**掉在吃完的位置**，不直接进背包：手持物品吃完掉在玩家脚下，摆盘家具菜掉在家具处——和同一段 `eat_functions` 里 `drop_loot` 掉 `eaten_pools` 的位置一致，所以碗会和骨头、竹子这类副产物落在一起。
 
 炒锅与高汤锅的模糊配方自带 `carrier`，会自动进表，**不用在这里重复写**。合成、蒸笼、茶壶这三条路没有 `carrier` 字段，只能在这里补：
 
@@ -847,6 +850,8 @@ dish_carrier:
 ```
 
 键是成品 id，值是退还的物品 id，两边都支持原版与 CraftEngine 自定义物品。同一个成品在这里和模糊配方里都写了的话，**以这里为准**。
+
+> ⚠️ 自带 `use_remainder` 的原版物品（谜之炖菜等）别写进来，原版已经会退一个，写了就退两个。炒锅的失败与烧糊产物（谜之炒菜、黑暗料理）是自定义物品，没有这层，需要在这里补。
 
 ---
 
@@ -871,9 +876,17 @@ behaviors:
     cook_done_time: 200          # 出锅后多少 tick 进入烧焦阶段（-1 = 永不烧焦）
     burnt_to_charcoal_time: 400  # 烧焦后多少 tick 变成木炭
     animation_view_distance: 1   # 翻炒动画发包视距（区块）
+    stir_fry_damage_chance: 0.25 # 每次翻炒磨损锅铲的概率（0 = 不磨损，创造模式恒不磨损）
+    stir_fry_damage: 1           # 磨损时扣多少点耐久
+    # 配不出菜时的产物，以及盛它要拿什么。容器写 minecraft:air 表示空手就能盛
+    failed_result_item: kaleidoscopecookery:suspicious_stir_fry
+    failed_result_carrier: minecraft:bowl
+    # 出锅后过了盛出窗口烧糊的产物
+    burnt_result_item: kaleidoscopecookery:dark_cuisine
+    burnt_result_carrier: minecraft:bowl
     oil_item: kaleidoscopecookery:oil
-    shovel_item: kaleidoscopecookery:kitchen_shovel_no_oil
-    shovel_oil_model: kaleidoscopecookery:kitchen_shovel_has_oil
+    shovel_item: kaleidoscopecookery:kitchen_shovel_no_oil          # 锅铲物品，油状态存在物品上
+    shovel_oil_model: kaleidoscopecookery:kitchen_shovel_has_oil    # 沾油时切到的 item_model
     oil_pot_item: kaleidoscopecookery:oil_pot
     oil_pot_empty_item: kaleidoscopecookery:oil_pot_empty
     recipe_item_no_recipe: kaleidoscopecookery:recipe_item_no_recipe
@@ -888,7 +901,8 @@ behaviors:
 ```yaml
 behaviors:
   - type: kaleidoscopecookery:stove
-    extinguish_kitchen_shovel_item: kaleidoscopecookery:kitchen_shovel_no_oil  # 原版各种铲子始终可熄火
+    extinguish_kitchen_shovel_item: kaleidoscopecookery:kitchen_shovel_no_oil  # 原版各种铲子始终可熄火，沾了油的锅铲不能
+    shovel_oil_model: kaleidoscopecookery:kitchen_shovel_has_oil               # 判断锅铲沾没沾油，与锅保持一致
     particle_interval: 20        # 每隔多少 tick 出一次火焰/烟雾 越大发包越少
     particle_count: 3            # 一个包内塞几颗粒子 越大越密但不增发包
 ```
@@ -906,6 +920,10 @@ behaviors:
     shovel_oil_model: kaleidoscopecookery:kitchen_shovel_has_oil
 ```
 
+> 锅铲已合并成一个物品，沾没沾油存在物品上，靠切 `item_model` 换外观。
+> `shovel_oil_model` 指向的模型由 `kitchen_shovel_has_oil` 这个物品定义生成，
+> 将来删除旧沾油锅铲时必须保留一个同名的模型条目，否则沾油铲会变成缺失模型。
+
 ### 🍲 高汤锅 `kaleidoscopecookery:stockpot`
 
 盖 / 揭锅盖、加 / 舀汤底、加 / 取食材、盛出成品。
@@ -921,7 +939,12 @@ behaviors:
     bowl_item: minecraft:bowl
     recipe_item_no_recipe: kaleidoscopecookery:recipe_item_no_recipe
     recipe_item_has_recipe: kaleidoscopecookery:recipe_item_has_recipe
+    # 配不出菜时的产物，以及盛它要拿什么。容器写 minecraft:air 表示空手就能盛
+    failed_result_item: minecraft:suspicious_stew
+    failed_result_carrier: minecraft:bowl
 ```
+
+> 高汤锅的失败产物默认是原版**谜之炖菜**，它自带 `use_remainder`，吃完原版会自己退一个碗，所以**别**再写进 `dish_carrier`。换成自定义物品的话就需要在那边补一条。
 
 ### 🫔 蒸笼 `kaleidoscopecookery:steamer`
 
@@ -1309,6 +1332,8 @@ stock_flex_foods:
 | `perfect` | ✅ | 理想配比，`物品id: 份量`。份量只有**相对比例**有意义，`{牛肉:3, 番茄:4}` 与 `{牛肉:6, 番茄:8}` 是同一个方向 |
 | `carrier` | | 盛具。省略或写 `minecraft:air` = 空手就能盛出 |
 | `liquid` | | 仅高汤锅。当前汤底桶 id 须命中列表里的其一，不写表示任何汤底都行 |
+| `use_equivalent_foods` | | 这道菜认不认[等效食物表](#-等效食物表与调味品表)，默认 `true` |
+| `use_seasonings` | | 这道菜认不认[调味品表](#-等效食物表与调味品表)，默认 `true` |
 
 `perfect` 也可以写成字符串列表（老写法，等价）：
 
@@ -1339,6 +1364,56 @@ stock_flex_foods:
 > 倍率作用于饱食度、饱和度与效果时长。物品自己声明的食物属性是**上限**，正常发挥只拿 `STANDARD` 的 0.6 —— 想让某道菜吃起来更实在，调物品的 `minecraft:food` 组件，别去调倍率。
 
 > ⚠️ **两道菜的理想配比方向不能相同。** 余弦是尺度无关的，`{牛肉:1}` 和 `{牛肉:2}` 方向完全一致，会永远打平。加载期就会检出来并报错跳过后注册的那条。高汤锅里汤底不重叠的两条配方不算冲突（水底饺子和岩浆底生煎馒头就是同一个向量，但永远碰不到一起）。
+
+### 🧂 等效食物表与调味品表 `equivalent_foods` / `seasonings`
+
+两张表都只列 `item_tags` 里的标签，成员由标签自己定义。模糊配方默认两张都认，单条配方可以关掉。**只对炒锅和高汤锅有意义**，精准配方是一进一出，不走这套。
+
+```yaml
+# configuration/tag/food_groups.yml
+item_tags:
+  kaleidoscopecookery:equivalent_red_meat:
+    - minecraft:beef
+    - minecraft:porkchop
+    - minecraft:mutton
+  kaleidoscopecookery:seasoning:
+    - minecraft:sugar
+
+equivalent_foods:            # 同一标签内的食材互相顶替
+  tags:
+    - "#kaleidoscopecookery:equivalent_red_meat"
+seasonings:                  # 只占位 不参与任何计算
+  tags:
+    - "#kaleidoscopecookery:seasoning"
+```
+
+> `tags:` 这层**不能省**。CraftEngine 只把值是映射的顶层键分发给解析器，顶层直接写成列表会被**静默跳过**——不报错也不加载。子键叫什么不重要，同一段下所有子键的列表会并起来。
+
+**等效食物**：配方 `perfect` 里照常写具体物品。开着这个开关时，写牛肉的菜用猪肉羊肉一样能做出来，且同组食材的数量**合并计算**——牛肉 1 块加猪肉 1 块，对只要 2 份红肉的配方来说就是刚好齐了。一个食材落在多个等效标签里时取 `equivalent_foods` 里**先声明**的那个。
+
+**调味品**：加进锅里只占一格，不进理想配比、不算杂料、不影响品质，也不参与选菜。
+
+两类食材都**不需要**手动加进[下锅白名单](#-下锅白名单-pot_food_raw--stock_food_raw)：调味品进了表就能下锅；等效组里只要有一个成员已在白名单里（通常是被某条配方的 `perfect` 带进去的），整组都能下锅。所以给 `minecraft:egg` 加上棕蛋蓝蛋这种事，只改标签就够了，配方和白名单都不用动。
+
+关掉某条配方的开关后，那条配方退回按具体物品严格匹配，调味品对它就是普通杂料，会拉低品质：
+
+```yaml
+pot_flex_foods:
+  kaleidoscopecookery:strict_dish:
+    result: kaleidoscopecookery:strict_dish
+    use_equivalent_foods: false
+    use_seasonings: false
+    perfect:
+      minecraft:beef: 2
+```
+
+> 两张表**一填上就对所有没关开关的配方立刻生效**。两段都删掉或留空即关闭该功能——插件不会自己生成配置，读不到就是空表。
+
+**菜单里管理分组**：`/kcrecipe edit` → 首页底排「食材分组」。列表里能新建 / 编辑 / 删除，编辑页设标签 id、加减物品、左键切换用途（等效食材 ↔ 调味品），保存即写回 `food_groups.yml` 并立刻生效。手改文件与菜单改效果一致，同一个文件。
+
+**单条配方的两个开关**：`/kcrecipe edit` → 选厨具 → 选配方，编辑页底排两个按钮左键切换，保存时只有关掉的那项会写进 yml。
+
+> 菜单写入的成员一律存成纯 id（不带 `craftengine:` 前缀）。这两张表按物品 id 精确匹配，不走原版材质回退，所以纯 id 就够；手写的 `craftengine:` 前缀在被菜单编辑后会被归一成纯 id，匹配结果不变。
 
 ### 🎯 精准配方 `accurate_foods`
 

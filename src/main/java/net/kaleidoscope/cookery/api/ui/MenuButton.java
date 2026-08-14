@@ -26,7 +26,11 @@ public enum MenuButton {
     ROTATION(ItemKeys.MENU_ROTATION),
     LIQUID(ItemKeys.MENU_LIQUID),
     /** Served bare-handed, i.e. the recipe needs no bowl. */
-    CARRIER_NONE(ItemKeys.MENU_CARRIER_NONE);
+    CARRIER_NONE(ItemKeys.MENU_CARRIER_NONE),
+    /** Whether the recipe honours the equivalent-food tags. Defaults to the generic mode icon. */
+    EQUIVALENT_FOODS(ItemKeys.MENU_MODE),
+    /** Whether the recipe honours the seasoning tags. Defaults to the generic mode icon. */
+    SEASONINGS(ItemKeys.MENU_MODE);
 
     private final Key defaultIcon;
 

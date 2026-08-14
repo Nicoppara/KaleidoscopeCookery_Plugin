@@ -75,6 +75,8 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     testImplementation("net.momirealms:craft-engine-core:26.7.4")
+    // FlexMatcher 的成品构建段引用了 shade 进去的 adventure 光加载类就要解析到
+    testRuntimeOnly("net.momirealms:craft-engine-adventure:26.7.4")
     testImplementation("it.unimi.dsi:fastutil:8.5.18")
     testImplementation("com.google.guava:guava:33.6.0-jre")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

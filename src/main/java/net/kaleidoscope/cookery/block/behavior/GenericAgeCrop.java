@@ -1,7 +1,6 @@
 package net.kaleidoscope.cookery.block.behavior;
 
 import net.kaleidoscope.cookery.util.DropUtils;
-import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.property.IntegerProperty;

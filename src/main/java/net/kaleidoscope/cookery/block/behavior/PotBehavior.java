@@ -29,7 +29,6 @@ import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.context.BlockPlaceContext;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -75,6 +74,9 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     public int stirFryCount = 6;
     public int cookDoneTime = 200;
     public int burntToCharcoalTime = 400;
+    // 每次翻炒按此概率掉一点锅铲耐久 0 即不磨损
+    public double stirFryDamageChance = 0.25;
+    public int stirFryDamage = 1;
     public Key oilItem = ItemKeys.OIL;
 
     public Key shovelItem = ItemKeys.KITCHEN_SHOVEL;
@@ -86,6 +88,13 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     public Key recipeItemHasRecipe = ItemKeys.RECIPE_ITEM_HAS_RECIPE;
 
     public Key bowlItem = ItemKeys.BOWL;
+
+    // 没配出菜的产物与它的盛出容器 容器写 minecraft:air 表示空手就能盛
+    public Key failedResultItem = ItemKeys.SUSPICIOUS_STIR_FRY;
+    public Key failedResultCarrier = ItemKeys.BOWL;
+    // 出锅后过了盛出窗口烧糊的产物
+    public Key burntResultItem = ItemKeys.DARK_CUISINE;
+    public Key burntResultCarrier = ItemKeys.BOWL;
 
     public PotBehavior(BlockDefinition blockDefinition) {
         super(blockDefinition);
@@ -121,7 +130,7 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         if (KitchenShovel.is(toolItem, shovelItem)) {
             toolResult = KitchenShovel.hasOil(toolItem, shovelOilModel)
                     ? handleAddOilWithShovel(context, controller, player, toolHand, toolItem, hasHeatSource)
-                    : handleStirFry(context, controller, player, toolHand, hasHeatSource);
+                    : handleStirFry(context, controller, player, toolHand, toolItem, hasHeatSource);
         } else if (ItemMatch.is(toolItem, oilPotItem)) {
             toolResult = handleAddOilWithPot(context, controller, player, toolHand, toolItem, hasHeatSource);
         } else if (ItemMatch.is(toolItem, oilItem)) {
@@ -279,7 +288,7 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
     // 翻炒 锅里翻炒不了(空/已完成/动画中)就不挥手 返回 PASS 让调用方继续走主手逻辑
     // 起炒条件没满足时已经提示过玩家 这里吞掉这次右键但不挥手 别让人以为炒了一下
     private InteractionResult handleStirFry(UseOnContext context, PotController controller, Player player,
-                                            InteractionHand hand, boolean hasHeatSource) {
+                                            InteractionHand hand, Item shovel, boolean hasHeatSource) {
         PotController.StirResult result = controller.stirFry(hasHeatSource, player);
         if (result == PotController.StirResult.IDLE) {
             return InteractionResult.PASS;
@@ -287,8 +296,9 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
         if (result == PotController.StirResult.DENIED) {
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
-        if (!player.canInstabuild() && ThreadLocalRandom.current().nextDouble() < 0.25) {
-            player.getItemInHand(hand).hurtAndBreak(1, player,
+        if (stirFryDamage > 0 && stirFryDamageChance > 0 && !player.canInstabuild()
+                && ThreadLocalRandom.current().nextDouble() < stirFryDamageChance) {
+            shovel.hurtAndBreak(stirFryDamage, player,
                     hand == InteractionHand.MAIN_HAND ? EquipmentSlot.MAINHAND : EquipmentSlot.OFFHAND);
         }
         context.getLevel().playSound(Vec3d.atCenterOf(context.getClickedPos()), SOUND_STIR_FRY, DEFAULT_VOLUME, 1.0f, SoundSource.BLOCK);
@@ -419,6 +429,13 @@ public final class PotBehavior extends BukkitBlockBehavior implements EntityBloc
             b.stirFryCount = BehaviorConfig.getInt(section, b.stirFryCount, "stir_fry_count", "stir-fry-count");
             b.cookDoneTime = BehaviorConfig.getInt(section, b.cookDoneTime, "cook_done_time", "cook-done-time");
             b.burntToCharcoalTime = BehaviorConfig.getInt(section, b.burntToCharcoalTime, "burnt_to_charcoal_time", "burnt-to-charcoal-time");
+            b.stirFryDamageChance = BehaviorConfig.getDouble(section, b.stirFryDamageChance, "stir_fry_damage_chance", "stir-fry-damage-chance");
+            b.stirFryDamage = BehaviorConfig.getInt(section, b.stirFryDamage, "stir_fry_damage", "stir-fry-damage");
+
+            b.failedResultItem = BehaviorConfig.getKey(section, b.failedResultItem, "failed_result_item", "failed-result-item");
+            b.failedResultCarrier = BehaviorConfig.getCarrier(section, b.failedResultCarrier, "failed_result_carrier", "failed-result-carrier");
+            b.burntResultItem = BehaviorConfig.getKey(section, b.burntResultItem, "burnt_result_item", "burnt-result-item");
+            b.burntResultCarrier = BehaviorConfig.getCarrier(section, b.burntResultCarrier, "burnt_result_carrier", "burnt-result-carrier");
 
             b.oilItem = Key.of(BehaviorConfig.getString(section, b.oilItem.asString(), "oil_item", "oil-item"));
             b.shovelItem = Key.of(BehaviorConfig.getString(section, b.shovelItem.asString(), "shovel_item", "shovel-item", "shovel_no_oil_item", "shovel-no-oil-item"));

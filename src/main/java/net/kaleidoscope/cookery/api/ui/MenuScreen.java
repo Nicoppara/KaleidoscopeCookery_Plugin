@@ -18,7 +18,8 @@ public enum MenuScreen {
     DETAIL_FLEX("模糊食谱 - <recipe>"),
     DETAIL_CHOPPING("砧板食谱 - <recipe>"),
     DETAIL_TEAPOT("茶壶食谱 - <recipe>"),
-    SOUP_BASE("汤底表 - 共 <count> 种");
+    SOUP_BASE("汤底表 - 共 <count> 种"),
+    FOOD_GROUP("食材分组 - 共 <count> 组");
 
     private final String defaultTitle;
 

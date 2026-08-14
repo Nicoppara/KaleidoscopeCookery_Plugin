@@ -19,6 +19,10 @@ public final class FlexRecipeDraft {
     private Key result;
     private final Map<Key, Integer> perfect = new LinkedHashMap<>();
     private final List<Key> liquids = new ArrayList<>();
+    // 盛装容器 null 表示空手就能取
+    private Key carrier;
+    private boolean useEquivalentFoods = true;
+    private boolean useSeasonings = true;
 
     private FlexRecipeDraft(ApplianceType cook, Key originalId, Key id) {
         this.cook = cook;
@@ -37,6 +41,8 @@ public final class FlexRecipeDraft {
         draft.perfect.putAll(recipe.perfect());
         draft.liquids.addAll(recipe.liquids());
         draft.carrier = recipe.carrier();
+        draft.useEquivalentFoods = recipe.useEquivalentFoods();
+        draft.useSeasonings = recipe.useSeasonings();
         return draft;
     }
 
@@ -76,9 +82,6 @@ public final class FlexRecipeDraft {
         return perfect;
     }
 
-    // 盛装容器 null 表示空手就能取
-    private Key carrier;
-
     public List<Key> liquids() {
         return liquids;
     }
@@ -91,7 +94,24 @@ public final class FlexRecipeDraft {
         this.carrier = value;
     }
 
+    public boolean useEquivalentFoods() {
+        return useEquivalentFoods;
+    }
+
+    public void useEquivalentFoods(boolean value) {
+        this.useEquivalentFoods = value;
+    }
+
+    public boolean useSeasonings() {
+        return useSeasonings;
+    }
+
+    public void useSeasonings(boolean value) {
+        this.useSeasonings = value;
+    }
+
     public FlexFoodRecipe toRecipe() {
-        return FlexFoodRecipe.of(id, result, cook, perfect, liquids, carrier);
+        return FlexFoodRecipe.of(id, result, cook, perfect, liquids, carrier,
+                useEquivalentFoods, useSeasonings);
     }
 }

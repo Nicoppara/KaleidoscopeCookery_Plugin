@@ -19,7 +19,6 @@ import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.WorldPosition;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
@@ -143,9 +142,9 @@ public class PotController extends BlockEntityController {
     // 盛出窗口过点烧焦成黑暗料理
     private void burnDish() {
         int prevCount = result.isEmpty() ? 0 : result.count();
-        Item dark = InventoryUtils.createOrEmpty(ItemKeys.DARK_CUISINE);
+        Item dark = InventoryUtils.createOrEmpty(behavior.burntResultItem);
         result = ItemUtils.isEmpty(dark) ? Item.empty() : dark.count(Math.max(1, prevCount));
-        resultCarrier = null;
+        resultCarrier = result.isEmpty() ? null : behavior.burntResultCarrier;
         cookedIngredientCount = ingredients.size();
         cookedDishCount = Math.max(1, prevCount);
 
@@ -254,9 +253,9 @@ public class PotController extends BlockEntityController {
                                 ItemNames.displayName(resultCarrier)));
             }
         } else {
-            Item suspense = InventoryUtils.createOrEmpty(ItemKeys.SUSPICIOUS_STIR_FRY);
+            Item suspense = InventoryUtils.createOrEmpty(behavior.failedResultItem);
             result = ItemUtils.isEmpty(suspense) ? Item.empty() : suspense.count(1);
-            resultCarrier = null;
+            resultCarrier = result.isEmpty() ? null : behavior.failedResultCarrier;
             stage = PotStage.BURNT;
             currentTick = behavior.burntToCharcoalTime;
             lastSentBrightness = -1;
