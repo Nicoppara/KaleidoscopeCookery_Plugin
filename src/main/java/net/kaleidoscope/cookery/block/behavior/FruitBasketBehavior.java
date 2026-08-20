@@ -60,7 +60,8 @@ public final class FruitBasketBehavior extends BukkitBlockBehavior implements En
     public Object playerWillDestroy(Object thisBlock, Object[] args) {
         Object nmsPlayer = args.length > 3 ? args[3] : null;
         if (isCreativePlayer(nmsPlayer)) {
-            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(args[0]).getUID());
+            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                    LevelProxy.INSTANCE.getWorld(args[0]).getUID()).storageWorld();
             BlockEntity be = ceWorld.getBlockEntityAtIfLoaded(LocationUtils.fromBlockPos(args[1]));
             if (be != null) {
                 be.controller.let(FruitBasketController.class, this.controllerId, FruitBasketController::markCreativeBreak);

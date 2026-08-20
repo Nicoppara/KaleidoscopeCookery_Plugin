@@ -381,7 +381,7 @@ public final class ScarecrowController extends FurnitureController {
     }
 
     @Override
-    public void onUnload(boolean isStopping) {
+    public void onUnload() {
         removeFromIndex();
         // 这里跑在区块系统的实体状态变更回调里 移除实体会被 Paper 拒绝并刷一整页栈
         // 锚点是 setPersistent(false) 的 跟着区块一起消失 忘掉 uuid 就行

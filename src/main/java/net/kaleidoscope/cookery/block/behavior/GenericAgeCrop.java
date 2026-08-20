@@ -5,9 +5,12 @@ import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.property.IntegerProperty;
 import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.Player;
+import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.context.ContextHolder;
 import net.momirealms.craftengine.core.plugin.context.parameter.DirectContextParameters;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.WorldPosition;
@@ -66,10 +69,13 @@ public final class GenericAgeCrop implements HarvestableCrop {
             return;
         }
         WorldPosition position = new WorldPosition(world, pos.x() + 0.5, pos.y() + 0.5, pos.z() + 0.5);
+        Item itemInHand = player.getItemInHand(InteractionHand.MAIN_HAND);
         ContextHolder.Builder builder = ContextHolder.builder()
                 .withParameter(DirectContextParameters.POSITION, position)
                 .withParameter(DirectContextParameters.CUSTOM_BLOCK_STATE, state)
-                .withOptionalParameter(DirectContextParameters.PLAYER, player);
+                .withOptionalParameter(DirectContextParameters.PLAYER, player)
+                .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND,
+                        ItemUtils.isEmpty(itemInHand) ? null : itemInHand);
         DropUtils.dropAll(world, position, state.getDrops(builder, world, player));
     }
 

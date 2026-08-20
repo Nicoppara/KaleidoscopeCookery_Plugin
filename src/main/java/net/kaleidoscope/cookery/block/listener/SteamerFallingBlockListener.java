@@ -6,6 +6,7 @@ import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
+import net.momirealms.craftengine.bukkit.world.BukkitWorld;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -52,8 +53,9 @@ public class SteamerFallingBlockListener implements Listener {
         if (data == null) return;
 
         Block block = event.getBlock();
-        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(block.getWorld().getUID());
-        if (ceWorld == null) return;
+        BukkitWorld world = BukkitWorldManager.instance().getWorld(block.getWorld().getUID());
+        if (world == null) return;
+        CEWorld ceWorld = world.storageWorld();
         Object level = ceWorld.world().minecraftWorld();
         Object landingPos = LocationUtils.toBlockPos(block.getX(), block.getY(), block.getZ());
         Object belowPos = LocationUtils.toBlockPos(block.getX(), block.getY() - 1, block.getZ());
@@ -79,7 +81,8 @@ public class SteamerFallingBlockListener implements Listener {
         if (!SteamerBehavior.pendingData.containsKey(nmsEntity)) return;
         Location loc = fb.getLocation();
         World bukkitWorld = loc.getWorld();
-        CEWorld ceWorld = bukkitWorld == null ? null : BukkitWorldManager.instance().getWorld(bukkitWorld.getUID());
+        BukkitWorld world = bukkitWorld == null ? null : BukkitWorldManager.instance().getWorld(bukkitWorld.getUID());
+        CEWorld ceWorld = world == null ? null : world.storageWorld();
         if (ceWorld == null) {
             SteamerBehavior.pendingData.remove(nmsEntity);
             return;

@@ -18,7 +18,7 @@ import java.util.Optional;
 // 掉落点取上下文位置 与同一段里的 drop_loot 一致 碗和骨头落在一起
 public final class ReturnCarrierFunction<CTX extends Context> implements Function<CTX> {
 
-    // 菜品 id 从配置里写死 家具菜的上下文里没有成品物品这个参数
+    // 家具菜上下文不包含成品物品，因此由配置提供菜品 ID
     private final Key dish;
 
     private ReturnCarrierFunction(Key dish) {

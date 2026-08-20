@@ -114,7 +114,7 @@ Kaleidoscope/
 │   │   └── dish_models.yml       每道菜每一口的展示模型
 │   ├── recipe/                 配方 合成 烧制 以及各厨具的专属配方
 │   ├── sound/                  自定义音效
-│   ├── loot/                   额外掉落 生菜出猪儿虫 驴掉驴肉
+│   ├── loot/                   生物额外掉落与草帽割草种子
 │   ├── font/                   字体图片 茶壶液体进度条
 │   ├── entity/                 生物相关 石磨拉磨生物表
 │   ├── gui/                    CraftEngine 物品浏览器的分类目录
@@ -689,6 +689,7 @@ public void onExtract(PotExtractDishEvent event) {
 | `KaleidoscopeCookeryAPI.plugin()` | `Plugin` | 拿到插件实例 |
 | `KaleidoscopeCookeryAPI.itemTags()` | `ItemTags` | 读写物品标签，就是配置里 `#kaleidoscopecookery:xxx` 那一套 |
 | `KaleidoscopeCookeryAPI.blockTags()` | `BlockTags` | 读写方块标签，如水田的 `kaleidoscopecookery:tillable` |
+| `KaleidoscopeCookeryAPI.entityProperties()` | `EntityProperties` | 给 `entity_properties` 战利品条件注册自定义实体状态 |
 | `KaleidoscopeCookeryAPI.choppingBoardKnives()` | `ChoppingBoardKnives` | 运行时往砧板加 / 删菜刀 |
 | `KaleidoscopeCookeryAPI.millstoneAnimals()` | `MillstoneAnimals` | 注册能拉磨的生物，或挂一个 `Provider` 动态判定（MythicMobs 之类） |
 | `KaleidoscopeCookeryAPI.potCookConditions()` | `PotCookConditions` | 追加炒锅的开火判定 |
@@ -710,7 +711,24 @@ KaleidoscopeCookeryAPI.itemTags().add(
 // 让熊猫也能拉磨
 KaleidoscopeCookeryAPI.millstoneAnimals()
         .register(org.bukkit.entity.EntityType.PANDA, 35, true, false);
+
+// 注册其它插件的实体状态 注册后重载 CE 配置即可在战利品条件中使用
+KaleidoscopeCookeryAPI.entityProperties().register(
+        "myplugin:is_special",
+        entity -> entity.getScoreboardTags().contains("special"));
 ```
+
+实体状态条件使用本插件命名空间，未写命名空间的 flag 按 `minecraft` 处理：
+
+```yaml
+- type: kaleidoscopecookery:entity_properties
+  predicate:
+    flags:
+      is_on_fire: true
+      myplugin:is_special: false
+```
+
+内置 flag 包括燃烧、潜行、疾跑、游泳、幼年/成年、着地、水下、岩浆、雨中、细雪、冰冻、隐身、发光、无敌、静音、重力、乘坐、死亡、有效、持久化、视觉火焰、滑翔、激流、睡眠、攀爬、AI、碰撞、拴绳、跳跃、使用物品、繁殖、年龄锁定、感知、攻击性、左利手、拾取物品、日光、驯服、坐下、飞行与格挡状态。未知 flag 会在配置解析期直接报错。
 
 > `itemTags()` 与配置文件里的 `item_tags` 段共用同一个注册表。执行 `/ce reload all` 会先清空再按配置重建，**代码里注册的内容会被冲掉**——所以要在重载后重新注册，或干脆写进 `configuration/tag/` 的 yml 里。
 
@@ -859,7 +877,7 @@ dish_carrier:
 
 下列配置写在 CraftEngine 的方块 / 家具 / 物品定义里的 `behaviors:` 段。键名同时支持下划线与连字符两种写法（`stir_fry_count` 与 `stir-fry-count` 等价）。下面列出的都是**默认值**，只写与默认不同的那几项即可。
 
-> **文案不在这里配。** 所有玩家可见的提示语都走翻译键，键名定死在 `net.kaleidoscope.cookery.util.MessageKeys`，文案本体在 `configuration/lang/*.yml`。想改提示语就去改 lang 文件，行为段里写 `msg_xxx` 是没用的。
+> **文案不在这里配。** 所有玩家可见的提示语都走翻译键，翻译键定义在 `net.kaleidoscope.cookery.util.MessageKeys`，文案本体在 `configuration/lang/*.yml`。想改提示语就去改 lang 文件，行为段里写 `msg_xxx` 是没用的。
 
 > **`animation_view_distance`**（仅**有动画**的机型：炒锅、高汤锅、沙威玛、石磨、垃圾桶、茶壶）：动画帧发包的区块视距，切比雪夫距离，默认 `1`。离机型超过该区块距离的玩家不再收到动画包——反正太远也渲染不出来。想更远可见就调大，想进一步省发包就调小。
 >
@@ -922,7 +940,7 @@ behaviors:
 
 > 锅铲已合并成一个物品，沾没沾油存在物品上，靠切 `item_model` 换外观。
 > `shovel_oil_model` 指向的模型由 `kitchen_shovel_has_oil` 这个物品定义生成，
-> 将来删除旧沾油锅铲时必须保留一个同名的模型条目，否则沾油铲会变成缺失模型。
+> 旧沾油锅铲的同名模型条目用于兼容现有物品；移除该模型会导致沾油铲显示为缺失模型。
 
 ### 🍲 高汤锅 `kaleidoscopecookery:stockpot`
 

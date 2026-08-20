@@ -509,9 +509,8 @@ public final class FoodRecipeRegistry {
             return Optional.empty();
         }
         if (!recipe.lore().isEmpty()) {
-            item.loreJson(recipe.lore().stream()
-                    .map(l -> AdventureHelper.componentToJson(
-                            AdventureHelper.miniMessage().deserialize("<!i>" + l)))
+            item.loreComponent(recipe.lore().stream()
+                    .map(l -> AdventureHelper.miniMessage().deserialize("<!i>" + l))
                     .toList());
         }
         return Optional.of(new FoodRecipeResult(item, recipe.resultCount(), null));

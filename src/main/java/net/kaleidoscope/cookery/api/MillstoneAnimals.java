@@ -6,6 +6,7 @@ import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.plugin.config.SectionConfigParser;
 import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
+import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.entity.Ageable;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -178,6 +179,11 @@ public final class MillstoneAnimals {
 
     private static final class AnimalsParser extends SectionConfigParser {
         private int count;
+
+        @Override
+        public Key type() {
+            return Key.of("kaleidoscopecookery:millstone_animals");
+        }
 
         @Override
         public String[] sectionId() {

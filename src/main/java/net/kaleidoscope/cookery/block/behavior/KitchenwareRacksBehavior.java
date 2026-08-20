@@ -28,7 +28,6 @@ import net.kaleidoscope.cookery.util.InventoryUtils;
 public final class KitchenwareRacksBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<KitchenwareRacksBehavior> FACTORY = new Factory();
 
-    // 挂放/取下音效 硬编码 无需配置
     private static final Key PUT_SOUND = Key.of("minecraft:entity.item_frame.add_item");
     private static final Key TAKE_SOUND = Key.of("minecraft:entity.item_frame.remove_item");
     private static final float SOUND_VOLUME = 1.0f;

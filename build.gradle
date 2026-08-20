@@ -52,12 +52,12 @@ nmsVersions.each { sourceSetName, version ->
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("net.momirealms:craft-engine-bukkit:26.7.4")
-    compileOnly("net.momirealms:craft-engine-core:26.7.4")
+    compileOnly("net.momirealms:craft-engine-bukkit:26.8")
+    compileOnly("net.momirealms:craft-engine-core:26.8")
     compileOnly("net.momirealms:craft-engine-adventure:26.7.4")
-    compileOnly("net.momirealms:craft-engine-bukkit-proxy:26.7.4")
-    compileOnly("net.momirealms:craft-engine-nms-helper-mojmap:1.0.213")
-    compileOnly("net.momirealms:craft-engine-nms-helper:1.0.213")
+    compileOnly("net.momirealms:craft-engine-bukkit-proxy:26.8")
+    compileOnly("net.momirealms:craft-engine-nms-helper-mojmap:1.0.230")
+    compileOnly("net.momirealms:craft-engine-nms-helper:1.0.230")
     compileOnly("io.netty:netty-all:4.1.100.Final")
     compileOnly("com.mojang:datafixerupper:8.0.16")
     compileOnly("net.momirealms:sparrow-util:0.112")
@@ -74,7 +74,7 @@ dependencies {
     implementation("org.bstats:bstats-bukkit:3.2.1")
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    testImplementation("net.momirealms:craft-engine-core:26.7.4")
+    testImplementation("net.momirealms:craft-engine-core:26.8")
     // FlexMatcher 的成品构建段引用了 shade 进去的 adventure 光加载类就要解析到
     testRuntimeOnly("net.momirealms:craft-engine-adventure:26.7.4")
     testImplementation("it.unimi.dsi:fastutil:8.5.18")

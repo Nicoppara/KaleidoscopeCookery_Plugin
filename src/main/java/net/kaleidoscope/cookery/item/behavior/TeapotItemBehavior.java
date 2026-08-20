@@ -116,8 +116,8 @@ public class TeapotItemBehavior extends BlockItemBehavior {
                 held.setSparrowTag(data, TeapotBar.ITEM_DATA_KEY);
                 barStr = TeapotBar.build(fluidKey, remaining);
             }
-            held.loreJson(List.of(AdventureHelper.componentToJson(
-                    AdventureHelper.miniMessage().deserialize("<!i>" + barStr))));
+            held.loreComponent(List.of(
+                    AdventureHelper.miniMessage().deserialize("<!i>" + barStr)));
             player.setItemInHand(hand, held);
             player.sendActionBar(AdventureHelper.miniMessage().deserialize(barStr));
         }
@@ -160,8 +160,8 @@ public class TeapotItemBehavior extends BlockItemBehavior {
         CompoundTag data = new CompoundTag();
         data.putString("fluid", fluid.asString());
         held.setSparrowTag(data, TeapotBar.ITEM_DATA_KEY);
-        held.loreJson(List.of(AdventureHelper.componentToJson(
-                AdventureHelper.miniMessage().deserialize("<!i>" + TeapotBar.build(fluid)))));
+        held.loreComponent(List.of(
+                AdventureHelper.miniMessage().deserialize("<!i>" + TeapotBar.build(fluid))));
         player.setItemInHand(hand, held);
         player.sendActionBar(AdventureHelper.miniMessage().deserialize(TeapotBar.build(fluid)));
         // 取液复用桶音效 岩浆用岩浆桶 其余用水桶

@@ -65,9 +65,7 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
         saveDefaultConfig();
         ConsoleMessages.load(this);
         RecipeMenuConfig.load();
-        // 必须在这里生成 CE 的配置解析延后到所有插件 enable 之后 这时写才赶得上首次加载
         ItemIcons.generate();
-        // folia 上多个 region 线程会并发首次调用 惰性初始化会各建一个 直接在这里定死
         this.antiGrief = AntiGriefLib.builder(this)
                 .ignoreOP(true)
                 .bypassPermission("kaleidoscopecookery.antigrief.bypass")
@@ -102,6 +100,7 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
         }
         getServer().getPluginManager().registerEvents(new AnvilTextPrompt(), this);
         registerRecipeCommand();
+        LootFormulas.register();
         Conditions.register();
         BlockBehaviors.register();
         ItemBehaviors.register();
@@ -113,7 +112,6 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // 先关闸 已排队的延迟任务不会再触到下面正在清空的表
         FoliaUtil.shutdown();
         // 关服时把还在垃圾桶里的玩家放出来 还原模式与头盔
         if (FoliaUtil.isFolia()) {
@@ -131,8 +129,6 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
         unregisterPlaceholders();
     }
 
-    // 本插件先于 CE 被禁用 jar 随即关闭 而 CE 之后才回调 saveCustomData
-    // 那时未加载的类会抛 zip file closed 存档写一半就断 所以提前加载 见约束 26.2
     private void warmUpShutdownClasses() {
         UUIDUtils.uuidToIntArray(new UUID(0L, 0L));
         BlockEntityNbt.itemTag(Item.empty());

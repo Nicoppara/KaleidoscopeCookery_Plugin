@@ -44,7 +44,7 @@ public final class KitchenShovel {
         }
     }
 
-    // 旧沾油锅铲兼容 1.1.9 删除
+    // 兼容旧版沾油锅铲
     // 返回 false 表示该换铲但 shovelItem 无效 调用方不能继续扣料
     public static boolean migrateLegacy(Player player, InteractionHand hand, Item item,
                                         Key shovelItem, Key oilModel, boolean hasOil) {

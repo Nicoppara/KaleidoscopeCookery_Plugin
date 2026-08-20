@@ -23,6 +23,7 @@ import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.sound.SoundSource;
 import net.momirealms.craftengine.core.util.ItemUtils;
@@ -161,7 +162,7 @@ public class MillstoneController extends FurnitureController {
     private static final String K_PROGRESS = "progress_degrees";
     private static final String K_ROTATIONS = "rotations";
 
-    // 接触判定的基准角 构造时定死
+    // 接触判定使用的初始基准角
     private final float orbitBaseDeg;
 
     public static final int GRIND_SLOTS = 8;
@@ -707,7 +708,7 @@ public class MillstoneController extends FurnitureController {
     }
 
     // 沿切线施力 切向量在方位角 atan2(x,z) 处是 (cos,-sin) 负强度即逆着磨盘转向往回顶
-    // 竖直分量只叠加不覆盖 直接写死 Y 会把玩家的跳跃和下落速度一并抹掉
+    // 竖直分量只叠加，避免覆盖玩家的跳跃和下落速度
     private static void shoveAlongTangent(org.bukkit.entity.Player player,
                                           double dx, double dz, double strength, double lift) {
         double theta = Math.atan2(dx, dz);
@@ -1122,19 +1123,13 @@ public class MillstoneController extends FurnitureController {
     }
 
     @Override
-    public void onUnload(boolean isStopping) {
-        if (isStopping) {
-            if (pullingAnimal != null) {
-                ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
-            }
-        } else {
-            if (pullingAnimal != null) {
-                ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
-                if (pullingAnimal.isValid()) {
-                    pullingAnimal.setAI(animalWasAI);
-                    pullingAnimal.setGravity(true);
-                    pullingAnimal.setVelocity(new Vector(0, 0, 0));
-                }
+    public void onUnload() {
+        if (pullingAnimal != null) {
+            ACTIVE_ANIMAL_PULLERS.remove(pullingAnimal.getUniqueId());
+            if (!CraftEngine.instance().isStopping() && pullingAnimal.isValid()) {
+                pullingAnimal.setAI(animalWasAI);
+                pullingAnimal.setGravity(true);
+                pullingAnimal.setVelocity(new Vector(0, 0, 0));
             }
         }
         furniture().setUnsaved();

@@ -8,6 +8,7 @@ import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.property.IntegerProperty;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.loot.LootTable;
@@ -81,10 +82,13 @@ public final class CropHarvestRules {
         if (player.canInstabuild()) {
             return;
         }
+        Item itemInHand = player.getItemInHand(InteractionHand.MAIN_HAND);
         ContextHolder.Builder builder = ContextHolder.builder()
                 .withParameter(DirectContextParameters.POSITION, position)
                 .withParameter(DirectContextParameters.CUSTOM_BLOCK_STATE, state)
-                .withOptionalParameter(DirectContextParameters.PLAYER, player);
+                .withOptionalParameter(DirectContextParameters.PLAYER, player)
+                .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND,
+                        ItemUtils.isEmpty(itemInHand) ? null : itemInHand);
         DropUtils.dropAll(world, position, this.loot == null
                 ? state.getDrops(builder, world, player)
                 : this.loot.getRandomItems(builder.build(), world, player));

@@ -434,7 +434,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         // 快照 NBT 并切断原方块实体的掉落 转交给下落实体
         BlockPos pos = LocationUtils.fromBlockPos(blockPos);
         CompoundTag tag = new CompoundTag();
-        BlockEntity blockEntity = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(level).getUID()).getBlockEntityAtIfLoaded(pos);
+        BlockEntity blockEntity = BukkitWorldManager.instance().getWorld(
+                LevelProxy.INSTANCE.getWorld(level).getUID()).storageWorld().getBlockEntityAtIfLoaded(pos);
         if (blockEntity != null) {
             SteamerController controller = blockEntity.controller.get(SteamerController.class, this.controllerId);
             if (controller != null) {
@@ -464,7 +465,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         }
 
         BlockPos landPos = LocationUtils.fromBlockPos(blockPos);
-        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(level).getUID());
+        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                LevelProxy.INSTANCE.getWorld(level).getUID()).storageWorld();
 
         // 标记落地方块为下落中 避免 onRemove 误掉落
         BlockEntity landingEntity = ceWorld.getBlockEntityAtIfLoaded(landPos);
@@ -522,7 +524,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
 
     private void dropSteamer(Object level, Object blockPos, PendingData data) {
         try {
-            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(level).getUID());
+            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                    LevelProxy.INSTANCE.getWorld(level).getUID()).storageWorld();
             BlockPos pos = LocationUtils.fromBlockPos(blockPos);
             Vec3d dropPos = Vec3d.atCenterOf(pos);
 
@@ -614,7 +617,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     @Override
     public Object playerWillDestroy(Object thisBlock, Object[] args) {
         Object nmsPlayer = args.length > 3 ? args[3] : null;
-        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(args[0]).getUID());
+        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                LevelProxy.INSTANCE.getWorld(args[0]).getUID()).storageWorld();
         BlockEntity be = ceWorld.getBlockEntityAtIfLoaded(LocationUtils.fromBlockPos(args[1]));
         SteamerController c = be != null ? be.controller.get(SteamerController.class, this.controllerId) : null;
         if (c == null) {

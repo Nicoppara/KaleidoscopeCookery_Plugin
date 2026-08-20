@@ -10,8 +10,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-// CE 先 placeBlock 写方块 再发 BlockPlaceEvent 领地插件取消时逐个 state.update 回滚
-// 回滚会走 onRemove 掉东西就是刷物品口子 见约束 1.1 所以放置时打标 下一 tick 清 期间的移除不掉落
+// CE 在 BlockPlaceEvent 前写入方块；事件取消后的状态回滚会触发 onRemove
+// 放置期间使用短期标记，避免回滚重复生成掉落物
 public final class PlacementGuard {
     private PlacementGuard() {}
 

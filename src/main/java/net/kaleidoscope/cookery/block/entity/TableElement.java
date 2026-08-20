@@ -55,7 +55,7 @@ public final class TableElement implements BlockEntityElement {
     }
 
     // 展示实体一律生在方块正中 摆放偏移走 translation
-    // translation 在元数据包里 换布局只补 meta 就能挪位 生成位置写死了就只能重建实体
+    // translation 通过元数据包更新，调整布局时无需重建实体
     private void buildCarpet(WorldPosition origin, int position, Quaternionf rotation) {
         Item item = InventoryUtils.createOrEmpty(CarpetColors.tableModel(this.controller.carpet(), position));
         if (ItemUtils.isEmpty(item)) {
