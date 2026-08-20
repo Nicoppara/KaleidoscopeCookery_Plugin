@@ -189,7 +189,7 @@ public final class FlexEditMenu {
     }
 
     // 汤底限定只对高汤锅有意义 炒锅没有液体这一维 恒空
-    // 图标用列表里第一个汤底本身 写死水桶的话选了岩浆也还是显示水桶
+    // 使用首个汤底作为图标，使图标与当前选择保持一致
     private static GuiElement liquidSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                          FlexRecipeDraft draft) {
         if (draft.cook() != ApplianceType.STOCKPOT) {

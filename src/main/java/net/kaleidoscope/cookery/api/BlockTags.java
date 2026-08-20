@@ -184,6 +184,11 @@ public final class BlockTags {
         private int count;
 
         @Override
+        public Key type() {
+            return Key.of("kaleidoscopecookery:block_tags");
+        }
+
+        @Override
         public String[] sectionId() {
             return new String[]{"block_tags", "block-tags", "block_tag", "block-tag"};
         }

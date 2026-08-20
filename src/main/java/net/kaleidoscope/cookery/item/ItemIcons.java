@@ -25,7 +25,7 @@ public final class ItemIcons {
     private ItemIcons() {}
 
     // 生成到 CE 的配置目录 由 CE 在解析阶段照常读取
-    // 时序上安全 CE 的配置解析延后到所有插件 enable 之后 见 ce_skill 2.8
+    // CE 的配置解析发生在所有插件启用之后
     private static final String GENERATED_FILE = "configuration/font/generated_item_icons.yml";
     private static final String TEXTURES = "resourcepack/assets/minecraft/textures";
     // 只扫物品贴图 方块贴图不做图标

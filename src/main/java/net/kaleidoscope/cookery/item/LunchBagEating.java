@@ -123,7 +123,7 @@ public final class LunchBagEating {
     }
 
     // 1.21.2 起进食附带的效果从 food.effects 移到了 consumable.on_consume_effects
-    // 这里只处理 apply_effects 其余类型(清除效果 随机传送等)原版语义复杂 用到再补
+    // 当前仅支持 apply_effects，其他原版消费效果不在支持范围内
     private static void applyConsumeEffects(org.bukkit.entity.Player bukkitPlayer, Item food) {
         if (CONSUMABLE_COMPONENT == null) {
             return;

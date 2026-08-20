@@ -159,7 +159,8 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
     public Object playerWillDestroy(Object thisBlock, Object[] args) {
         Object nmsPlayer = args.length > 3 ? args[3] : null;
         if (isCreativePlayer(nmsPlayer)) {
-            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(args[0]).getUID());
+            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                    LevelProxy.INSTANCE.getWorld(args[0]).getUID()).storageWorld();
             BlockEntity be = ceWorld.getBlockEntityAtIfLoaded(LocationUtils.fromBlockPos(args[1]));
             if (be != null) {
                 be.controller.let(TeapotController.class, this.controllerId, TeapotController::markCreativeBreak);

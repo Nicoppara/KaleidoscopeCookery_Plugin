@@ -62,6 +62,11 @@ public final class DishCarriers {
         private int count;
 
         @Override
+        public Key type() {
+            return Key.of("kaleidoscopecookery:dish_carrier");
+        }
+
+        @Override
         public String[] sectionId() {
             return new String[]{"dish_carrier", "dish-carrier", "dish_carriers", "dish-carriers"};
         }

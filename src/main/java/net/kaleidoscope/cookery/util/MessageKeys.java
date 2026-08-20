@@ -1,7 +1,6 @@
 package net.kaleidoscope.cookery.util;
 
 // 玩家可见文案的翻译键 文案本体在 configuration/lang/*.yml
-// 键定死在这里不走行为配置 改文案编辑 lang 改逻辑走 API
 public final class MessageKeys {
     private MessageKeys() {}
 

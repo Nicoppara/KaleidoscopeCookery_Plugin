@@ -166,6 +166,11 @@ public final class FoodGroups {
         protected abstract void apply(List<Key> tags);
 
         @Override
+        public Key type() {
+            return Key.of("kaleidoscopecookery:" + this.label);
+        }
+
+        @Override
         public LoadingStage loadingStage() {
             return this.stage;
         }

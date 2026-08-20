@@ -2,7 +2,6 @@ package net.kaleidoscope.cookery.recipe;
 
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.util.AdventureHelper;
 import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
@@ -171,12 +170,12 @@ public final class FlexMatcher {
                 .orElseGet(() -> Component.translatable(itemTranslationKey(match.recipe().result())));
         Component name = base.colorIfAbsent(NamedTextColor.NAMES.value(quality.color()))
                 .decoration(TextDecoration.ITALIC, false);
-        item.customNameJson(AdventureHelper.componentToJson(name));
+        item.customNameComponent(name);
 
         Component lore = Component.translatable(quality.translationKey())
                 .color(NamedTextColor.NAMES.value(quality.color()))
                 .decoration(TextDecoration.ITALIC, false);
-        item.loreJson(List.of(AdventureHelper.componentToJson(lore)));
+        item.loreComponent(List.of(lore));
 
         return DishFoodScaler.scale(item, quality.ratio());
     }

@@ -76,6 +76,11 @@ public final class FoodRecipeManager {
             this.sectionIds = sectionIds;
         }
 
+        @Override
+        public Key type() {
+            return Key.of("kaleidoscopecookery:" + this.sectionIds[0]);
+        }
+
         // CE 只在注册与注销时遍历读取 不留引用也不改内容 直接返字段不必拷贝
         @Override
         public String[] sectionId() {
@@ -137,6 +142,11 @@ public final class FoodRecipeManager {
             this.dependencies = dependencies;
             this.kind = kind;
             this.sectionIds = sectionIds;
+        }
+
+        @Override
+        public Key type() {
+            return Key.of("kaleidoscopecookery:" + this.sectionIds[0]);
         }
 
         // CE 只在注册与注销时遍历读取 不留引用也不改内容 直接返字段不必拷贝

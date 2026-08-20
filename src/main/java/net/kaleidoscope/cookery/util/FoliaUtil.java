@@ -37,7 +37,7 @@ public final class FoliaUtil {
     }
 
     // 以下是 CE 调度器的直通封装 只多一道禁用门
-    // 与 runEntity 不同 这些不按端分流 paper 上同样入队 保持原有的延迟语义
+    // 与 runEntity 不同，这些任务在 Paper 上同样入队以维持延迟语义
     public static void run(Runnable task, Location location) {
         scheduler().run(guarded(task), location);
     }

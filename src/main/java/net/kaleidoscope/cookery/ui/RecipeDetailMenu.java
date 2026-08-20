@@ -21,7 +21,6 @@ import net.momirealms.craftengine.core.plugin.gui.GuiElement;
 import net.momirealms.craftengine.core.plugin.gui.GuiLayout;
 import net.momirealms.craftengine.core.plugin.gui.Ingredient;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.core.util.AdventureHelper;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
 
@@ -199,9 +198,7 @@ public final class RecipeDetailMenu {
         if (lore.isEmpty()) {
             return base;
         }
-        base.loreJson(lore.stream()
-                .map(AdventureHelper::componentToJson)
-                .toList());
+        base.loreComponent(lore);
         return base;
     }
 

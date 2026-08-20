@@ -67,6 +67,15 @@ public final class KaleidoscopeCookeryAPI {
     }
 
     /**
+     * Returns the boolean entity property registry used by loot conditions.
+     *
+     * @return the entity property registry
+     */
+    public static EntityProperties entityProperties() {
+        return EntityProperties.instance();
+    }
+
+    /**
      * Returns the reskin hook for the built-in recipe menus: button icons,
      * screen titles and appliance names, without writing any inventory code.
      *

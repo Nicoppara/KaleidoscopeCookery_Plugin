@@ -55,7 +55,7 @@ public final class LunchBagContents {
         return target;
     }
 
-    // 目前只收熟牛肉 后续放开走配置
+    // 当前仅接收熟牛肉
     public static boolean canAdd(Item food) {
         return ItemMatch.is(food, ItemKeys.COOKED_BEEF);
     }

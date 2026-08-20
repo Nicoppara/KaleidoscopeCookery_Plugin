@@ -162,7 +162,7 @@ public class PotController extends BlockEntityController {
     }
 
     // 起炒条件 内置规则是在火上且已倒油 可用 PotCookConditions 整条覆写
-    // 翻炒与一键投料共用 别在调用方各自写死油的判定 无自定义条件时不构造快照
+    // 翻炒与一键投料共用起炒判定；无自定义条件时不构造快照
     public PotCookConditions.Verdict cookVerdict(boolean hasHeatSource, Player player) {
         if (player != null && PotCookConditions.instance().hasConditions()) {
             PotCookConditions.Verdict custom = PotCookConditions.instance().evaluate(
@@ -470,7 +470,7 @@ public class PotController extends BlockEntityController {
         data.putInt(K_COOKING_STATUS, stage.ordinal());
         data.putInt(K_CURRENT_TICK, currentTick);
         data.put(K_INGREDIENTS, BlockEntityNbt.saveItems(ingredients));
-        // TODO 一锅多成品的设计已取消 这里仍存成列表只为兼容旧存档 待确认线上不再有旧格式存档后 改成 data.put(K_RESULT, 单个 tag) 并同步简化 loadCustomData
+        // 继续使用列表格式以兼容旧存档中的多成品数据
         data.put(K_RESULTS, BlockEntityNbt.saveItems(result.isEmpty() ? List.of() : List.of(result)));
         if (resultCarrier != null) {
             data.putString(K_CARRIER, resultCarrier.asString());

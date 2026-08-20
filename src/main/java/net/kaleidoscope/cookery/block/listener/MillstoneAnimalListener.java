@@ -71,7 +71,7 @@ public class MillstoneAnimalListener implements Listener {
         if (!InteractGuard.canInteract(event.getPlayer(), living.getLocation())) {
             return;
         }
-        // TODO setLeashHolder 对原版不可拴生物可能不稳定 必要时改 NMS setLeashedTo
+        // Paper 对原版不可拴生物的 setLeashHolder 支持因实体类型而异
         living.setLeashHolder(event.getPlayer());
         // 走轮子 内部已判 canInstabuild 别手写 GameMode 判定 那样会漏掉旁观等情况
         InventoryUtils.shrinkHeld(cePlayer, lead, 1);

@@ -514,8 +514,8 @@ public final class TeapotController extends BlockEntityController {
             barStr = TeapotBar.build(null);
         }
         teapot.setSparrowTag(data, TeapotBar.ITEM_DATA_KEY);
-        teapot.loreJson(List.of(AdventureHelper.componentToJson(
-                AdventureHelper.miniMessage().deserialize("<!i>" + barStr))));
+        teapot.loreComponent(List.of(
+                AdventureHelper.miniMessage().deserialize("<!i>" + barStr)));
         return teapot;
     }
 
