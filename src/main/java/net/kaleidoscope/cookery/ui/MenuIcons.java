@@ -2,9 +2,14 @@ package net.kaleidoscope.cookery.ui;
 
 import net.kaleidoscope.cookery.api.ui.MenuButton;
 import net.kaleidoscope.cookery.api.ui.RecipeMenuStyle;
+import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemNames;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.TeapotLiquid;
+import net.kaleidoscope.cookery.ui.input.DialogChoicePrompt;
 import net.kaleidoscope.cookery.util.InventoryUtils;
+import net.kaleidoscope.cookery.util.Localization;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.gui.GuiElement;
@@ -15,6 +20,7 @@ import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
 import net.momirealms.craftengine.libraries.adventure.text.format.TextDecoration;
+import org.bukkit.Material;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -66,6 +72,71 @@ public final class MenuIcons {
 
     public static Component grayWith(Key id) {
         return grayWith("", id, "");
+    }
+
+    public static Component liquidName(Key id) {
+        if (id == null) {
+            return text("未设置", NamedTextColor.DARK_GRAY);
+        }
+        String label = liquidLabel(id);
+        if (label != null) {
+            return Localization.component(label)
+                    .decoration(TextDecoration.ITALIC, false);
+        }
+        return itemName(id);
+    }
+
+    // 液体菜单与选择对话框必须走同一份名称来源 避免一边叫岩浆一边套原版翻译叫熔岩
+    public static DialogChoicePrompt.Choice liquidChoice(Key id) {
+        String value = id.asString();
+        String label = liquidLabel(id);
+        if (label != null) {
+            return Localization.isTranslationKey(label)
+                    ? DialogChoicePrompt.Choice.translated(label, value)
+                    : new DialogChoicePrompt.Choice(label, value);
+        }
+        Material material = Material.matchMaterial(value);
+        return material == null
+                ? new DialogChoicePrompt.Choice(id.value(), value)
+                : DialogChoicePrompt.Choice.translated(material.getItemTranslationKey(), value);
+    }
+
+    public static Component grayLiquidWith(String prefix, Key id, String suffix) {
+        Component line = Component.empty();
+        if (!prefix.isEmpty()) {
+            line = line.append(Component.text(prefix));
+        }
+        line = line.append(liquidName(id));
+        if (!suffix.isEmpty()) {
+            line = line.append(Component.text(suffix));
+        }
+        return line.colorIfAbsent(NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false);
+    }
+
+    public static Key liquidIconKey(Key id) {
+        return RecipeMenuStyle.instance().liquidIcon(id);
+    }
+
+    private static Key fluidOf(Key id) {
+        if (!id.value().endsWith("_bucket")) {
+            return id;
+        }
+        return Key.of(id.namespace(), id.value().substring(0, id.value().length() - "_bucket".length()));
+    }
+
+    private static String liquidLabel(Key id) {
+        Key fluid = fluidOf(id);
+        TeapotLiquid liquid = FoodRecipeRegistry.instance().getTeapotLiquid(fluid);
+        if (liquid != null && liquid.displayName() != null && !liquid.displayName().isEmpty()) {
+            return liquid.displayName();
+        }
+        if (ItemKeys.WATER.equals(fluid)) {
+            return "kaleidoscopecookery.message.teapot.liquid.water";
+        }
+        if (ItemKeys.LAVA.equals(fluid)) {
+            return "kaleidoscopecookery.message.teapot.liquid.lava";
+        }
+        return null;
     }
 
     public static Component gray(String value) {

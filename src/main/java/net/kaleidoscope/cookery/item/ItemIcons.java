@@ -27,8 +27,7 @@ public final class ItemIcons {
     // 生成到 CE 的配置目录 由 CE 在解析阶段照常读取
     // CE 的配置解析发生在所有插件启用之后
     private static final String GENERATED_FILE = "configuration/font/generated_item_icons.yml";
-    private static final String TEXTURES = "resourcepack/assets/minecraft/textures";
-    // 只扫物品贴图 方块贴图不做图标
+    private static final String ASSETS = "resourcepack/assets";
     private static final String ITEM_DIR = "item";
 
     private static final String FONT = "kaleidoscopecookery:food";
@@ -106,21 +105,50 @@ public final class ItemIcons {
         return matched;
     }
 
-    // 资源包里 textures/item/** 的每张图各出一条 文件名即物品 id
-    private static void collectPackTextures(Path packRoot, Map<String, String> entries) throws IOException {
-        Path items = packRoot.resolve(TEXTURES).resolve(ITEM_DIR);
-        if (!Files.isDirectory(items)) {
+    // 物品贴图可能位于标准 textures/item 下 也可能由迁移资源放在其它目录的 item 子目录
+    static void collectPackTextures(Path packRoot, Map<String, String> entries) throws IOException {
+        Path assets = packRoot.resolve(ASSETS);
+        if (!Files.isDirectory(assets)) {
             return;
         }
-        try (Stream<Path> files = Files.walk(items)) {
-            files.filter(p -> p.getFileName().toString().endsWith(".png")).forEach(p -> {
-                String rel = items.relativize(p).toString().replace('\\', '/');
-                String name = rel.substring(rel.lastIndexOf('/') + 1, rel.length() - 4);
-                // 同名贴图取先扫到的 深一层的目录一般才是成品图标
-                entries.putIfAbsent(name, "minecraft:" + ITEM_DIR + "/" + rel);
+        try (Stream<Path> files = Files.walk(assets)) {
+            for (Path path : files.filter(p -> p.getFileName().toString().endsWith(".png"))
+                    .sorted((a, b) -> compareTexturePath(assets, a, b)).toList()) {
+                Path relative = assets.relativize(path);
+                if (!isItemTexture(relative)) {
+                    continue;
+                }
+                String fileName = path.getFileName().toString();
+                String name = fileName.substring(0, fileName.length() - 4);
+                String namespace = relative.getName(0).toString();
+                String texture = relative.subpath(2, relative.getNameCount()).toString().replace('\\', '/');
+                entries.putIfAbsent(name, namespace + ":" + texture);
                 ICONS.putIfAbsent(Key.of(ItemKeys.NAMESPACE + ":" + name), ID_PREFIX + name);
-            });
+            }
         }
+    }
+
+    private static boolean isItemTexture(Path relative) {
+        if (relative.getNameCount() < 4 || !"textures".equals(relative.getName(1).toString())) {
+            return false;
+        }
+        for (int i = 2; i < relative.getNameCount() - 1; i++) {
+            if (ITEM_DIR.equals(relative.getName(i).toString())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int compareTexturePath(Path assets, Path left, Path right) {
+        Path a = assets.relativize(left);
+        Path b = assets.relativize(right);
+        int priority = Integer.compare(texturePriority(a), texturePriority(b));
+        return priority != 0 ? priority : a.toString().compareTo(b.toString());
+    }
+
+    private static int texturePriority(Path relative) {
+        return relative.getNameCount() > 2 && ITEM_DIR.equals(relative.getName(2).toString()) ? 0 : 1;
     }
 
     // 原版食材的贴图在客户端自带资源里 扫不到 只能把配置里出现过的 minecraft: id 收集出来

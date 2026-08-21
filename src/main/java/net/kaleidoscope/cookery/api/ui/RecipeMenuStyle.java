@@ -91,6 +91,24 @@ public final class RecipeMenuStyle {
     }
 
     /**
+     * Returns the bucket item key for a recipe liquid.
+     * Accepts fluid keys used by teapot recipes and bucket item keys used by stockpot recipes.
+     * {@link MenuButton#LIQUID} represents only a generic or unset liquid button.
+     *
+     * @param liquid fluid key, bucket item key, or {@code null} when unset
+     * @return the corresponding bucket item key
+     */
+    public @NotNull Key liquidIcon(@Nullable Key liquid) {
+        if (liquid == null) {
+            return icon(MenuButton.LIQUID);
+        }
+        if (liquid.value().endsWith("_bucket")) {
+            return liquid;
+        }
+        return Key.of(liquid.namespace(), liquid.value() + "_bucket");
+    }
+
+    /**
      * Replaces the icon shown for one appliance on the home screen.
      *
      * @param cook the appliance
