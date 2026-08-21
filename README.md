@@ -790,6 +790,9 @@ style.applianceIcon(ApplianceType.POT, Key.of("minecraft:cauldron"));
 style.applianceName(ApplianceType.POT, "铁锅");
 style.title(MenuScreen.LIST_BROWSE, "<gold><appliance></gold> 共 <count> 条");
 
+// 自定义菜单显示具体液体时用这个：water/lava 与 water_bucket/lava_bucket 都支持
+Key liquidIcon = style.liquidIcon(recipe.fluid());
+
 style.icon(MenuButton.BACK, null);  // 传 null 还原这一项
 style.reset();                      // 还原全部 API 设置
 ```
@@ -826,7 +829,7 @@ KaleidoscopeCookeryAPI.recipeMenuHooks().provider(new RecipeMenuProvider() {
 | `openList(player, cook, editable)` | 点进某个厨具的配方列表 |
 | `openDetail(player, cook, recipeId)` | 点开某条配方的详情 |
 
-要用的数据从 `KaleidoscopeCookeryAPI.foodRecipes()` 拿，别去 import `ui` 包里的类。
+要用的数据从 `KaleidoscopeCookeryAPI.foodRecipes()` 拿，别去 import `ui` 包里的类。接管方显示配方的实际液体时应调用 `KaleidoscopeCookeryAPI.recipeMenuStyle().liquidIcon(liquid)`；茶壶配方给的是 `minecraft:water` / `minecraft:lava` 这类流体 ID，高汤锅给的是 `minecraft:water_bucket` / `minecraft:lava_bucket` 这类桶物品 ID。`icon(MenuButton.LIQUID)` 只表示通用入口或尚未选择液体时的默认图标，不能拿它画每条配方，否则岩浆也会显示成水桶。
 
 回调运行在**触发菜单的那个线程**，也就是拥有该玩家的 region 线程，直接 `player.openInventory(...)` 即可，不要自己切线程。
 

@@ -28,6 +28,8 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class ChoppingBoardController extends BlockEntityController {
+    private static final float DISPLAY_HEIGHT = 0.625f;
+    private static final float DROP_HEIGHT = DISPLAY_HEIGHT + 0.1f;
     private static final String DATA_KEY = "kaleidoscopecookery:chopping_board";
     private static final String K_BLOCK_ENTITY_TAG = "BlockEntityTag";
     private static final String K_DATA_VERSION = "data_version";
@@ -46,7 +48,7 @@ public class ChoppingBoardController extends BlockEntityController {
         // 展示实体置于方块中心上方
         this.element = new ChoppingBoardElement(this, new WorldPosition(
                 null, (float) super.blockEntity.pos.x() + 0.5f,
-                (float) super.blockEntity.pos.y() + 0.625f,
+                (float) super.blockEntity.pos.y() + DISPLAY_HEIGHT,
                 (float) super.blockEntity.pos.z() + 0.5f
         ));
     }
@@ -155,7 +157,7 @@ public class ChoppingBoardController extends BlockEntityController {
 
         for (Item result : FoodRecipeRegistry.instance().rollChoppingResults(recipe)) {
             if (!result.isEmpty()) {
-                DropUtils.dropAtCenter(super.blockEntity, result);
+                DropUtils.dropAtHeight(super.blockEntity, result, DROP_HEIGHT);
             }
         }
         clearBoard();
