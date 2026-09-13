@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.ui;
 import net.kaleidoscope.cookery.api.ui.MenuButton;
 
+import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
 import net.kaleidoscope.cookery.recipe.FoodGroups;
@@ -20,7 +21,6 @@ import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
-import org.bukkit.Material;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -200,14 +200,15 @@ public final class FlexEditMenu {
             lore.add(MenuIcons.gray("不限汤底 任何液体都能煮"));
         } else {
             for (Key liquid : draft.liquids()) {
-                lore.add(MenuIcons.grayWith(liquid));
+                lore.add(MenuIcons.grayLiquidWith("", liquid, ""));
             }
         }
         lore.add(MenuIcons.text("光标持桶左键 直接加该液体", NamedTextColor.YELLOW));
         lore.add(MenuIcons.text("空手左键 从已登记的汤底里选", NamedTextColor.YELLOW));
         lore.add(MenuIcons.text("Shift 右键清空", NamedTextColor.RED));
 
-        Key iconKey = draft.liquids().isEmpty() ? MenuIcons.iconKey(MenuButton.LIQUID) : draft.liquids().get(0);
+        Key iconKey = draft.liquids().isEmpty()
+                ? MenuIcons.iconKey(MenuButton.LIQUID) : MenuIcons.liquidIconKey(draft.liquids().get(0));
         Item icon = MenuIcons.icon(iconKey, viewer,
                 MenuIcons.text("限定汤底", NamedTextColor.GOLD), lore);
         return GuiElement.constant(icon, (element, click) -> {
@@ -248,17 +249,12 @@ public final class FlexEditMenu {
         List<Key> registered = SoupBaseRegistry.instance().keys();
         if (registered.isEmpty()) {
             return List.of(
-                    DialogChoicePrompt.Choice.translated("item.minecraft.water_bucket", "minecraft:water_bucket"),
-                    DialogChoicePrompt.Choice.translated("item.minecraft.lava_bucket", "minecraft:lava_bucket"));
+                    MenuIcons.liquidChoice(ItemKeys.WATER_BUCKET),
+                    MenuIcons.liquidChoice(ItemKeys.LAVA_BUCKET));
         }
         List<DialogChoicePrompt.Choice> out = new ArrayList<>();
         for (Key key : registered) {
-            // 原版物品有现成的翻译键 自定义物品没有 退回 id 的路径段
-            Material material = Material.matchMaterial(key.asString());
-            out.add(material == null
-                    ? new DialogChoicePrompt.Choice(key.value(), key.asString())
-                    : DialogChoicePrompt.Choice.translated(
-                            material.getItemTranslationKey(), key.asString()));
+            out.add(MenuIcons.liquidChoice(key));
         }
         return out;
     }

@@ -1,10 +1,9 @@
 package net.kaleidoscope.cookery.ui;
 import net.kaleidoscope.cookery.api.ui.MenuButton;
 
-import net.kaleidoscope.cookery.util.Localization;
+import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.TeapotLiquid;
 import net.kaleidoscope.cookery.recipe.TeapotRecipe;
 import net.kaleidoscope.cookery.recipe.edit.RecipeEditService;
 import net.kaleidoscope.cookery.recipe.edit.TeapotRecipeDraft;
@@ -20,8 +19,6 @@ import net.momirealms.craftengine.core.plugin.gui.Ingredient;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
-import net.momirealms.craftengine.libraries.adventure.text.format.TextDecoration;
-import org.bukkit.Material;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,10 +67,10 @@ public final class TeapotEditMenu {
         List<Component> lore = new ArrayList<>();
         lore.add(fluid == null
                 ? MenuIcons.gray("未设置")
-                : MenuIcons.gray("").append(fluidName(fluid)));
+                : MenuIcons.grayLiquidWith("", fluid, ""));
         lore.add(MenuIcons.text("左键从已登记的液体里选", NamedTextColor.YELLOW));
 
-        Item icon = MenuIcons.icon(bucketOf(fluid), viewer,
+        Item icon = MenuIcons.icon(MenuIcons.liquidIconKey(fluid), viewer,
                 MenuIcons.text("液体", NamedTextColor.AQUA), lore);
         return MenuIcons.button(icon, () -> DialogChoicePrompt.open(bukkitPlayer, "选择液体",
                 "只能用 teapot_liquid 里登记过的 自定义可填别的",
@@ -97,41 +94,15 @@ public final class TeapotEditMenu {
                 () -> open(bukkitPlayer, draft)));
     }
 
-    // 流体没有物品形态 用同名的桶当图标 minecraft:water -> minecraft:water_bucket
-    // 自定义流体没有对应的桶就退回水桶 总比屏障强
-    private static Key bucketOf(Key fluid) {
-        if (fluid == null) {
-            return MenuIcons.iconKey(MenuButton.LIQUID);
-        }
-        Key bucket = Key.of(fluid.namespace(), fluid.value() + "_bucket");
-        return Material.matchMaterial(bucket.asString()) == null
-                ? MenuIcons.iconKey(MenuButton.LIQUID) : bucket;
-    }
-
-    // display_name 是翻译键 直接显示会是一串 kaleidoscopecookery.message... 得过一遍本地化
-    private static Component fluidName(Key fluid) {
-        TeapotLiquid liquid = FoodRecipeRegistry.instance().getTeapotLiquid(fluid);
-        if (liquid == null || liquid.displayName() == null || liquid.displayName().isEmpty()) {
-            return MenuIcons.text(fluid.value(), NamedTextColor.WHITE);
-        }
-        return Localization.component(liquid.displayName())
-                .decoration(TextDecoration.ITALIC, false);
-    }
-
     // 按钮列表从已登记的液体生成 加一种就自动多一个按钮
     private static List<DialogChoicePrompt.Choice> liquidChoices() {
         List<DialogChoicePrompt.Choice> out = new ArrayList<>();
         for (Key fluid : FoodRecipeRegistry.instance().teapotLiquidKeys()) {
-            TeapotLiquid liquid = FoodRecipeRegistry.instance().getTeapotLiquid(fluid);
-            String name = liquid == null ? null : liquid.displayName();
-            out.add(name != null && Localization.isTranslationKey(name)
-                    ? DialogChoicePrompt.Choice.translated(name, fluid.asString())
-                    : new DialogChoicePrompt.Choice(
-                            name == null || name.isEmpty() ? fluid.value() : name, fluid.asString()));
+            out.add(MenuIcons.liquidChoice(fluid));
         }
         if (out.isEmpty()) {
-            out.add(new DialogChoicePrompt.Choice("水", "minecraft:water"));
-            out.add(new DialogChoicePrompt.Choice("岩浆", "minecraft:lava"));
+            out.add(MenuIcons.liquidChoice(ItemKeys.WATER));
+            out.add(MenuIcons.liquidChoice(ItemKeys.LAVA));
         }
         return out;
     }

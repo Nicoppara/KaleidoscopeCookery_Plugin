@@ -23,10 +23,17 @@ public final class DropUtils {
     }
 
     public static void dropAtCenter(BlockEntity blockEntity, Item item) {
+        dropAtHeight(blockEntity, item, 0.5);
+    }
+
+    public static void dropAtHeight(BlockEntity blockEntity, Item item, double height) {
         if (ItemUtils.isEmpty(item)) {
             return;
         }
-        blockEntity.world.world().dropItemNaturally(Vec3d.atCenterOf(blockEntity.pos), item);
+        blockEntity.world.world().dropItemNaturally(new Vec3d(
+                blockEntity.pos.x() + 0.5,
+                blockEntity.pos.y() + height,
+                blockEntity.pos.z() + 0.5), item);
     }
 
     // 吃完退还的容器掉在玩家脚下 别直接塞背包

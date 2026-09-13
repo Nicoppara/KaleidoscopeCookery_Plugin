@@ -184,6 +184,7 @@ public final class RecipeUtils {
         }
 
         List<Component> lore = new ArrayList<>();
+        lore.add(Component.empty());
         lore.add(label(TEXT_INGREDIENTS).append(Component.space()).append(images(ingredients)));
         lore.add(Component.empty());
         lore.add(outLine);

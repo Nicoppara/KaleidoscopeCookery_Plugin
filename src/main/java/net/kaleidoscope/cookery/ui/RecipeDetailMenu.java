@@ -220,9 +220,9 @@ public final class RecipeDetailMenu {
         }
         List<Component> lore = new ArrayList<>();
         for (Key liquid : liquids) {
-            lore.add(MenuIcons.grayWith(liquid));
+            lore.add(MenuIcons.grayLiquidWith("", liquid, ""));
         }
-        return MenuIcons.icon(MenuButton.LIQUID, viewer,
+        return MenuIcons.icon(MenuIcons.liquidIconKey(liquids.get(0)), viewer,
                 MenuIcons.text("限定汤底", NamedTextColor.AQUA), lore);
     }
 }

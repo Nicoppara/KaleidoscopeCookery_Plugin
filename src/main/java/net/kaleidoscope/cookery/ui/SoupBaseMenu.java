@@ -61,12 +61,12 @@ public final class SoupBaseMenu {
     private static ItemWithAction entry(org.bukkit.entity.Player bukkitPlayer, Player viewer, Key bucket) {
         Key show = SoupBaseRegistry.instance().registeredShow(bucket);
         List<Component> lore = new ArrayList<>();
-        lore.add(MenuIcons.grayWith(bucket));
+        lore.add(MenuIcons.grayLiquidWith("", bucket, ""));
         lore.add(MenuIcons.grayWith("液面 ", show == null ? SoupBaseRegistry.DEFAULT_SHOW : show, ""));
         lore.add(MenuIcons.text("左键改液面模型 id", NamedTextColor.YELLOW));
         lore.add(MenuIcons.text("Shift 右键删除", NamedTextColor.RED));
         Item icon = MenuIcons.icon(bucket, viewer,
-                MenuIcons.itemName(bucket).color(NamedTextColor.GOLD), lore);
+                MenuIcons.liquidName(bucket).colorIfAbsent(NamedTextColor.GOLD), lore);
         return new ItemWithAction(icon, (element, click) -> {
             click.cancel();
             if ("SHIFT_RIGHT".equals(click.type())) {

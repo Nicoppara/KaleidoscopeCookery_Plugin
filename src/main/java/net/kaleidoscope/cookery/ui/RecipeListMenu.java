@@ -154,7 +154,7 @@ public final class RecipeListMenu {
             lore.add(MenuIcons.gray("id " + recipe.id().asString()));
             addDuplicateLore(lore, recipe);
         }
-        lore.add(MenuIcons.grayWith("液体 ", recipe.fluid(), ""));
+        lore.add(MenuIcons.grayLiquidWith("液体 ", recipe.fluid(), ""));
         lore.add(MenuIcons.grayWith("原料 ", recipe.input(), " x" + recipe.ingredientCount()));
         lore.add(MenuIcons.grayWith("成品 ", recipe.result(), " x" + recipe.resultCount()));
         lore.add(MenuIcons.gray("熬煮 " + recipe.time() + " tick"));
