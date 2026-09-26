@@ -90,7 +90,7 @@ public final class CropHarvestRules {
                 .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND,
                         ItemUtils.isEmpty(itemInHand) ? null : itemInHand);
         DropUtils.dropAll(world, position, this.loot == null
-                ? state.getDrops(builder, world, player)
+                ? state.getDrops(builder.build(), world, player)
                 : this.loot.getRandomItems(builder.build(), world, player));
     }
 

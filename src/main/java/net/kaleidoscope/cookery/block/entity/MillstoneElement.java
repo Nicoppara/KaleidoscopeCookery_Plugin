@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 public final class MillstoneElement implements FurnitureElement {
     private final MillstoneController controller;
@@ -195,7 +196,7 @@ public final class MillstoneElement implements FurnitureElement {
     }
 
     @Override
-    public void gatherInteractableEntityId(Consumer<Integer> collector) {
+    public void gatherInteractableEntityId(IntConsumer collector) {
         collector.accept(stick1Id);
         collector.accept(stick2Id);
         collector.accept(stoneId);

@@ -78,6 +78,21 @@ class EntityPropertiesConditionTest {
                         ? Optional.of((T) entity)
                         : Optional.empty();
             }
+
+            @Override
+            public void setVariable(String key, Object value) {
+                
+            }
+
+            @Override
+            public Object getVariable(String key) {
+                return null;
+            }
+
+            @Override
+            public Map<String, Object> variables() {
+                return Map.of();
+            }
         };
     }
 

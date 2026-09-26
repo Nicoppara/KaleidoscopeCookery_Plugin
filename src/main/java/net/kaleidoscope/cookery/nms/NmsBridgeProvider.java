@@ -35,6 +35,7 @@ public final class NmsBridgeProvider {
     }
 
     private static String implementationClassName(String version) {
+        if (version.startsWith("26.3")) return name("v26_2_R1", "NmsV26_2_R1");
         if (version.startsWith("26.2")) return name("v26_2_R1", "NmsV26_2_R1");
         if (version.startsWith("26.1")) return name("v26_1_R1", "NmsV26_1_R1");
 

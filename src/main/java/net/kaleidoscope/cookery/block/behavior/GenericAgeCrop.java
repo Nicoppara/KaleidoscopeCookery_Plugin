@@ -76,7 +76,7 @@ public final class GenericAgeCrop implements HarvestableCrop {
                 .withOptionalParameter(DirectContextParameters.PLAYER, player)
                 .withOptionalParameter(DirectContextParameters.ITEM_IN_HAND,
                         ItemUtils.isEmpty(itemInHand) ? null : itemInHand);
-        DropUtils.dropAll(world, position, state.getDrops(builder, world, player));
+        DropUtils.dropAll(world, position, state.getDrops(builder.build(), world, player));
     }
 
     // 整株一起回到最小 age 多段作物只重置底部会让上面几段模型断层
