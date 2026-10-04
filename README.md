@@ -63,7 +63,7 @@
 
 ## 📦 依赖与构建
 
-- **运行环境**：Paper / Folia，前置为 [CraftEngine](https://github.com/Xiao-MoMi/craft-engine)（`plugin.yml` 的 `depend` 声明）。插件 **1.2.2 同时兼容 CraftEngine 26.9.2 和 26.10**；26.10 已验证本地使用的 `26.10-SNAPSHOT`，精确构建及验证范围见[兼容记录](verification/craftengine/README.md)。Minecraft **26.3** 已有底层适配。
+- **运行环境**：Paper / Folia，前置为 [CraftEngine](https://github.com/Xiao-MoMi/craft-engine)（`plugin.yml` 的 `depend` 声明）。插件 **1.2.3 同时兼容 CraftEngine 26.9.2 和 26.10**，补齐 Minecraft **26.3** 蒸笼下落的新数据包转换；26.10 已验证本地使用的 `26.10-SNAPSHOT`，精确构建及验证范围见[兼容记录](verification/craftengine/README.md)。
 
 - **Java**：Minecraft 1.21.x 使用 Java 21；Minecraft 26.x 使用 Java 25。构建完整的多版本插件需要同时安装 JDK 21 和 JDK 25。
 
@@ -82,9 +82,9 @@
 
   Windows 使用 `gradlew.bat build`。构建会运行测试并编译所有服务端适配模块；Spigot NMS 依赖可从 CodeMC 获取，也可用 BuildTools 安装到本地 Maven 仓库。
 
-  `gradle.properties` 中的 `craftEngineVersion` 统一控制 Bukkit、Core、Proxy 和测试使用的 **公开 API 版本**。默认保持 **26.9.1** 编译基线，避免引入只在 26.10 中存在的接口；同一个构建产物已在 **26.9.2** 与 **26.10-SNAPSHOT** 的隔离 Paper 26.3 测试服中通过回归。26.10 保留本插件使用的方块实体、家具与重定位 Adventure 接口，无需更改现有玩法代码。实际插件包的编译检查可使用[验证脚本](verification/craftengine/README.md)。Core API 已包含重定位的 Adventure 类型，无需再混用旧版 `craft-engine-adventure`。
+  `gradle.properties` 中的 `craftEngineVersion` 统一控制 Bukkit、Core、Proxy 和测试使用的 **公开 API 版本**。默认保持 **26.9.1** 编译基线，避免引入只在 26.10 中存在的接口；同一个构建产物已在 **26.9.2** 与 **26.10-SNAPSHOT** 的隔离 Paper 26.3 测试服中通过回归。新数据包在运行时按实际服务器接口绑定，发送给客户端的蒸笼状态使用 CE 的编号映射，服务端方块状态和食材数据保持原样。实际插件包的编译检查可使用[验证脚本](verification/craftengine/README.md)。Core API 已包含重定位的 Adventure 类型，无需再混用旧版 `craft-engine-adventure`。
 
-  已运行 1.2.2 的服务器可继续使用当前插件包。切换上述 CE 版本时，森罗资源包的模型、贴图和配置无需为本次兼容修改；CE 升级后的生成与分发按服务器原有流程执行。
+  **Minecraft 26.3 蒸笼下落修复（1.2.3）**：旧版会把服务器专用的蒸笼状态编号写入 `add_transient_block` 数据包，原版客户端无法识别时会断线。1.2.3 补充该数据包及其所在 bundle 的转换，保留包内其他数据、原始方块状态、下落实体与落地食材恢复；CE 模组客户端沿用自身状态编号。未提供此新包的旧版 Minecraft 自动跳过处理。森罗资源包的模型、贴图和配置无需为本次修复修改。
 
   1.1.9 迁移了作物掉落上下文、家具的 `IntConsumer` 交互实体接口和蒸笼下落实体接口；下落被取消时保留原蒸笼中的食材。升级时替换插件 JAR 并重启服务器，继续使用原有 CraftEngine 资源包。仓库附带资源包元数据和新增成就文本，完整模型、贴图及玩法配置需沿用已有资源包。
 

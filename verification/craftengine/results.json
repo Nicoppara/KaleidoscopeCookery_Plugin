@@ -1,7 +1,7 @@
 {
   "date": "2026-10-03",
-  "cookeryVersion": "1.2.2",
-  "cookerySha256": "908df5a072b3387a1fa8495f2a8071e41804044d416972afcac3a8c9424191d1",
+  "cookeryVersion": "1.2.3",
+  "cookerySha256": "6b08c9a920a018092d222a74837e928d685a94bc32ded84524a66db5b49ae7ac",
   "releaseApiBaseline": "26.9.1",
   "defaultBuild": "test shadowJar passed; all nine NMS modules compiled",
   "junit": {
@@ -18,7 +18,7 @@
       "craftengine": "26.9.2",
       "serverExitCode": 0,
       "compatibility": true,
-      "compatibilityChecks": 61,
+      "compatibilityChecks": 83,
       "advancements": true,
       "advancementChecks": 217,
       "phase": 3,
@@ -36,7 +36,7 @@
       "craftengine": "26.10-SNAPSHOT",
       "serverExitCode": 0,
       "compatibility": true,
-      "compatibilityChecks": 61,
+      "compatibilityChecks": 83,
       "advancements": true,
       "advancementChecks": 217,
       "phase": 3,
@@ -51,5 +51,21 @@
       "actualRuntimeApiCompile": "passed"
     }
   ],
-  "scope": "Real isolated Paper servers with the complete user pack and simulated players/events. Existing completed advancement database, phase 3 restart/reload regression. No real-client or Folia region-scheduling verification."
+  "scope": "Real isolated Paper 26.3 servers with the complete user pack and simulated players/events. Actual 26.3 transient packet serialization and vanilla-only state codec decoding through the live plugin handler in EmbeddedChannel. Existing completed advancement database, phase 3 restart/reload regression. No real graphical client connection, proxy translation or Folia region-scheduling verification.",
+  "legacyGuard": {
+    "success": true,
+    "minecraft": "1.21.11",
+    "craftengine": "26.9.2",
+    "checks": 8,
+    "error": null,
+    "scope": "Paper 1.21.11, CE 26.9.2, no cookery pack; handler-inactive path only."
+  },
+  "incident": {
+    "log": "https://mclo.gs/R4IIF3r",
+    "client": "26.3",
+    "triggerReported": "steamer falling on CE 26.10",
+    "reportedInvalidStateId": 37767,
+    "reproducedLocalInvalidStateId": 35849,
+    "localVanillaStateCount": 35723
+  }
 }
