@@ -270,6 +270,7 @@ public final class CompatProbe extends JavaPlugin implements Listener {
             stored.getCompound(SteamerController.DATA_KEY).put("items", BlockEntityNbt.saveItems(new Item[]{potato}, 1));
             controller.loadCustomData(stored);
             check(controller.getItemCount() == 1, "steamer food serialized");
+            TransientBlockProbe.verify(this, state, world, this::check);
             world.getBlockAt(8, 99, 8).setType(Material.AIR, false);
             Object[] args = {state.customBlockState().minecraftState(), level, LocationUtils.toBlockPos(8, 100, 8)};
             behavior.tick(null, args);

@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.plugin;
 
 import net.kaleidoscope.cookery.block.listener.SteamerFallingBlockListener;
+import net.kaleidoscope.cookery.block.listener.SteamerTransientBlockListener;
 import net.kaleidoscope.cookery.block.listener.CustomBlockPlaceProtectionListener;
 import net.kaleidoscope.cookery.block.listener.DisplayTrackingListener;
 import net.kaleidoscope.cookery.block.listener.MillstoneAnimalListener;
@@ -63,6 +64,7 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
     private Object placeholderExpansion;
     private volatile AdvancementTracker advancementTracker;
     private BaoziThrowListener baoziThrows;
+    private SteamerTransientBlockListener steamerTransients;
 
     @Override
     public void onEnable() {
@@ -90,6 +92,7 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new MillstoneAnimalListener(), this);
         getServer().getPluginManager().registerEvents(new MillstonePlaceListener(), this);
         getServer().getPluginManager().registerEvents(new SteamerFallingBlockListener(), this);
+        steamerTransients = new SteamerTransientBlockListener(this);
         getServer().getPluginManager().registerEvents(new CustomBlockPlaceProtectionListener(), this);
         getServer().getPluginManager().registerEvents(new FruitBasketCatListener(this), this);
         getServer().getPluginManager().registerEvents(new TrashCanListener(), this);
@@ -123,6 +126,7 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (steamerTransients != null) steamerTransients.close();
         if (baoziThrows != null) baoziThrows.close();
         closeAdvancements();
         FoliaUtil.shutdown();
