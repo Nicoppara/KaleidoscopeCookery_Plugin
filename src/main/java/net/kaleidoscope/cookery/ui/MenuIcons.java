@@ -152,12 +152,22 @@ public final class MenuIcons {
         if (ItemUtils.isEmpty(item)) {
             return item;
         }
+        // 只修改菜单副本；原物品的数量、组件及玩家语境下生成的说明保持原样。
+        item = item.copy();
         if (name != null) {
             item.customNameComponent(name);
         }
-        if (lore != null && !lore.isEmpty()) {
-            item.loreComponent(lore);
+        return appendLore(item, lore);
+    }
+
+    // 在菜单自有图标上追加提示，不重解析或覆盖 CE 已生成的物品说明。
+    static Item appendLore(Item item, List<Component> extra) {
+        if (ItemUtils.isEmpty(item) || extra == null || extra.isEmpty()) {
+            return item;
         }
+        List<Component> combined = new ArrayList<>(item.loreComponent().orElse(List.of()));
+        combined.addAll(extra);
+        item.loreComponent(combined);
         return item;
     }
 
