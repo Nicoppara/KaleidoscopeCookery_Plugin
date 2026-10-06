@@ -13,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @SuppressWarnings("unused")
 public final class SoupBaseRegistry {
     private static final SoupBaseRegistry INSTANCE = new SoupBaseRegistry();
-    private final Map<Key, Key> bucketToShow = new ConcurrentHashMap<>();
 
     private SoupBaseRegistry() {
     }
@@ -24,7 +23,7 @@ public final class SoupBaseRegistry {
 
     // 登记一个汤底 bucket 是倒入所需的桶物品 id showModel 是锅中液面展示的模型物品 id
     public void register(Key bucket, Key showModel) {
-        bucketToShow.put(bucket, showModel);
+        FoodRecipeRegistry.instance().registerSoupBase(bucket, showModel);
     }
 
     public void register(String bucket, String showModel) {
@@ -32,7 +31,7 @@ public final class SoupBaseRegistry {
     }
 
     public boolean isSoupBase(Key bucket) {
-        return bucketToShow.containsKey(bucket);
+        return FoodRecipeRegistry.instance().soupBases().containsKey(bucket);
     }
 
     public boolean isSoupBase(String bucket) {
@@ -47,7 +46,7 @@ public final class SoupBaseRegistry {
         if (bucket == null) {
             return null;
         }
-        return bucketToShow.getOrDefault(bucket, DEFAULT_SHOW);
+        return FoodRecipeRegistry.instance().soupBases().getOrDefault(bucket, DEFAULT_SHOW);
     }
 
     public Key showModel(String bucket) {
@@ -57,24 +56,24 @@ public final class SoupBaseRegistry {
     // 取消登记 UI 删除汤底用 已煮上的锅不受影响 那边存的是 soupBaseId 不查这张表
     public void remove(Key bucket) {
         if (bucket != null) {
-            bucketToShow.remove(bucket);
+            FoodRecipeRegistry.instance().removeSoupBase(bucket);
         }
     }
 
     // 该桶登记的液面 未登记返回 null 与 showModel 的兜底不同 UI 要区分这两种
     public Key registeredShow(Key bucket) {
-        return bucket == null ? null : bucketToShow.get(bucket);
+        return bucket == null ? null : FoodRecipeRegistry.instance().soupBases().get(bucket);
     }
 
     // 已登记的桶 按 id 排序 否则每次开菜单顺序都在跳
     // 已登记的汤底桶 编辑器列预设按钮用
     public List<Key> keys() {
-        List<Key> out = new ArrayList<>(bucketToShow.keySet());
+        List<Key> out = new ArrayList<>(FoodRecipeRegistry.instance().soupBases().keySet());
         out.sort(Comparator.comparing(Key::asString));
         return List.copyOf(out);
     }
 
     public void clear() {
-        bucketToShow.clear();
+        FoodRecipeRegistry.instance().clearSoupBases();
     }
 }

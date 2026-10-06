@@ -104,16 +104,8 @@ public final class ChoppingEditMenu {
 
     private static GuiElement stageSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                         ChoppingRecipeDraft draft) {
-        Item icon = MenuIcons.icon(MenuButton.COUNT, viewer,
-                MenuIcons.text("需要切 " + draft.stage() + " 刀", NamedTextColor.GOLD),
-                MenuIcons.lore("左键修改", "切满这个次数才出成品"));
-        return MenuIcons.button(icon, () -> MenuInput.requestInt(bukkitPlayer, "切几刀", "次数",
-                draft.stage(), 1, ChoppingRecipeDraft.MAX_STAGE,
-                value -> {
-                    draft.stage(value);
-                    open(bukkitPlayer, draft);
-                },
-                () -> open(bukkitPlayer, draft)));
+        return RecipeProcessingControls.count(bukkitPlayer, viewer, draft.originalRecipe(), ApplianceType.CHOPPING_BOARD, "刀数", draft.stage(),
+                ChoppingRecipeDraft.MAX_STAGE, draft::stage, () -> open(bukkitPlayer, draft));
     }
 
     private static GuiElement modeSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
@@ -249,8 +241,11 @@ public final class ChoppingEditMenu {
                 MenuIcons.text("保存", NamedTextColor.GREEN));
         return MenuIcons.button(icon, () -> {
             RecipeMenus.message(bukkitPlayer, "正在保存食谱...");
-            RecipeEditService.saveChopping(draft).thenAccept(error ->
+            var saving = RecipeEditSaves.save(draft, () -> RecipeEditService.saveChopping(draft));
+            if (saving == null) return;
+            saving.thenAccept(error ->
                     MenuTasks.runFor(bukkitPlayer, () -> {
+                        if (RecipeEditService.isClosed()) return;
                         if (error != null) {
                             RecipeMenus.message(bukkitPlayer, error);
                             open(bukkitPlayer, draft);

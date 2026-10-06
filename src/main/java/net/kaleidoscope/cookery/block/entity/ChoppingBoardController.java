@@ -21,7 +21,7 @@ import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
-import net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe;
+import net.kaleidoscope.cookery.recipe.CookingPlan;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 
 import java.util.function.BiConsumer;
@@ -35,12 +35,16 @@ public class ChoppingBoardController extends BlockEntityController {
     private static final String K_DATA_VERSION = "data_version";
     private static final String K_STAGE = "stage";
     private static final String K_ITEM = "item";
+    private static final String K_PROCESSING_PLAN = "processing_plan";
+    private static final String K_PROCESSING_BLOCKED = "processing_blocked";
 
     private final ChoppingBoardBehavior behavior;
     private final ChoppingBoardElement element;
     private Item placedItem = Item.empty();
     // 当前切割阶段
     private int currentStage = 0;
+    private CookingPlan cookingPlan;
+    private boolean processingBlocked;
 
     public ChoppingBoardController(BlockEntity blockEntity, ChoppingBoardBehavior behavior) {
         super(blockEntity);
@@ -110,22 +114,15 @@ public class ChoppingBoardController extends BlockEntityController {
         if (isEmpty()) {
             return null;
         }
-        ChoppingBoardRecipe recipe = recipe();
-        if (recipe == null) {
+        CookingPlan plan = cookingPlan;
+        if (plan == null || !plan.valid() || !plan.matched()) {
             return null;
         }
-        int idx = Math.min(currentStage, recipe.stage()) - 1;
-        if (idx < 0 || idx >= recipe.values().size()) {
+        int idx = Math.min(currentStage, plan.workRequired()) - 1;
+        if (idx < 0 || idx >= plan.choppingValues().size()) {
             return null;
         }
-        return recipe.values().get(idx);
-    }
-
-    private ChoppingBoardRecipe recipe() {
-        if (placedItem.isEmpty()) {
-            return null;
-        }
-        return FoodRecipeRegistry.instance().findChoppingByInput(placedItem.id());
+        return plan.choppingValues().get(idx);
     }
 
     public boolean place(Item food) {
@@ -134,34 +131,53 @@ public class ChoppingBoardController extends BlockEntityController {
         }
         this.placedItem = food.copyWithCount(1);
         this.currentStage = 1;
+        this.cookingPlan = FoodRecipeRegistry.instance().planChopping(food.id());
+        this.processingBlocked = false;
         refreshElementState();
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
         return true;
     }
 
     public CutResult cut() {
-        if (isEmpty()) {
+        if (isEmpty() || processingBlocked) {
             return CutResult.NOTHING;
         }
-        ChoppingBoardRecipe recipe = recipe();
-        if (recipe == null) {
+        if (cookingPlan == null) cookingPlan = FoodRecipeRegistry.instance().planChopping(placedItem.id());
+        if (!cookingPlan.valid()) {
+            blockProcessing();
+            return CutResult.NOTHING;
+        }
+        if (!cookingPlan.matched()) {
             return CutResult.NOTHING;
         }
 
-        if (currentStage < recipe.stage()) {
+        if (currentStage < cookingPlan.workRequired()) {
             currentStage++;
             refreshElementState();
             super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
             return CutResult.ADVANCED;
         }
 
-        for (Item result : FoodRecipeRegistry.instance().rollChoppingResults(recipe)) {
+        var outputs = cookingPlan.buildOutputs();
+        if (outputs.isEmpty()) {
+            blockProcessing();
+            return CutResult.NOTHING;
+        }
+        for (Item result : outputs.get()) {
             if (!result.isEmpty()) {
                 DropUtils.dropAtHeight(super.blockEntity, result, DROP_HEIGHT);
             }
         }
         clearBoard();
         return CutResult.FINISHED;
+    }
+
+    private void blockProcessing() {
+        if (processingBlocked) return;
+        processingBlocked = true;
+        java.util.logging.Logger.getLogger(ChoppingBoardController.class.getName()).warning(
+                "砧板配方快照无效或产物不可用，保留原料并暂停：" + blockEntity.pos);
+        blockEntity.world.blockEntityChanged(blockEntity.pos);
     }
 
     public Item takeBack() {
@@ -176,6 +192,8 @@ public class ChoppingBoardController extends BlockEntityController {
     private void clearBoard() {
         this.placedItem = Item.empty();
         this.currentStage = 0;
+        this.cookingPlan = null;
+        this.processingBlocked = false;
         refreshElementState();
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
     }
@@ -219,6 +237,8 @@ public class ChoppingBoardController extends BlockEntityController {
         data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
         data.putInt(K_STAGE, currentStage);
         BlockEntityNbt.putItem(data, K_ITEM, placedItem);
+        if (cookingPlan != null) data.put(K_PROCESSING_PLAN, cookingPlan.save());
+        data.putBoolean(K_PROCESSING_BLOCKED, processingBlocked);
         tag.put(DATA_KEY, data);
     }
 
@@ -233,6 +253,9 @@ public class ChoppingBoardController extends BlockEntityController {
         if (this.placedItem.isEmpty()) {
             this.currentStage = 0;
         }
+        cookingPlan = data.containsKey(K_PROCESSING_PLAN) ? CookingPlan.load(data.getCompound(K_PROCESSING_PLAN))
+                : (placedItem.isEmpty() ? null : FoodRecipeRegistry.instance().planChopping(placedItem.id()));
+        processingBlocked = data.getBoolean(K_PROCESSING_BLOCKED, false);
         this.element.refreshPackets();
     }
 }

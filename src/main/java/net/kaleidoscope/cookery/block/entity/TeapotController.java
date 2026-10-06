@@ -10,7 +10,9 @@ import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.TeapotLiquid;
-import net.kaleidoscope.cookery.recipe.TeapotRecipe;
+import net.kaleidoscope.cookery.recipe.CookingPlan;
+import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
+import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
@@ -43,6 +45,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 
@@ -58,6 +61,8 @@ public final class TeapotController extends BlockEntityController {
     private static final String K_INPUT = "input";
     private static final String K_RESULT = "result";
     private static final String K_SERVINGS = "servings";
+    private static final String K_PLAN = "cooking_plan";
+    private static final String K_BLOCKED = "completion_blocked";
     private static final int INGREDIENT_TIME = 200;
     private static final int CHECK_INTERVAL = 23;
     // 热源判定要读相邻方块状态 缓存周期
@@ -86,11 +91,15 @@ public final class TeapotController extends BlockEntityController {
     private Item result = Item.empty();
     private int servings;
     private int currentTick = -1;
+    private CookingPlan cookingPlan;
+    private boolean completionBlocked;
+    private boolean progressDirty;
+    private int dirtyTick;
 
     private boolean boilFlip;
     private int animTick;
     private boolean heatedCache;
-    private int heatCheckTick;
+    private boolean heatCacheInitialized;
     private boolean textShown;
     private boolean creativeBreak;
     private boolean pickedUp;
@@ -102,6 +111,7 @@ public final class TeapotController extends BlockEntityController {
     public TeapotController(BlockEntity blockEntity, TeapotBehavior behavior) {
         super(blockEntity);
         this.behavior = behavior;
+        this.dirtyTick = Math.floorMod(blockEntity.pos.x() * 31 + blockEntity.pos.z(), 20);
         this.element = new TeapotElement(this);
     }
 
@@ -160,6 +170,8 @@ public final class TeapotController extends BlockEntityController {
         }
         fluid = null;
         currentTick = -1;
+        cookingPlan = null;
+        completionBlocked = false;
         if (!player.canInstabuild()) {
             InventoryUtils.shrinkHeld(player, emptyBucket, 1);
             InventoryUtils.giveOrHold(player, hand, InventoryUtils.createOrEmpty(back));
@@ -174,13 +186,15 @@ public final class TeapotController extends BlockEntityController {
         if (status != PUT_INGREDIENT || fluid == null || !input.isEmpty()) {
             return false;
         }
-        TeapotRecipe recipe = FoodRecipeRegistry.instance().findTeapot(fluid, held.id());
-        if (recipe == null) {
+        CookingPlan plan = FoodRecipeRegistry.instance().planTeapot(fluid, held.id());
+        if (!plan.valid() || !plan.matched()) {
             return false;
         }
         // 模糊配方 放多少算多少 上限为配方要求量 产量随后按比例
-        int added = Math.min(held.count(), Math.max(1, recipe.ingredientCount()));
+        int added = Math.min(held.count(), Math.max(1, plan.ingredientCount()));
         input = held.copyWithCount(added);
+        cookingPlan = plan;
+        completionBlocked = false;
         currentTick = INGREDIENT_TIME;
         InventoryUtils.shrinkHeld(player, held, added);
         markChanged();
@@ -195,6 +209,9 @@ public final class TeapotController extends BlockEntityController {
         InventoryUtils.giveOrHold(player, hand, input.copy());
         input = Item.empty();
         currentTick = -1;
+        cookingPlan = null;
+        completionBlocked = false;
+        progressDirty = false;
         markChanged();
         refreshDisplay();
         return true;
@@ -231,26 +248,34 @@ public final class TeapotController extends BlockEntityController {
     }
 
     private void tick() {
+        if ((status == PUT_INGREDIENT || status == PROCESSING) && !input.isEmpty()
+                && cookingPlan == null && (status == PUT_INGREDIENT || result.isEmpty())) {
+            cookingPlan = FoodRecipeRegistry.instance().planTeapot(fluid, input.id());
+            if (status == PROCESSING) cookingPlan = cookingPlan.withWorkRequired(Math.max(1, currentTick));
+            markChanged();
+        }
+        if (++dirtyTick >= 20) {
+            dirtyTick = 0;
+            flushProgress();
+        }
         long gameTime = ((World) blockEntity.world.world().platformWorld()).getGameTime();
         // 热源判定要读相邻方块状态 缓存 20 tick
-        if (heatCheckTick == 0) {
+        if (!heatCacheInitialized || Math.floorMod(gameTime + posStagger(), HEAT_CHECK_INTERVAL) == 0) {
             heatedCache = heated();
+            heatCacheInitialized = true;
         }
-        heatCheckTick = (heatCheckTick + 1) % HEAT_CHECK_INTERVAL;
         boolean heated = heatedCache;
 
-        if (heated && fluid != null && gameTime % behavior.particleInterval == 0) {
+        if (heated && fluid != null && Math.floorMod(gameTime + posStagger(), behavior.particleInterval) == 0) {
             emitSteam(behavior.particleCount);
         }
 
         if (status == PUT_INGREDIENT || status == PROCESSING) {
-            if (Math.floorMod(gameTime + posStagger(), CHECK_INTERVAL) != 0) {
-                return;
-            }
             if (fluid == null || !heated) {
+                flushProgress();
                 return;
             }
-            onProcessingEffects();
+            if (Math.floorMod(gameTime + posStagger(), CHECK_INTERVAL) == 0) onProcessingEffects();
             if (status == PUT_INGREDIENT) {
                 tickPutIngredient();
             } else {
@@ -268,42 +293,69 @@ public final class TeapotController extends BlockEntityController {
     }
 
     private void tickPutIngredient() {
-        if (input.isEmpty()) {
+        if (input.isEmpty() || completionBlocked) {
+            return;
+        }
+        if (cookingPlan == null || !cookingPlan.valid() || !cookingPlan.matched()) {
+            blockCompletion();
             return;
         }
         if (currentTick > 0) {
-            currentTick = Math.max(-1, currentTick - CHECK_INTERVAL);
-            markChanged();
-            return;
+            currentTick--;
+            progressDirty = true;
+            if (currentTick > 0) return;
         }
-        TeapotRecipe recipe = FoodRecipeRegistry.instance().findTeapot(fluid, input.id());
-        if (recipe != null) {
-            result = makeResult(recipe);
-            servings = servingsFor(input.count(), recipe.ingredientCount());
-            currentTick = recipe.time();
-            status = PROCESSING;
-            markChanged();
-            refreshDisplay();
-            return;
-        }
-        DropUtils.dropAtCenter(blockEntity, input);
-        input = Item.empty();
-        result = Item.empty();
-        currentTick = -1;
+        servings = servingsFor(input.count(), cookingPlan.ingredientCount());
+        currentTick = cookingPlan.workRequired();
+        status = PROCESSING;
+        progressDirty = false;
         markChanged();
+        refreshDisplay();
     }
 
     private void tickProcessing() {
-        if (currentTick > 0) {
-            currentTick = Math.max(-1, currentTick - CHECK_INTERVAL);
-            markChanged();
+        if (completionBlocked) return;
+        // 旧版本在 PROCESSING 开始时已经构建结果，原结果及份数继续使用。
+        if ((cookingPlan != null && !cookingPlan.valid()) || (cookingPlan == null && result.isEmpty())) {
+            blockCompletion();
             return;
+        }
+        if (currentTick > 0) {
+            currentTick--;
+            progressDirty = true;
+            if (currentTick > 0) return;
+        }
+        if (result.isEmpty()) {
+            Optional<FoodRecipeResult> recipeResult = cookingPlan.matched() ? cookingPlan.buildResult() : Optional.empty();
+            if (recipeResult.isEmpty()) {
+                blockCompletion();
+                return;
+            }
+            FoodRecipeResult cooked = recipeResult.get();
+            result = cooked.item().copyWithCount(Math.max(1, cooked.count()));
         }
         status = FINISHED;
         currentTick = -1;
         input = Item.empty();
+        progressDirty = false;
         markChanged();
         refreshDisplay();
+    }
+
+    private void flushProgress() {
+        if (progressDirty) {
+            progressDirty = false;
+            markChanged();
+        }
+    }
+
+    private void blockCompletion() {
+        completionBlocked = true;
+        progressDirty = false;
+        markChanged();
+        var plugin = KaleidoscopeCookeryPlugin.instance();
+        if (plugin != null) plugin.getLogger().warning("Teapot cooking paused at " + blockEntity.pos
+                + ": saved recipe or result is unavailable; input retained.");
     }
 
     // 煮开抖动
@@ -336,14 +388,6 @@ public final class TeapotController extends BlockEntityController {
 
     private void broadcastAll(Object packet) {
         TrackedPlayers.forEach(blockEntity, p -> p.sendPacket(packet, false));
-    }
-
-    private Item makeResult(TeapotRecipe recipe) {
-        Item item = InventoryUtils.createOrEmpty(recipe.result());
-        if (ItemUtils.isEmpty(item)) {
-            return Item.empty();
-        }
-        return item.copyWithCount(Math.max(1, recipe.resultCount()));
     }
 
     // 模糊配方产量 加入量/要求量 * 满格 整数除法向下取整 有加就最少 1 格
@@ -541,6 +585,8 @@ public final class TeapotController extends BlockEntityController {
         CompoundTag data = new CompoundTag();
         data.putInt(K_STATUS, status);
         data.putInt(K_CURRENT_TICK, currentTick);
+        if (cookingPlan != null) data.put(K_PLAN, cookingPlan.save());
+        data.putBoolean(K_BLOCKED, completionBlocked);
         if (fluid != null) {
             data.putString(K_FLUID, fluid.asString());
         }
@@ -552,12 +598,16 @@ public final class TeapotController extends BlockEntityController {
 
     @Override
     public void loadCustomData(CompoundTag tag) {
+        progressDirty = false;
+        heatCacheInitialized = false;
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data == null) {
             return;
         }
         status = data.getInt(K_STATUS, PUT_INGREDIENT);
         currentTick = data.getInt(K_CURRENT_TICK, -1);
+        cookingPlan = data.containsKey(K_PLAN) ? CookingPlan.load(data.getCompound(K_PLAN)) : null;
+        completionBlocked = data.getBoolean(K_BLOCKED, false);
         String fluidStr = data.getString(K_FLUID);
         fluid = (fluidStr == null || fluidStr.isEmpty()) ? null : Key.of(fluidStr);
         servings = data.getInt(K_SERVINGS, 0);

@@ -123,7 +123,7 @@ public final class RecipeListMenu {
             addDuplicateLore(lore, recipe);
         }
         lore.add(MenuIcons.grayWith("原料 ", recipe.input(), ""));
-        lore.add(MenuIcons.gray("需要切 " + recipe.stage() + " 刀"));
+        lore.addAll(RecipeProcessingDisplay.lore(recipe));
         if (recipe.values().isEmpty()) {
             lore.add(MenuIcons.gray("不换模型 直接展示原料"));
         }
@@ -157,7 +157,7 @@ public final class RecipeListMenu {
         lore.add(MenuIcons.grayLiquidWith("液体 ", recipe.fluid(), ""));
         lore.add(MenuIcons.grayWith("原料 ", recipe.input(), " x" + recipe.ingredientCount()));
         lore.add(MenuIcons.grayWith("成品 ", recipe.result(), " x" + recipe.resultCount()));
-        lore.add(MenuIcons.gray("熬煮 " + recipe.time() + " tick"));
+        lore.addAll(RecipeProcessingDisplay.lore(recipe));
         lore.add(MenuIcons.text(editable ? "左键编辑" : "左键查看详情", NamedTextColor.YELLOW));
 
         Item item = MenuIcons.icon(recipe.result(), viewer,
@@ -188,9 +188,7 @@ public final class RecipeListMenu {
         if (recipe.resultCount() > 1) {
             lore.add(MenuIcons.gray("每次产出 " + recipe.resultCount() + " 份"));
         }
-        if (recipe.cook() == ApplianceType.MILLSTONE && recipe.rotations() > 0) {
-            lore.add(MenuIcons.gray("研磨圈数 " + recipe.rotations()));
-        }
+        lore.addAll(RecipeProcessingDisplay.lore(recipe));
         lore.add(MenuIcons.text(editable ? "左键编辑" : "左键查看详情", NamedTextColor.YELLOW));
 
         Item icon = MenuIcons.icon(recipe.primaryResult(), viewer,
@@ -219,6 +217,7 @@ public final class RecipeListMenu {
         if (!recipe.liquids().isEmpty()) {
             lore.add(MenuIcons.gray("限定汤底 " + recipe.liquids().size() + " 种"));
         }
+        lore.addAll(RecipeProcessingDisplay.lore(recipe));
         lore.add(MenuIcons.text(editable ? "左键编辑" : "左键查看详情", NamedTextColor.YELLOW));
 
         Item icon = MenuIcons.icon(recipe.result(), viewer,

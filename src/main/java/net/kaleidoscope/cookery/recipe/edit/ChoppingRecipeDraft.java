@@ -84,7 +84,7 @@ public final class ChoppingRecipeDraft {
     }
 
     public void stage(int value) {
-        this.stage = Math.max(1, Math.min(MAX_STAGE, value));
+        this.stage = Math.max(0, Math.min(MAX_STAGE, value));
     }
 
     public String modelPrefix() {

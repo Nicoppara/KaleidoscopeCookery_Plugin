@@ -31,8 +31,12 @@ import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
+import net.kaleidoscope.cookery.recipe.CookingPlan;
+import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
+import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 public class ShawarmaSpitController extends BlockEntityController {
@@ -48,6 +52,8 @@ public class ShawarmaSpitController extends BlockEntityController {
     private static final String K_ITEM = "item";
     private static final String K_PROGRESS = "progress";
     private static final String K_TIME = "time";
+    private static final String K_PLAN = "cooking_plan";
+    private static final String K_BLOCKED = "completion_blocked";
     private static final String K_CURRENT_ROTATION = "current_rotation";
 
     private final ShawarmaSpitBehavior behavior;
@@ -55,16 +61,22 @@ public class ShawarmaSpitController extends BlockEntityController {
     private final Item[][] items = new Item[LAYERS][SLOTS];
     private final int[][] cookingProgress = new int[LAYERS][SLOTS];
     private final int[][] cookingTime = new int[LAYERS][SLOTS];
+    private final CookingPlan[][] cookingPlans = new CookingPlan[LAYERS][SLOTS];
+    private final boolean[][] completionBlocked = new boolean[LAYERS][SLOTS];
 
     private float currentRotation = 0f;
     private int animationTick = 0;
     private boolean wasActive = false;
+    private int dirtyTick;
+    private boolean progressDirty;
+    private boolean needsPlanHydration;
 
     private final ShawarmaSpitElement element;
 
     public ShawarmaSpitController(BlockEntity blockEntity, ShawarmaSpitBehavior behavior) {
         super(blockEntity);
         this.behavior = behavior;
+        this.dirtyTick = Math.floorMod(blockEntity.pos.x() * 31 + blockEntity.pos.z(), 20);
         var halfProperty = behavior.getHalfProperty();
         this.lower = BlockStates.value(blockEntity.blockState, halfProperty, halfProperty.defaultValue())
                 != DoubleBlockHalf.UPPER;
@@ -90,7 +102,7 @@ public class ShawarmaSpitController extends BlockEntityController {
     private boolean hasRaw() {
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
-                if (cookingTime[l][s] > 0) {
+                if (cookingTime[l][s] > 0 && !completionBlocked[l][s]) {
                     return true;
                 }
             }
@@ -114,11 +126,13 @@ public class ShawarmaSpitController extends BlockEntityController {
     }
 
     public void tick() {
+        hydrateLegacyPlans();
         if (!isActive()) {
             if (wasActive) {
                 element.updateFinalRotation();
             }
             wasActive = false;
+            flushProgress();
             return;
         }
         if (!wasActive) {
@@ -129,12 +143,25 @@ public class ShawarmaSpitController extends BlockEntityController {
         boolean changed = false;
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
-                if (cookingTime[l][s] <= 0) {
+                if (cookingTime[l][s] <= 0 || completionBlocked[l][s]) {
+                    continue;
+                }
+                CookingPlan plan = cookingPlans[l][s];
+                if (plan == null || !plan.valid()) {
+                    blockCompletion(l, s);
+                    changed = true;
                     continue;
                 }
                 cookingProgress[l][s]++;
+                progressDirty = true;
                 if (cookingProgress[l][s] >= cookingTime[l][s]) {
-                    items[l][s] = getRecipeResult(items[l][s]);
+                    Optional<FoodRecipeResult> recipeResult = plan.matched() ? plan.buildResult() : Optional.empty();
+                    if (plan.matched() && recipeResult.isEmpty()) {
+                        blockCompletion(l, s);
+                        changed = true;
+                        continue;
+                    }
+                    items[l][s] = recipeResult.map(fr -> fr.item().copyWithCount(fr.count())).orElse(items[l][s].copy());
                     cookingTime[l][s] = -1;
                     cookingProgress[l][s] = 0;
                     element.updateSlotItem(l, s, items[l][s]);
@@ -143,7 +170,12 @@ public class ShawarmaSpitController extends BlockEntityController {
             }
         }
         if (changed) {
+            progressDirty = false;
             blockEntity.world.blockEntityChanged(blockEntity.pos);
+        }
+        if (++dirtyTick >= 20) {
+            dirtyTick = 0;
+            flushProgress();
         }
 
         if (animationTick % 20 == 0) {
@@ -153,12 +185,35 @@ public class ShawarmaSpitController extends BlockEntityController {
         animationTick++;
     }
 
-    private Item getRecipeResult(Item input) {
-        return FoodRecipeRegistry.instance()
-                .findAccurate(ApplianceType.SHAWARMA, input.id())
-                // 份数由配方的 result_count 决定 只取 item 会把它吞掉
-                .map(fr -> fr.item().count(fr.count()))
-                .orElse(input.copy());
+    private void hydrateLegacyPlans() {
+        if (!needsPlanHydration) return;
+        needsPlanHydration = false;
+        boolean changed = false;
+        for (int l = 0; l < LAYERS; l++) {
+            for (int s = 0; s < SLOTS; s++) {
+                if (cookingTime[l][s] > 0 && cookingPlans[l][s] == null && !items[l][s].isEmpty()) {
+                    cookingPlans[l][s] = FoodRecipeRegistry.instance()
+                            .planAccurate(ApplianceType.SHAWARMA, items[l][s].id(), cookingTime[l][s])
+                            .withWorkRequired(cookingTime[l][s]);
+                    changed = true;
+                }
+            }
+        }
+        if (changed) blockEntity.world.blockEntityChanged(blockEntity.pos);
+    }
+
+    private void blockCompletion(int layer, int slot) {
+        completionBlocked[layer][slot] = true;
+        var plugin = KaleidoscopeCookeryPlugin.instance();
+        if (plugin != null) plugin.getLogger().warning("Shawarma cooking paused at " + blockEntity.pos
+                + " (layer " + layer + ", slot " + slot + "): saved recipe or result is unavailable; input retained.");
+    }
+
+    private void flushProgress() {
+        if (progressDirty) {
+            progressDirty = false;
+            blockEntity.world.blockEntityChanged(blockEntity.pos);
+        }
     }
 
     // 该食材是否允许放入烤架
@@ -176,13 +231,20 @@ public class ShawarmaSpitController extends BlockEntityController {
     }
 
     public boolean tryAddOne(int layer, Item item) {
+        return FoodRecipeRegistry.instance().readSnapshot(() -> tryAddOneInSnapshot(layer, item));
+    }
+
+    private boolean tryAddOneInSnapshot(int layer, Item item) {
         int s = firstEmptySlot(layer);
         if (s < 0) {
             return false;
         }
         items[layer][s] = item.copyWithCount(1);
         cookingProgress[layer][s] = 0;
-        cookingTime[layer][s] = behavior.grillTime;
+        cookingPlans[layer][s] = FoodRecipeRegistry.instance()
+                .planAccurate(ApplianceType.SHAWARMA, item.id(), behavior.grillTime);
+        cookingTime[layer][s] = cookingPlans[layer][s].workRequired();
+        completionBlocked[layer][s] = false;
         element.spawnSlot(layer, s, items[layer][s]);
         blockEntity.world.blockEntityChanged(blockEntity.pos);
         return true;
@@ -192,6 +254,8 @@ public class ShawarmaSpitController extends BlockEntityController {
         items[layer][s] = Item.empty();
         cookingProgress[layer][s] = 0;
         cookingTime[layer][s] = 0;
+        cookingPlans[layer][s] = null;
+        completionBlocked[layer][s] = false;
         element.removeSlot(layer, s);
     }
 
@@ -333,6 +397,8 @@ public class ShawarmaSpitController extends BlockEntityController {
                 entry.put(K_ITEM, itemTag);
                 entry.putInt(K_PROGRESS, cookingProgress[l][s]);
                 entry.putInt(K_TIME, cookingTime[l][s]);
+                if (cookingPlans[l][s] != null) entry.put(K_PLAN, cookingPlans[l][s].save());
+                entry.putBoolean(K_BLOCKED, completionBlocked[l][s]);
                 itemsTag.add(entry);
             }
         }
@@ -346,10 +412,14 @@ public class ShawarmaSpitController extends BlockEntityController {
         if (!lower) {
             return;
         }
+        needsPlanHydration = false;
+        progressDirty = false;
         for (int l = 0; l < LAYERS; l++) {
             Arrays.fill(items[l], Item.empty());
             Arrays.fill(cookingProgress[l], 0);
             Arrays.fill(cookingTime[l], 0);
+            Arrays.fill(cookingPlans[l], null);
+            Arrays.fill(completionBlocked[l], false);
         }
 
         CompoundTag data = tag.getCompound(DATA_KEY);
@@ -372,6 +442,9 @@ public class ShawarmaSpitController extends BlockEntityController {
                     items[l][s] = ItemStackUtils.wrap(nms);
                     cookingProgress[l][s] = entry.getInt(K_PROGRESS, 0);
                     cookingTime[l][s] = entry.getInt(K_TIME, behavior.grillTime);
+                    if (entry.containsKey(K_PLAN)) cookingPlans[l][s] = CookingPlan.load(entry.getCompound(K_PLAN));
+                    completionBlocked[l][s] = entry.getBoolean(K_BLOCKED, false);
+                    if (cookingTime[l][s] > 0 && cookingPlans[l][s] == null) needsPlanHydration = true;
                 }
             }
         }

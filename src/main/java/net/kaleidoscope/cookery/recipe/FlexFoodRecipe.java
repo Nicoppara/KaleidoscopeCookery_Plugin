@@ -18,8 +18,21 @@ public record FlexFoodRecipe(
         boolean useEquivalentFoods,
         boolean useSeasonings,
         double norm,
-        int totalWeight
+        int totalWeight,
+        int cookingTime,
+        int stirFryCount
 ) {
+    public FlexFoodRecipe {
+        perfect = Map.copyOf(perfect);
+        liquids = List.copyOf(liquids);
+        if (cookingTime < 0 || stirFryCount < 0) throw new IllegalArgumentException("processing values must be non-negative");
+    }
+
+    public FlexFoodRecipe(Key id, Key result, ApplianceType cook, Map<Key, Integer> perfect,
+                          List<Key> liquids, Key carrier, boolean useEquivalentFoods, boolean useSeasonings,
+                          double norm, int totalWeight) {
+        this(id, result, cook, perfect, liquids, carrier, useEquivalentFoods, useSeasonings, norm, totalWeight, 0, 0);
+    }
     public static FlexFoodRecipe of(Key id, Key result, ApplianceType cook,
                                     Map<Key, Integer> perfect, List<Key> liquids, Key carrier) {
         return of(id, result, cook, perfect, liquids, carrier, true, true);
@@ -28,6 +41,13 @@ public record FlexFoodRecipe(
     public static FlexFoodRecipe of(Key id, Key result, ApplianceType cook,
                                     Map<Key, Integer> perfect, List<Key> liquids, Key carrier,
                                     boolean useEquivalentFoods, boolean useSeasonings) {
+        return of(id, result, cook, perfect, liquids, carrier, useEquivalentFoods, useSeasonings, 0, 0);
+    }
+
+    public static FlexFoodRecipe of(Key id, Key result, ApplianceType cook,
+                                    Map<Key, Integer> perfect, List<Key> liquids, Key carrier,
+                                    boolean useEquivalentFoods, boolean useSeasonings,
+                                    int cookingTime, int stirFryCount) {
         double square = 0;
         int total = 0;
         for (int weight : perfect.values()) {
@@ -35,11 +55,11 @@ public record FlexFoodRecipe(
             total += weight;
         }
         return new FlexFoodRecipe(id, result, cook, Map.copyOf(perfect), List.copyOf(liquids), carrier,
-                useEquivalentFoods, useSeasonings, Math.sqrt(square), total);
+                useEquivalentFoods, useSeasonings, Math.sqrt(square), total, cookingTime, stirFryCount);
     }
 
     public FlexFoodRecipe withToggles(boolean useEquivalentFoods, boolean useSeasonings) {
         return of(this.id, this.result, this.cook, this.perfect, this.liquids, this.carrier,
-                useEquivalentFoods, useSeasonings);
+                useEquivalentFoods, useSeasonings, this.cookingTime, this.stirFryCount);
     }
 }

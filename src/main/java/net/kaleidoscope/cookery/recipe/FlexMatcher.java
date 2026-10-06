@@ -21,6 +21,12 @@ public final class FlexMatcher {
     // 必需食材齐全后优先覆盖种类最多的配方 同组再按理想比例取最近邻
     public static Match bestMatch(List<FlexFoodRecipe> recipes, double minScore,
                                   ApplianceType type, List<Key> ingredientIds, Key liquid) {
+        return bestMatch(recipes, minScore, type, ingredientIds, liquid, FoodGroupView.capture(), Map.of());
+    }
+
+    static Match bestMatch(List<FlexFoodRecipe> recipes, double minScore,
+                           ApplianceType type, List<Key> ingredientIds, Key liquid,
+                           FoodGroupView groups, Map<FlexFoodRecipe, Ideal> compiled) {
         if (ingredientIds.isEmpty()) {
             return null;
         }
@@ -39,11 +45,12 @@ public final class FlexMatcher {
             if (!recipe.liquids().isEmpty() && (liquid == null || !recipe.liquids().contains(liquid))) {
                 continue;
             }
-            View view = view(views, ingredientIds, recipe);
+            View view = view(views, ingredientIds, recipe, groups);
             if (view == null) {
                 continue;
             }
-            Ideal ideal = ideal(recipe, view);
+            Ideal ideal = compiled.get(recipe);
+            if (ideal == null) ideal = ideal(recipe, view.canonical(), groups);
             if (ideal.norm() <= 0 || !hasAllRequired(view, ideal)) {
                 continue;
             }
@@ -71,10 +78,15 @@ public final class FlexMatcher {
     private record View(Map<Key, Integer> counts, double norm, boolean canonical) {}
 
     // 与 View 同一套键下的理想配比 等效关闭时就是 perfect 本身
-    private record Ideal(Map<Key, Integer> weights, double norm) {}
+    static record Ideal(Map<Key, Integer> weights, double norm) {
+        Ideal { weights = Map.copyOf(weights); }
+    }
 
-    private static View view(View[] cache, List<Key> ingredientIds, FlexFoodRecipe recipe) {
-        FoodGroups groups = FoodGroups.instance();
+    static Ideal compile(FlexFoodRecipe recipe, FoodGroupView groups) {
+        return ideal(recipe, recipe.useEquivalentFoods() && groups.hasEquivalents(), groups);
+    }
+
+    private static View view(View[] cache, List<Key> ingredientIds, FlexFoodRecipe recipe, FoodGroupView groups) {
         boolean equivalent = recipe.useEquivalentFoods() && groups.hasEquivalents();
         boolean seasoning = recipe.useSeasonings() && groups.hasSeasonings();
         int index = (equivalent ? 1 : 0) | (seasoning ? 2 : 0);
@@ -96,11 +108,10 @@ public final class FlexMatcher {
     }
 
     // 同一等效组里的两种必需食材会被归并成一项 权重相加 范数必须跟着重算
-    private static Ideal ideal(FlexFoodRecipe recipe, View view) {
-        if (!view.canonical()) {
+    private static Ideal ideal(FlexFoodRecipe recipe, boolean canonical, FoodGroupView groups) {
+        if (!canonical) {
             return new Ideal(recipe.perfect(), recipe.norm());
         }
-        FoodGroups groups = FoodGroups.instance();
         Map<Key, Integer> weights = new HashMap<>(recipe.perfect().size());
         for (Map.Entry<Key, Integer> e : recipe.perfect().entrySet()) {
             weights.merge(groups.canonical(e.getKey()), e.getValue(), Integer::sum);
@@ -161,13 +172,16 @@ public final class FlexMatcher {
 
     // 品质写进成品 改名字颜色 挂一行档位 lore 并按倍率缩放食物属性
     public static Item buildDish(Match match) {
-        Item item = InventoryUtils.createOrEmpty(match.recipe().result());
+        return buildDish(match.recipe().result(), match.quality());
+    }
+
+    static Item buildDish(Key result, DishQuality quality) {
+        Item item = InventoryUtils.createOrEmpty(result);
         if (ItemUtils.isEmpty(item)) {
             return null;
         }
-        DishQuality quality = match.quality();
         Component base = item.hoverNameComponent()
-                .orElseGet(() -> Component.translatable(itemTranslationKey(match.recipe().result())));
+                .orElseGet(() -> Component.translatable(itemTranslationKey(result)));
         Component name = base.colorIfAbsent(NamedTextColor.NAMES.value(quality.color()))
                 .decoration(TextDecoration.ITALIC, false);
         item.customNameComponent(name);

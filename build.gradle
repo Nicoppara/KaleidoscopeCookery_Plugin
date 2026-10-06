@@ -94,6 +94,8 @@ dependencies {
     testImplementation("it.unimi.dsi:fastutil:8.5.18")
     testImplementation("com.google.guava:guava:33.6.0-jre")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    // CraftEngine's static public API references Log4j Core even when no server instance is installed.
+    testRuntimeOnly("org.apache.logging.log4j:log4j-core:2.25.3")
 
     nmsVersions.each { sourceSetName, version ->
         def notation = "org.spigotmc:spigot:${version.dependency}"

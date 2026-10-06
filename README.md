@@ -1478,6 +1478,54 @@ pot_flex_foods:
 
 > 菜单写入的成员一律存成纯 id（不带 `craftengine:` 前缀）。这两张表按物品 id 精确匹配，不走原版材质回退，所以纯 id 就够；手写的 `craftengine:` 前缀在被菜单编辑后会被归一成纯 id，匹配结果不变。
 
+### ⏱️ 每条配方的加工时间与次数
+
+每条配方可单独设置加工量，沿用各厨具原有玩法。新字段是可选的：没有覆盖值时，仍使用原厨具配置；已有资源包无需批量补字段，也无需调整方块状态、屏障用法或模型。
+
+| 厨具 | 配方段 | 配方字段 | 未设置时 |
+| ---- | ---- | ---- | ---- |
+| 蒸笼 | `accurate_foods`，`cook: steamer` | `cooking_time` / `cooking-time` | 厨具行为的 `cooking_time` |
+| 沙威玛烤架 | `accurate_foods`，`cook: shawarma` | `cooking_time` / `cooking-time` | 厨具行为的 `grill_time` |
+| 高汤锅 | `stock_flex_foods` | `cooking_time` / `cooking-time` | 厨具行为的 `cooking_time` |
+| 茶壶 | `teapot_result` | `cooking_time` / `cooking-time` / 原有 `time` | 模板中的值；均未提供时为 200 tick |
+| 炒锅 | `pot_flex_foods` | `stir_fry_count` / `stir-fry-count` | 厨具行为的 `stir_fry_count` |
+| 石磨 | `accurate_foods`，`cook: millstone` | 原有 `rotations` | 厨具行为的 `grind_rotations` |
+| 砧板 | `chopping_board_raws` | 原有 `stage` | 模板中的值；均未提供时为 1 刀 |
+
+`cooking_time` 和 `stir_fry_count` 必须是正整数。时间在 YAML 中以 **tick** 为单位，20 TPS 时 20 tick 约等于 1 秒；多个别名同时存在时，值必须相同。零、负数、小数、超出整数范围或用在不对应厨具上的新字段会报配置错误。不要填 `0` 表示立即完成，删除局部字段即可恢复继承；石磨原有 `rotations: 0` 仍保留其旧的继承含义。
+
+```yaml
+accurate_foods:
+  kaleidoscopecookery:steamer_fast_mantou:
+    require: kaleidoscopecookery:raw_dough
+    result: kaleidoscopecookery:mantou
+    cook: steamer
+    cooking_time: 47                 # 47 tick，正常 TPS 下约 2.35 秒
+
+pot_flex_foods:
+  kaleidoscopecookery:pot_quick_beef:
+    result: minecraft:cooked_beef
+    perfect:
+      minecraft:beef: 1
+    stir_fry_count: 3                # 翻炒 3 次，不额外添加秒数门槛
+```
+
+茶壶的时间字段只控制**熬煮段**。投料后原有的 200 tick 准备段仍然存在；例如 `time: 47` 表示准备 200 tick，再熬煮 47 tick。断火、开盖、冷却等条件继续按各厨具原有规则处理，时间不是脱离这些条件的现实时间倒计时。
+
+**菜单修改**：`/kcrecipe edit` → 选厨具 → 选配方。时间按钮输入正数秒数，必须是 0.05 秒的整数倍，换算后不得超过 `2147483647` tick（`107374182.35` 秒）；保存时不做四舍五入。翻炒、刀数、圈数按钮继续输入次数，翻炒允许完整正整数范围，刀数与圈数沿用原编辑菜单范围。列表、详情和编辑按钮显示当前值，以及配方字段、模板、工厂实例或厨具默认的来源；默认值按标准厨具显示，自定义厨具以自身设置为准。右键按钮恢复继承，并删除该配方的局部设置；如果配方套用了含时间或次数的模板，恢复的是该模板的实际值。模板局部覆盖在保存前显示“保存后确认”，避免为了预览重复执行模板参数。保存写回原文件，连续点击保存只发起一次写入。
+
+**修改从下一批次生效**：蒸笼、烤架和石磨在投料时，砧板在放料时，炒锅在首次有效翻炒时，高汤锅在开始炖煮时，茶壶在投料时冻结配方计划。当前批次的目标时间/次数、已选成品 ID、数量、品质、lore 和容器会随进度保存，重载及读档后继续使用；重新投料、改变炒锅/汤锅的原料等操作会重新开始批次。旧存档没有计划时沿用原进度，并在首次恢复时补齐计划。
+
+计划保存的是配方结果数据，成品物品仍在完成时按 CraftEngine 的物品定义构建。若产物已被删除或计划损坏，厨具保留原料并暂停完成，不会重新匹配或重抽产物。
+
+**模板与工厂保存**：普通配方只修改相关字段；模板保留 `template` 和其他参数，写局部 `overrides`。工厂中能安全定位的独立参数只改该实例；其余情况在原位置拆分实例并保留完整蓝图，其他配方、展示物品及生成顺序保持一致。无法唯一定位来源、原文件已变化或参数无法安全验证时，保存失败并提示重新打开菜单或手动编辑，不会把工厂实例删掉再物化成单条食谱。YAML 排版可能被规范化。
+
+保存会检查引用模板的完整依赖链：模板必须有唯一、静态可定位的定义，参数类型须可安全重复解析；动态模板名、工厂生成模板、状态型或未知参数会拒绝自动保存。模板文件须与最近一次成功加载的定义一致；手动修改模板后先成功重载 CraftEngine，再打开菜单编辑。检查及文件读取在异步保存阶段进行，浏览菜单不会读取配置文件或重新执行模板。
+
+同一原文件内的配方按原 YAML 的位置保持顺序，包括工厂实例及其蓝图条目；保存拆分和 CraftEngine 重载后，菜单及运行时仍沿用这一顺序。
+
+**开发接口**：精准和模糊配方保留原构造器及 `FlexFoodRecipe.of(...)` 重载，新参数的内部 `0` 表示继承。读配方使用已发布的不可变快照；批次使用 `CookingPlan`，完成时才在厨具所属线程创建物品。YAML 读写与纯配置处理走串行异步队列，重载整代完成后再一次发布，不为每条配方新增定时任务。验收方法与覆盖边界见 [配方加工验收说明](verification/processing/README.md)。
+
 ### 🎯 精准配方 `accurate_foods`
 
 蒸笼、石磨、沙威玛烤架用。一进一出，不做模糊匹配。

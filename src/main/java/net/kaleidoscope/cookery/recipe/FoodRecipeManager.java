@@ -5,6 +5,7 @@ import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.plugin.config.IdSectionConfigParser;
 import net.momirealms.craftengine.core.plugin.config.SectionConfigParser;
+import net.momirealms.craftengine.core.plugin.config.ResourceException;
 import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
 import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStages;
 import net.momirealms.craftengine.core.util.Key;
@@ -21,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 // 食谱系统管理器 注册各类配方的配置解析器
 public final class FoodRecipeManager {
@@ -30,6 +32,9 @@ public final class FoodRecipeManager {
 
     static final String[] USE_EQUIVALENT_FOODS = {"use_equivalent_foods", "use-equivalent-foods"};
     static final String[] USE_SEASONINGS = {"use_seasonings", "use-seasonings"};
+
+    public static final LoadingStage RECIPE_LOAD_BEGIN = new LoadingStage("cookery recipe snapshot begin");
+    public static final LoadingStage RECIPE_LOAD_END = new LoadingStage("cookery recipe snapshot publish");
 
     public static final LoadingStage POT_FOOD_RAW = new LoadingStage("pot food raw");
     public static final LoadingStage STOCK_FOOD_RAW = new LoadingStage("stock food raw");
@@ -43,7 +48,18 @@ public final class FoodRecipeManager {
 
     private FoodRecipeManager() {}
 
+    /** CE also reports template errors before calling our parser; retain its complete diagnostics. */
+    public static Consumer<ResourceException> trackRecipeLoadErrors(Consumer<ResourceException> handler) {
+        return error -> {
+            FoodRecipeRegistry.instance().failConfigurationLoad();
+            handler.accept(error);
+        };
+    }
+
     public static void registerParsers() {
+        net.kaleidoscope.cookery.recipe.edit.RecipeTemplateReplayGuard.registerTracker(CraftEngine.instance().packManager());
+        CraftEngine.instance().packManager().registerConfigSectionParser(new SnapshotBeginParser());
+        CraftEngine.instance().packManager().registerConfigSectionParser(new SnapshotEndParser());
         CraftEngine.instance().packManager().registerConfigSectionParser(new PotFoodRawParser());
         CraftEngine.instance().packManager().registerConfigSectionParser(new StockFoodRawParser());
         CraftEngine.instance().packManager().registerConfigSectionParser(new PotFlexFoodsParser());
@@ -53,6 +69,37 @@ public final class FoodRecipeManager {
         CraftEngine.instance().packManager().registerConfigSectionParser(new TeapotLiquidParser());
         CraftEngine.instance().packManager().registerConfigSectionParser(new TeaCupParser());
         CraftEngine.instance().packManager().registerConfigSectionParser(new TeapotResultParser());
+    }
+
+    private abstract static class SnapshotParser extends SectionConfigParser {
+        @Override public int count() { return 0; }
+        @Override public String[] sectionId() { return new String[]{type().value()}; }
+        @Override protected void parseSection(Pack pack, Path path, ConfigSection section) {}
+    }
+
+    private static final class SnapshotBeginParser extends SnapshotParser {
+        @Override public Key type() { return Key.of("kaleidoscopecookery:recipe_snapshot_begin"); }
+        @Override public LoadingStage loadingStage() { return RECIPE_LOAD_BEGIN; }
+        @Override public List<LoadingStage> dependencies() {
+            return List.of(net.kaleidoscope.cookery.recipe.edit.RecipeTemplateReplayGuard.TEMPLATE_SOURCES);
+        }
+        @Override public void preProcess() {
+            FoodRecipeRegistry registry = FoodRecipeRegistry.instance();
+            registry.beginConfigurationLoad();
+            RecipeLoadRecovery.watch(registry.configurationLoadToken());
+        }
+    }
+
+    private static final class SnapshotEndParser extends SnapshotParser {
+        @Override public Key type() { return Key.of("kaleidoscopecookery:recipe_snapshot_publish"); }
+        @Override public LoadingStage loadingStage() { return RECIPE_LOAD_END; }
+        @Override public List<LoadingStage> dependencies() {
+            return List.of(POT_FOOD_RAW, STOCK_FOOD_RAW, POT_FLEX_FOODS, STOCK_FLEX_FOODS, ACCURATE_FOODS,
+                    CHOPPING_BOARD_RAWS, TEAPOT_LIQUID, TEA_CUP, TEAPOT_RESULT,
+                    net.kaleidoscope.cookery.api.ItemTags.ITEM_TAGS,
+                    FoodGroups.EQUIVALENT_FOODS, FoodGroups.SEASONINGS, DishCarriers.DISH_CARRIERS);
+        }
+        @Override public void postProcess() { FoodRecipeRegistry.instance().finishConfigurationLoad(); }
     }
 
     // 解析 minecraft:beef 2 得到 beef 数量 2 省略数量默认 1
@@ -70,9 +117,16 @@ public final class FoodRecipeManager {
         private final String[] sectionIds;
         private int count;
 
+        @Override
+        public void setErrorHandler(Consumer<ResourceException> handler) {
+            super.setErrorHandler(trackRecipeLoadErrors(handler));
+        }
+
         CookerySectionParser(LoadingStage stage, List<LoadingStage> dependencies, String... sectionIds) {
             this.stage = stage;
-            this.dependencies = dependencies;
+            List<LoadingStage> stages = new ArrayList<>(dependencies);
+            stages.add(RECIPE_LOAD_BEGIN);
+            this.dependencies = List.copyOf(stages);
             this.sectionIds = sectionIds;
         }
 
@@ -105,12 +159,12 @@ public final class FoodRecipeManager {
         @Override
         public void preProcess() {
             count = 0;
-            reset();
+            FoodRecipeRegistry.instance().configurationUpdate(this::reset);
         }
 
         @Override
         protected final void parseSection(Pack pack, Path path, ConfigSection section) {
-            count += parseAndCount(pack, path, section);
+            FoodRecipeRegistry.instance().configurationUpdate(() -> count += parseAndCount(pack, path, section));
         }
 
         // 每轮解析前清空本 parser 负责的注册表
@@ -136,10 +190,17 @@ public final class FoodRecipeManager {
         private boolean loadActive;
         private int count;
 
+        @Override
+        public void setErrorHandler(Consumer<ResourceException> handler) {
+            super.setErrorHandler(trackRecipeLoadErrors(handler));
+        }
+
         CookeryIdParser(LoadingStage stage, List<LoadingStage> dependencies,
                         RecipeSourceIndex.Kind kind, String... sectionIds) {
             this.stage = stage;
-            this.dependencies = dependencies;
+            List<LoadingStage> stages = new ArrayList<>(dependencies);
+            stages.add(RECIPE_LOAD_BEGIN);
+            this.dependencies = List.copyOf(stages);
             this.kind = kind;
             this.sectionIds = sectionIds;
         }
@@ -178,7 +239,7 @@ public final class FoodRecipeManager {
                 count = 0;
                 occurrences.clear();
                 claimedTargets.clear();
-                reset();
+                FoodRecipeRegistry.instance().configurationUpdate(this::reset);
             } catch (RuntimeException | Error error) {
                 finishLoad();
                 throw error;
@@ -252,7 +313,9 @@ public final class FoodRecipeManager {
             if (RecipeSourceIndex.instance().isDeleted(kind, id, path, target)) {
                 return;
             }
-            count += parseAndCount(pack, path, id, section, target);
+            RecipeFileStore.SourceTarget selectedTarget = target;
+            FoodRecipeRegistry.instance().configurationUpdate(() ->
+                    count += parseAndCount(pack, path, id, section, selectedTarget));
         }
 
         protected abstract void reset();
@@ -358,8 +421,14 @@ public final class FoodRecipeManager {
         // 两张组表默认对所有菜生效 只有明确写 false 的菜才退回按具体物品严格匹配
         boolean useEquivalent = section.getBoolean(USE_EQUIVALENT_FOODS, true);
         boolean useSeasonings = section.getBoolean(USE_SEASONINGS, true);
+        int cookingTime = RecipeProcessingFields.optionalPositive(section, "cooking_time", "cooking-time");
+        int stirFryCount = RecipeProcessingFields.optionalPositive(section, "stir_fry_count", "stir-fry-count");
+        if (cookingTime > 0 && cook != ApplianceType.STOCKPOT
+                || stirFryCount > 0 && cook != ApplianceType.POT) {
+            throw new IllegalArgumentException(section.path() + " has a processing field for a different appliance");
+        }
         FlexFoodRecipe recipe = FlexFoodRecipe.of(id, result, cook, perfect, liquids, carrier,
-                useEquivalent, useSeasonings);
+                useEquivalent, useSeasonings, cookingTime, stirFryCount);
         FoodRecipeRegistry.instance().registerMenuFlex(recipe);
         RecipeSourceIndex.instance().put(kind, id, path, target, recipe, duplicate);
         if (duplicate) {
@@ -473,8 +542,12 @@ public final class FoodRecipeManager {
             // 单次产出份数 不配或配非法值都归一到 1
             List<String> lore = section.getStringList("lore");
 
+            int cookingTime = RecipeProcessingFields.optionalPositive(section, "cooking_time", "cooking-time");
+            if (cookingTime > 0 && cook != ApplianceType.STEAMER && cook != ApplianceType.SHAWARMA) {
+                throw new IllegalArgumentException(section.path() + " cooking_time is only for steamer/shawarma recipes");
+            }
             AccurateFoodRecipe recipe = new AccurateFoodRecipe(
-                    id, input, results, cook, rotations, resultCount, lore);
+                    id, input, results, cook, rotations, resultCount, lore, cookingTime);
             boolean duplicate = duplicated(id);
             FoodRecipeRegistry.instance().registerMenuAccurate(recipe);
             RecipeSourceIndex.instance().put(kind(), id, path, target, recipe, duplicate);
@@ -612,7 +685,8 @@ public final class FoodRecipeManager {
                         ConsoleMessages.t("food.teapot.missing_tea_cup", id.asString(), result.item().asString()));
                 return 0;
             }
-            int time = section.getInt("time", 200);
+            int configuredTime = RecipeProcessingFields.optionalPositive(section, "time", "cooking_time", "cooking-time");
+            int time = configuredTime == 0 ? 200 : configuredTime;
 
             TeapotRecipe recipe = new TeapotRecipe(
                     id, fluid, ingredient.item(), ingredient.count(), result.item(), result.count(), time);

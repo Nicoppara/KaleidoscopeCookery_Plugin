@@ -55,7 +55,7 @@ public final class FlexEditMenu {
                 "#PPPPPPP#",
                 "#PPPPPPP#",
                 "#########",
-                "B#E#S#G#D");
+                "BHE#S#G#D");
         layout.addIngredient('#', Ingredient.simple(MenuIcons.filler(viewer)));
         layout.addIngredient('R', resultSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('T', idSlot(bukkitPlayer, viewer, draft));
@@ -66,6 +66,11 @@ public final class FlexEditMenu {
                 () -> RecipeListMenu.open(bukkitPlayer, draft.cook(), true)));
         layout.addIngredient('E', equivalentSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('G', seasoningSlot(bukkitPlayer, viewer, draft));
+        layout.addIngredient('H', draft.cook() == ApplianceType.POT
+                ? RecipeProcessingControls.count(bukkitPlayer, viewer, draft.originalRecipe(), draft.cook(), "翻炒次数", draft.stirFryCount(),
+                    Integer.MAX_VALUE, draft::stirFryCount, () -> open(bukkitPlayer, draft))
+                : RecipeProcessingControls.time(bukkitPlayer, viewer, draft.originalRecipe(), draft.cook(), draft.cookingTime(),
+                    draft::cookingTime, () -> open(bukkitPlayer, draft)));
         layout.addIngredient('S', saveSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('D', deleteSlot(bukkitPlayer, viewer, draft));
 
@@ -347,11 +352,14 @@ public final class FlexEditMenu {
                                        FlexRecipeDraft draft) {
         Item icon = MenuIcons.icon(MenuButton.SAVE, viewer,
                 MenuIcons.text("保存", NamedTextColor.GREEN),
-                MenuIcons.lore("立即生效 并写回配置文件"));
+                MenuIcons.lore("写回原配置，下一批次使用新值"));
         return MenuIcons.button(icon, () -> {
             RecipeMenus.message(bukkitPlayer, "正在保存食谱...");
-            RecipeEditService.saveFlex(draft).thenAccept(error ->
+            var saving = RecipeEditSaves.save(draft, () -> RecipeEditService.saveFlex(draft));
+            if (saving == null) return;
+            saving.thenAccept(error ->
                     MenuTasks.runFor(bukkitPlayer, () -> {
+                        if (RecipeEditService.isClosed()) return;
                         if (error != null) {
                             RecipeMenus.message(bukkitPlayer, error);
                             open(bukkitPlayer, draft);
