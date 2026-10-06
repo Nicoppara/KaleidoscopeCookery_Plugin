@@ -29,7 +29,7 @@ public final class WeightedPicker {
         if (size == 1) {
             return entries.getFirst();
         }
-        int total = 0;
+        long total = 0;
         for (T entry : entries) {
             int w = weight.applyAsInt(entry);
             if (w > 0) {
@@ -39,7 +39,7 @@ public final class WeightedPicker {
         if (total <= 0) {
             return entries.getFirst();
         }
-        int roll = ThreadLocalRandom.current().nextInt(total);
+        long roll = ThreadLocalRandom.current().nextLong(total);
         for (T entry : entries) {
             int w = weight.applyAsInt(entry);
             if (w <= 0) {

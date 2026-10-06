@@ -32,8 +32,10 @@ import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.CookingPlan;
 import net.kaleidoscope.cookery.util.Localization;
 import net.kaleidoscope.cookery.util.EventUtils;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemNames;
 import net.kaleidoscope.cookery.api.PotCookConditions;
@@ -64,6 +66,10 @@ public class PotController extends BlockEntityController {
     private static final String K_CARRIER = "carrier";
     private static final String K_COOKED_ING = "cooked_ing";
     private static final String K_COOKED_DISH = "cooked_dish";
+    private static final String K_PROCESSING_PLAN = "processing_plan";
+    private static final String K_STIR_ANIMATION_TICKS = "stir_animation_ticks";
+    private static final String K_PROCESSING_BLOCKED = "processing_blocked";
+    private static final int STIR_ANIMATION_TICKS = 24;
     private static final Key DAMAGE_GENERIC = Key.of("minecraft:generic");
     private static final Key SOUND_FIRE_AMBIENT = Key.of("minecraft:block.fire.ambient");
 
@@ -77,6 +83,10 @@ public class PotController extends BlockEntityController {
     private final List<Item> ingredientsView = Collections.unmodifiableList(ingredients);
     private final PotElement element;
     private boolean animating = false;
+    private int stirAnimationTicks;
+    private Player stirringPlayer;
+    private CookingPlan cookingPlan;
+    private boolean processingBlocked;
     private boolean hasOil = false;
     private int stirFryCount = 0;
     private long seed = System.currentTimeMillis();
@@ -112,6 +122,26 @@ public class PotController extends BlockEntityController {
 
     public void tick() {
         if (stage == PotStage.IDLE) return;
+
+        // 翻炒逻辑随已加载厨具 tick，展示任务/玩家追踪不能取消出锅判定。
+        if (stage == PotStage.COOKING) {
+            if (processingBlocked) return;
+            if (stirAnimationTicks > 0 && --stirAnimationTicks > 0) return;
+            if (animating) {
+                animating = false;
+                blockEntity.world.blockEntityChanged(blockEntity.pos);
+            }
+            if (stirFryCount > 0) {
+                ensureCookingPlan();
+                if (!cookingPlan.valid()) {
+                    blockProcessing();
+                } else if (stirFryCount >= cookingPlan.workRequired()) {
+                    completeCooking(stirringPlayer);
+                }
+            }
+            stirringPlayer = null;
+            return;
+        }
 
         if (stage == PotStage.DONE || stage == PotStage.BURNT) {
             if (heatCheckTick++ % 20 == 0) heated = hasHeatBelow();
@@ -199,6 +229,7 @@ public class PotController extends BlockEntityController {
         if (stage == PotStage.DONE || stage == PotStage.BURNT || animating || ingredients.isEmpty()) {
             return StirResult.IDLE;
         }
+        if (processingBlocked) return StirResult.DENIED;
 
         // 起炒条件不满足就彻底拦下 不播动画不挥手 只提示 想改规则走 PotCookConditions
         PotCookConditions.Verdict verdict = cookVerdict(hasHeatSource, player);
@@ -215,7 +246,15 @@ public class PotController extends BlockEntityController {
             if (EventUtils.fireAndCheckCancel(event)) return StirResult.IDLE;
         }
 
+        ensureCookingPlan();
+        if (!cookingPlan.valid()) {
+            blockProcessing();
+            return StirResult.DENIED;
+        }
+
         this.animating = true;
+        this.stirAnimationTicks = STIR_ANIMATION_TICKS;
+        this.stirringPlayer = player;
         this.seed = System.currentTimeMillis();
 
         if (onStirFryCallback != null && player != null) {
@@ -227,17 +266,54 @@ public class PotController extends BlockEntityController {
         if (firstStir && player != null) player.sendActionBar(Localization.component(MessageKeys.POT_START_COOKING));
 
         element.refreshPackets();
-        element.playStirFryAnimation(() -> {
-            animating = false;
-            if (stirFryCount >= behavior.stirFryCount) completeCooking(player);
-        });
+        element.playStirFryAnimation();
+        blockEntity.world.blockEntityChanged(blockEntity.pos);
         return StirResult.OK;
     }
 
+    private void ensureCookingPlan() {
+        if (cookingPlan == null) {
+            cookingPlan = FoodRecipeRegistry.instance().planFlex(ApplianceType.POT,
+                    ingredients.stream().map(Item::id).toList(), null, Math.max(1, behavior.stirFryCount));
+            // 旧档已翻炒的批次仍沿用原厨具默认阈值。
+            if (stirFryCount > 0) cookingPlan = cookingPlan.withWorkRequired(Math.max(1, behavior.stirFryCount));
+        }
+    }
+
+    private void blockProcessing() {
+        if (processingBlocked) return;
+        processingBlocked = true;
+        animating = false;
+        stirAnimationTicks = 0;
+        stirringPlayer = null;
+        java.util.logging.Logger.getLogger(PotController.class.getName()).warning(
+                "炒锅配方快照无效或产物不可用，保留原料并暂停：" + blockEntity.pos);
+        blockEntity.world.blockEntityChanged(blockEntity.pos);
+    }
+
     private void completeCooking(Player triggerPlayer) {
-        FoodRecipeResult fr = FoodRecipeRegistry.instance()
-                .cookFlex(ApplianceType.POT, ingredients.stream().map(Item::id).toList())
-                .orElse(null);
+        ensureCookingPlan();
+        if (!cookingPlan.valid()) {
+            blockProcessing();
+            return;
+        }
+        FoodRecipeResult fr = cookingPlan.matched() ? cookingPlan.buildResult().orElse(null) : null;
+        if (cookingPlan.matched() && fr == null) {
+            blockProcessing();
+            return;
+        }
+
+        Item failed;
+        try {
+            failed = fr == null ? InventoryUtils.createOrEmpty(behavior.failedResultItem) : Item.empty();
+        } catch (RuntimeException unavailableOutput) {
+            blockProcessing();
+            return;
+        }
+        if (fr == null && ItemUtils.isEmpty(failed)) {
+            blockProcessing();
+            return;
+        }
 
         this.stirFryCount = 0;
         this.hasOil = false;
@@ -249,20 +325,20 @@ public class PotController extends BlockEntityController {
             currentTick = behavior.cookDoneTime;
             // 出锅时才提示要拿什么盛 开炒前不提示 那会逼着每次都去查一遍配方表
             if (triggerPlayer != null) {
-                triggerPlayer.sendActionBar(resultCarrier == null
+                notifyCooker(triggerPlayer, resultCarrier == null
                         ? Localization.component(MessageKeys.POT_DISH_READY_HAND)
                         : Localization.componentWithReplacement(MessageKeys.POT_DISH_READY, "%s",
                                 ItemNames.displayName(resultCarrier)));
             }
         } else {
-            Item suspense = InventoryUtils.createOrEmpty(behavior.failedResultItem);
-            result = ItemUtils.isEmpty(suspense) ? Item.empty() : suspense.count(1);
+            result = failed.count(1);
             resultCarrier = result.isEmpty() ? null : behavior.failedResultCarrier;
             stage = PotStage.BURNT;
             currentTick = behavior.burntToCharcoalTime;
             lastSentBrightness = -1;
-            if (triggerPlayer != null) triggerPlayer.sendActionBar(Localization.component(MessageKeys.POT_ALL_BURNT));
+            if (triggerPlayer != null) notifyCooker(triggerPlayer, Localization.component(MessageKeys.POT_ALL_BURNT));
         }
+        cookingPlan = null;
         cookedIngredientCount = ingredients.size();
         cookedDishCount = result.isEmpty() ? 0 : result.count();
         heated = hasHeatBelow();
@@ -271,6 +347,14 @@ public class PotController extends BlockEntityController {
         blockEntity.updateConstantRenderers();
         element.refreshPackets();
         blockEntity.world.blockEntityChanged(blockEntity.pos);
+    }
+
+    private void notifyCooker(Player player, net.momirealms.craftengine.libraries.adventure.text.Component message) {
+        if (player.platformPlayer() instanceof org.bukkit.entity.Player bukkitPlayer) {
+            FoliaUtil.runEntity(bukkitPlayer, () -> player.sendActionBar(message));
+        } else {
+            player.sendActionBar(message);
+        }
     }
 
     // 返回是否真的收下 一键投料据此决定扣不扣背包 拒收还扣就是凭空销毁材料
@@ -283,6 +367,8 @@ public class PotController extends BlockEntityController {
             return false;
         }
         stirFryCount = 0;
+        cookingPlan = null;
+        processingBlocked = false;
         int index = ingredients.size();
         ingredients.add(item);
         element.refreshSlotPacket(index);
@@ -302,6 +388,8 @@ public class PotController extends BlockEntityController {
             }
         }
         stirFryCount = 0;
+        cookingPlan = null;
+        processingBlocked = false;
         int index = ingredients.size() - 1;
         Item extracted = ingredients.remove(index);
         element.refreshSlotPacket(index);
@@ -311,6 +399,12 @@ public class PotController extends BlockEntityController {
     }
 
     public void resetPot() {
+        element.deactivate();
+        animating = false;
+        stirAnimationTicks = 0;
+        stirringPlayer = null;
+        cookingPlan = null;
+        processingBlocked = false;
         ingredients.clear();
         hasOil = false;
         stirFryCount = 0;
@@ -460,11 +554,22 @@ public class PotController extends BlockEntityController {
 
     @Override
     public void onRemove() {
+        element.deactivate();
+        animating = false;
+        stirAnimationTicks = 0;
+        stirringPlayer = null;
         if (!ingredients.isEmpty()) {
             ingredients.forEach(item -> DropUtils.dropOnRemove(blockEntity, item));
             ingredients.clear();
         }
         super.onRemove();
+    }
+
+    @Override
+    public void onUnload() {
+        element.deactivate();
+        stirringPlayer = null;
+        super.onUnload();
     }
 
     @Override
@@ -476,6 +581,9 @@ public class PotController extends BlockEntityController {
         data.putInt(K_STIR_FRY_COUNT, stirFryCount);
         data.putInt(K_COOKING_STATUS, stage.ordinal());
         data.putInt(K_CURRENT_TICK, currentTick);
+        data.putInt(K_STIR_ANIMATION_TICKS, stirAnimationTicks);
+        data.putBoolean(K_PROCESSING_BLOCKED, processingBlocked);
+        if (cookingPlan != null) data.put(K_PROCESSING_PLAN, cookingPlan.save());
         data.put(K_INGREDIENTS, BlockEntityNbt.saveItems(ingredients));
         // 继续使用列表格式以兼容旧存档中的多成品数据
         data.put(K_RESULTS, BlockEntityNbt.saveItems(result.isEmpty() ? List.of() : List.of(result)));
@@ -505,6 +613,12 @@ public class PotController extends BlockEntityController {
         stirFryCount = data.getInt(K_STIR_FRY_COUNT, 0);
         stage = PotStage.fromOrdinal(data.getInt(K_COOKING_STATUS, 0));
         currentTick = data.getInt(K_CURRENT_TICK, 0);
+        stirAnimationTicks = stage == PotStage.COOKING
+                ? Math.max(0, Math.min(STIR_ANIMATION_TICKS, data.getInt(K_STIR_ANIMATION_TICKS, 0))) : 0;
+        animating = stirAnimationTicks > 0;
+        stirringPlayer = null;
+        processingBlocked = data.getBoolean(K_PROCESSING_BLOCKED, false);
+        cookingPlan = data.containsKey(K_PROCESSING_PLAN) ? CookingPlan.load(data.getCompound(K_PROCESSING_PLAN)) : null;
         cookedIngredientCount = data.getInt(K_COOKED_ING, ingredients.size());
         cookedDishCount = data.getInt(K_COOKED_DISH, 0);
         // 读档时下方区块可能还没加载 取热源会抛异常 按无热源处理 tick 起来后会自行纠正

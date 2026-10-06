@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecipeSourceIndexTest {
+    @org.junit.jupiter.api.BeforeAll
+    static void initializeCraftEngineTemplates() throws Exception { CraftEngineTemplateFixture.initialize(); }
     private final RecipeSourceIndex index = RecipeSourceIndex.instance();
 
     @AfterEach
@@ -45,6 +47,45 @@ class RecipeSourceIndexTest {
                 "accurate_foods.test:same_id"));
         assertEquals(file.toAbsolutePath().normalize(), index.get(first));
         assertEquals(file.toAbsolutePath().normalize(), index.get(second));
+    }
+
+    @Test
+    void readersKeepOldSourcesDuringReloadAndFailedReloadRestoresThem() {
+        Key id = Key.of("test:source_snapshot");
+        Path oldFile = Path.of("pack", "old.yml");
+        Object old = new Object(), replacement = new Object();
+        index.put(RecipeSourceIndex.Kind.ACCURATE, id, oldFile, "accurate_foods.test:source_snapshot", old, true);
+        var oldTarget = index.target(old);
+        index.beginConfigurationLoad();
+        index.clearKind(RecipeSourceIndex.Kind.ACCURATE);
+        index.put(RecipeSourceIndex.Kind.ACCURATE, Key.of("test:new_source"), Path.of("pack", "new.yml"),
+                "accurate_foods.test:new_source", replacement, false);
+        assertEquals(oldFile.toAbsolutePath().normalize(), index.get(old));
+        assertEquals(oldTarget, index.target(old));
+        assertEquals(RecipeSourceIndex.Kind.ACCURATE, index.kind(old));
+        assertTrue(index.isDuplicate(old));
+        assertTrue(index.hasSource(RecipeSourceIndex.Kind.ACCURATE, id));
+        assertEquals(List.of(old), index.recipes(RecipeSourceIndex.Kind.ACCURATE, id));
+        index.finishConfigurationLoad(false);
+        assertEquals(oldTarget, index.target(old));
+        assertTrue(index.isDuplicate(old));
+        assertEquals(null, index.get(replacement));
+    }
+
+    @Test
+    void successfulReloadPublishesTheNewSourceObjects() {
+        Key id = Key.of("test:source_commit");
+        Object old = new Object(), replacement = new Object();
+        index.put(RecipeSourceIndex.Kind.ACCURATE, id, Path.of("old.yml"), "accurate_foods.test:source_commit", old, false);
+        index.beginConfigurationLoad();
+        index.clearKind(RecipeSourceIndex.Kind.ACCURATE);
+        index.put(RecipeSourceIndex.Kind.ACCURATE, id, Path.of("new.yml"), "accurate_foods.test:source_commit", replacement, true);
+        assertEquals(List.of(old), index.recipes(RecipeSourceIndex.Kind.ACCURATE, id));
+        index.finishConfigurationLoad(true);
+        assertEquals(null, index.get(old));
+        assertEquals(Path.of("new.yml").toAbsolutePath().normalize(), index.get(replacement));
+        assertEquals(List.of(replacement), index.recipes(RecipeSourceIndex.Kind.ACCURATE, id));
+        assertTrue(index.isDuplicate(replacement));
     }
 
     @Test

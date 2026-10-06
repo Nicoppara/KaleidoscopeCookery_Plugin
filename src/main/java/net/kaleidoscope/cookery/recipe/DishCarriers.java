@@ -9,10 +9,7 @@ import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
 import net.momirealms.craftengine.core.util.Key;
 
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 // 菜品吃完退还什么容器 两条进食路径都查这里 不往物品存 NBT 所以老物品也跟着最新配方走
 // 两个数据源 模糊配方的 carrier 与 dish_carrier 配置段 后者优先
@@ -22,43 +19,23 @@ public final class DishCarriers {
     private DishCarriers() {
     }
 
-    private static volatile Map<Key, Key> fromRecipes = Map.of();
-    private static final Map<Key, Key> FROM_CONFIG = new ConcurrentHashMap<>();
-    // 成品 id -> 容器 查询在进食热路径上 两张表合并后缓存住
-    private static volatile Map<Key, Key> cache = Map.of();
-
-    // 同一个成品被多条配方产出时取先注册的那条 这种情况本来就该避免
+    // Derived carriers publish together with the recipes; this facade keeps the existing API.
     public static void rebuild(Iterable<FlexFoodRecipe> recipes) {
-        Map<Key, Key> map = new HashMap<>();
-        for (FlexFoodRecipe recipe : recipes) {
-            if (recipe.carrier() != null) {
-                map.putIfAbsent(recipe.result(), recipe.carrier());
-            }
-        }
-        fromRecipes = Map.copyOf(map);
-        merge();
+        FoodRecipeRegistry.instance().rebuildCarriers(recipes);
     }
 
-    private static void merge() {
-        Map<Key, Key> map = new HashMap<>(fromRecipes);
-        map.putAll(FROM_CONFIG);
-        cache = Map.copyOf(map);
-    }
-
-    // 没有容器的菜返回 null 调用方什么都不用给
-    public static Key of(Key result) {
-        return result == null ? null : cache.get(result);
-    }
-
-    public static boolean isEmpty() {
-        return cache.isEmpty();
-    }
+    public static Key of(Key result) { return FoodRecipeRegistry.instance().carrierOf(result); }
+    public static boolean isEmpty() { return !FoodRecipeRegistry.instance().hasCarriers(); }
 
     public static void registerParser() {
         CraftEngine.instance().packManager().registerConfigSectionParser(new DishCarrierParser());
     }
 
     private static final class DishCarrierParser extends SectionConfigParser {
+        @Override
+        public void setErrorHandler(java.util.function.Consumer<net.momirealms.craftengine.core.plugin.config.ResourceException> handler) {
+            super.setErrorHandler(FoodRecipeManager.trackRecipeLoadErrors(handler));
+        }
         private int count;
 
         @Override
@@ -78,7 +55,7 @@ public final class DishCarriers {
 
         @Override
         public List<LoadingStage> dependencies() {
-            return List.of();
+            return List.of(FoodRecipeManager.RECIPE_LOAD_BEGIN);
         }
 
         @Override
@@ -89,12 +66,12 @@ public final class DishCarriers {
         @Override
         public void preProcess() {
             this.count = 0;
-            FROM_CONFIG.clear();
+            FoodRecipeRegistry.instance().configurationUpdate(() -> FoodRecipeRegistry.instance().clearConfiguredCarriers());
         }
 
         @Override
         public void postProcess() {
-            merge();
+            // Final recipe stage publishes carriers and recipes together.
         }
 
         @Override
@@ -106,7 +83,8 @@ public final class DishCarriers {
                             "[dish_carrier] " + dish + " 没有写退还的容器 已跳过");
                     continue;
                 }
-                FROM_CONFIG.put(Key.of(dish.trim()), Key.of(carrier.trim()));
+                FoodRecipeRegistry.instance().configurationUpdate(() ->
+                        FoodRecipeRegistry.instance().registerConfiguredCarrier(Key.of(dish.trim()), Key.of(carrier.trim())));
                 this.count++;
             }
         }

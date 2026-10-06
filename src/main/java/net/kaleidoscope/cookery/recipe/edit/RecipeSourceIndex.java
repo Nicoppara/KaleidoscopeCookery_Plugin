@@ -1,6 +1,7 @@
 package net.kaleidoscope.cookery.recipe.edit;
 
 import net.momirealms.craftengine.core.util.Key;
+import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -43,6 +44,9 @@ public final class RecipeSourceIndex {
     private final Set<SourceKey> pendingRestore = ConcurrentHashMap.newKeySet();
     private final Map<Kind, Integer> activeLoads = new ConcurrentHashMap<>();
     private final Map<Kind, List<Runnable>> pendingActions = new ConcurrentHashMap<>();
+    private record SourceBackup(Map<SourceKey, Object> sources, Map<Object, SourceKey> byRecipe,
+                                Set<Object> duplicates) {}
+    private volatile SourceBackup configurationBackup;
 
     private RecipeSourceIndex() {
     }
@@ -69,36 +73,89 @@ public final class RecipeSourceIndex {
     }
 
     public Path get(Object recipe) {
-        SourceKey source = byRecipe.get(recipe);
+        SourceKey source = sourceOf(recipe);
         return source == null ? null : source.file();
     }
 
     public Kind kind(Object recipe) {
-        SourceKey source = byRecipe.get(recipe);
+        SourceKey source = sourceOf(recipe);
         return source == null ? null : source.kind();
     }
 
     public String nodePath(Object recipe) {
-        SourceKey source = byRecipe.get(recipe);
+        SourceKey source = sourceOf(recipe);
         return source == null ? null : source.nodePath();
     }
 
     public RecipeFileStore.SourceTarget target(Object recipe) {
-        SourceKey source = byRecipe.get(recipe);
+        SourceKey source = sourceOf(recipe);
         return source == null ? null : source.target();
     }
 
+    /** Immutable source-generation position, or -1 for recipes without a tracked file position. */
+    public int sourceOrdinal(Object recipe) {
+        SourceKey source = sourceOf(recipe);
+        return source == null ? -1 : source.target().sourceOrdinal();
+    }
+
     public boolean isDuplicate(Object recipe) {
+        SourceBackup backup = readBackup();
+        if (backup != null && backup.byRecipe().containsKey(recipe)) return backup.duplicates().contains(recipe);
         return recipe != null && duplicates.contains(recipe);
     }
 
+    private SourceBackup readBackup() {
+        SourceBackup backup = configurationBackup;
+        return backup != null && !FoodRecipeRegistry.instance().isConfigurationWriter() ? backup : null;
+    }
+
+    private SourceKey sourceOf(Object recipe) {
+        SourceBackup backup = readBackup();
+        if (backup != null) {
+            SourceKey source = backup.byRecipe().get(recipe);
+            if (source != null) return source;
+        }
+        return byRecipe.get(recipe);
+    }
+
+    private Map<SourceKey, Object> visibleSources() {
+        SourceBackup backup = readBackup();
+        return backup == null ? sources : backup.sources();
+    }
+
+    public void beginConfigurationLoad() {
+        synchronized (byRecipe) {
+            Map<Object, SourceKey> recipes = new IdentityHashMap<>(byRecipe);
+            Set<Object> duplicateRecipes = Collections.newSetFromMap(new IdentityHashMap<>());
+            recipes.keySet().forEach(recipe -> { if (duplicates.contains(recipe)) duplicateRecipes.add(recipe); });
+            configurationBackup = new SourceBackup(Map.copyOf(sources), Collections.unmodifiableMap(recipes),
+                    Collections.unmodifiableSet(duplicateRecipes));
+        }
+    }
+
+    public void finishConfigurationLoad(boolean success) {
+        synchronized (byRecipe) {
+            SourceBackup backup = configurationBackup;
+            if (backup == null) return;
+            if (!success) {
+                sources.clear(); sources.putAll(backup.sources());
+                byRecipe.clear(); byRecipe.putAll(backup.byRecipe());
+                duplicates.clear(); duplicates.addAll(backup.duplicates());
+            }
+            configurationBackup = null;
+        }
+    }
+
     public boolean hasOtherSource(Kind kind, Key id, Path file, String nodePath) {
+        return hasOtherSource(kind, id, file, RecipeFileStore.SourceTarget.direct(nodePath));
+    }
+
+    public boolean hasOtherSource(Kind kind, Key id, Path file, RecipeFileStore.SourceTarget target) {
         if (kind == null || id == null) {
             return false;
         }
         Path normalized = file == null ? null : file.toAbsolutePath().normalize();
-        RecipeFileStore.SourceTarget target = RecipeFileStore.SourceTarget.direct(nodePath);
-        for (SourceKey source : sources.keySet()) {
+        for (SourceKey source : visibleSources().keySet()) {
             boolean sameNode = normalized != null && source.file().equals(normalized)
                     && source.target().equals(target);
             if (source.kind() == kind && source.id().equals(id) && !sameNode) {
@@ -108,11 +165,46 @@ public final class RecipeSourceIndex {
         return false;
     }
 
+    /** Resolve outside the registry publication lock; apply only to still-current recipe objects. */
+    public Runnable prepareRelocations(Path file) {
+        Path normalized = file.toAbsolutePath().normalize();
+        Map<Object, SourceKey> oldSources = new IdentityHashMap<>();
+        synchronized (byRecipe) {
+            byRecipe.forEach((recipe, source) -> {
+                if (source.file().equals(normalized)) oldSources.put(recipe, source);
+            });
+        }
+        Map<Object, SourceKey> replacements = new IdentityHashMap<>();
+        oldSources.forEach((recipe, old) -> {
+            List<RecipeFileStore.SourceTarget> candidates = RecipeFileStore.resolveTargets(
+                    old.kind(), old.id(), file, old.nodePath());
+            List<RecipeFileStore.SourceTarget> matching = candidates.stream()
+                    .filter(target -> target.factory() == old.target().factory())
+                    .filter(target -> !target.factory() || target.instance().equals(old.target().instance())
+                            && target.originalSource().equals(old.target().originalSource()))
+                    .toList();
+            if (matching.size() == 1) replacements.put(recipe,
+                    new SourceKey(old.kind(), old.id(), file,
+                            matching.getFirst().withProcessing(old.target().processing())));
+        });
+        return () -> {
+            synchronized (byRecipe) {
+                replacements.forEach((recipe, next) -> {
+                    SourceKey old = oldSources.get(recipe);
+                    if (!old.equals(byRecipe.get(recipe))) return;
+                    sources.remove(old, recipe);
+                    sources.put(next, recipe);
+                    byRecipe.put(recipe, next);
+                });
+            }
+        };
+    }
+
     public boolean hasSource(Kind kind, Key id) {
         if (kind == null || id == null) {
             return false;
         }
-        for (SourceKey source : sources.keySet()) {
+        for (SourceKey source : visibleSources().keySet()) {
             if (source.kind() == kind && source.id().equals(id)) {
                 return true;
             }
@@ -175,6 +267,26 @@ public final class RecipeSourceIndex {
         if (kind != null) {
             activeLoads.merge(kind, 1, Integer::sum);
         }
+    }
+
+    /** Whole CE operation has ended; a skipped loadAll may leave a kind counter behind. */
+    public void finishInterruptedLoads() {
+        List<Runnable> actions = new ArrayList<>();
+        synchronized (this) {
+            activeLoads.clear();
+            for (SourceKey source : pendingRestore) deleted.remove(source);
+            pendingRestore.clear();
+            pendingActions.values().forEach(actions::addAll);
+            pendingActions.clear();
+        }
+        RuntimeException failure = null;
+        for (Runnable action : actions) {
+            try { action.run(); }
+            catch (RuntimeException error) {
+                if (failure == null) failure = error; else failure.addSuppressed(error);
+            }
+        }
+        if (failure != null) throw failure;
     }
 
     public synchronized void endLoad(Kind kind) {
@@ -256,7 +368,7 @@ public final class RecipeSourceIndex {
             return List.of();
         }
         List<Object> result = new ArrayList<>();
-        for (Map.Entry<SourceKey, Object> entry : sources.entrySet()) {
+        for (Map.Entry<SourceKey, Object> entry : visibleSources().entrySet()) {
             if (entry.getKey().kind() == kind && entry.getKey().id().equals(id)) {
                 result.add(entry.getValue());
             }
@@ -310,6 +422,7 @@ public final class RecipeSourceIndex {
     }
 
     public void clear() {
+        configurationBackup = null;
         sources.clear();
         byRecipe.clear();
         duplicates.clear();

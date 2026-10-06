@@ -83,18 +83,26 @@ public final class FoodGroups {
     }
 
     // 换用途要先从另一张表摘掉 否则一个标签会同时命中两边
-    public synchronized void put(Key tag, Kind kind) {
+    public void put(Key tag, Kind kind) {
+        FoodRecipeRegistry.instance().atomicUpdate(() -> {
         remove(tag);
         if (kind == Kind.EQUIVALENT) {
             this.equivalentTags = append(this.equivalentTags, tag);
         } else if (kind == Kind.SEASONING) {
             this.seasoningTags = append(this.seasoningTags, tag);
         }
+        FoodRecipeRegistry.instance().refreshGroupView();
+
+        });
     }
 
-    public synchronized void remove(Key tag) {
+    public void remove(Key tag) {
+        FoodRecipeRegistry.instance().atomicUpdate(() -> {
         this.equivalentTags = without(this.equivalentTags, tag);
         this.seasoningTags = without(this.seasoningTags, tag);
+        FoodRecipeRegistry.instance().refreshGroupView();
+
+        });
     }
 
     private static List<Key> append(List<Key> source, Key tag) {
@@ -153,6 +161,10 @@ public final class FoodGroups {
     }
 
     private abstract static class TagListParser extends SectionConfigParser {
+        @Override
+        public void setErrorHandler(java.util.function.Consumer<net.momirealms.craftengine.core.plugin.config.ResourceException> handler) {
+            super.setErrorHandler(FoodRecipeManager.trackRecipeLoadErrors(handler));
+        }
         private final LoadingStage stage;
         private final String label;
         // 同一段可以散在多个文件里 收齐再一次性换表 解析并发所以加锁
@@ -177,7 +189,7 @@ public final class FoodGroups {
 
         @Override
         public List<LoadingStage> dependencies() {
-            return List.of(ItemTags.ITEM_TAGS);
+            return List.of(ItemTags.ITEM_TAGS, FoodRecipeManager.RECIPE_LOAD_BEGIN);
         }
 
         @Override

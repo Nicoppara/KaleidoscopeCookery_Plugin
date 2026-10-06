@@ -126,6 +126,9 @@ public final class KaleidoscopeCookeryPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        net.kaleidoscope.cookery.recipe.edit.RecipeEditService.close();
+        net.kaleidoscope.cookery.recipe.RecipeLoadRecovery.close();
+        net.kaleidoscope.cookery.recipe.FoodRecipeRegistry.instance().close();
         if (steamerTransients != null) steamerTransients.close();
         if (baoziThrows != null) baoziThrows.close();
         closeAdvancements();

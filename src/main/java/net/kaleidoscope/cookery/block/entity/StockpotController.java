@@ -31,6 +31,8 @@ import net.kaleidoscope.cookery.block.entity.render.TrackedPlayers;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.CookingPlan;
+import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import org.bukkit.Particle;
@@ -72,13 +74,19 @@ public class StockpotController extends BlockEntityController {
     private static final String K_RESULT = "result";
     private static final String K_CARRIER = "carrier";
     private static final String K_LID_ITEM = "lid_item";
+    private static final String K_PLAN = "cooking_plan";
+    private static final String K_BLOCKED = "completion_blocked";
 
     private StockpotStage stage = StockpotStage.PUT_SOUP_BASE;
     private int currentTick = -1;
+    private CookingPlan cookingPlan;
+    private boolean completionBlocked;
+    private boolean progressDirty;
+    private int dirtyTick;
     private int takeoutCount = 0;
     private int finishedMax = 0;
     private boolean heatedCache = false;
-    private int heatCheckTick = 0;
+    private boolean heatCacheInitialized;
     private final List<Item> ingredients = new ArrayList<>();
     private Item result = Item.empty();
     // 这锅成品的盛装容器 null 表示空手就能盛 与炒锅同一套 数据源都是配方的 carrier
@@ -134,6 +142,7 @@ public class StockpotController extends BlockEntityController {
     public StockpotController(BlockEntity blockEntity, StockpotBehavior behavior) {
         super(blockEntity);
         this.behavior = behavior;
+        this.dirtyTick = Math.floorMod(blockEntity.pos.x() * 31 + blockEntity.pos.z(), 20);
         this.element = new StockpotElement(this, new WorldPosition(
                 null,
                 (float) super.blockEntity.pos.x() + 0.5f,
@@ -170,15 +179,30 @@ public class StockpotController extends BlockEntityController {
     }
 
     public void tick() {
+        if (stage == StockpotStage.COOKING && cookingPlan == null) {
+            cookingPlan = FoodRecipeRegistry.instance()
+                    .planFlex(ApplianceType.STOCKPOT, ingredientIds(), this.soupBaseId, behavior.cookingTime)
+                    .withWorkRequired(Math.max(1, currentTick));
+            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+        }
+        if (++dirtyTick >= 20) {
+            dirtyTick = 0;
+            flushProgress();
+        }
         if (stage == StockpotStage.PUT_SOUP_BASE) {
             stopAnimation();
             return;
         }
 
-        if (heatCheckTick == 0) heatedCache = hasHeatSource();
-        heatCheckTick = (heatCheckTick + 1) % 20;
+        World bWorld = (World) super.blockEntity.world.world().platformWorld();
+        long gameTime = bWorld.getGameTime();
+        if (!heatCacheInitialized || Math.floorMod(gameTime + posStagger(), 20) == 0) {
+            heatedCache = hasHeatSource();
+            heatCacheInitialized = true;
+        }
         if (!heatedCache) {
             stopAnimation();
+            flushProgress();
             return;
         }
 
@@ -187,9 +211,7 @@ public class StockpotController extends BlockEntityController {
             stopAnimation();
         }
 
-        World bWorld = (World) super.blockEntity.world.world().platformWorld();
-        long gameTime = bWorld.getGameTime();
-        if (gameTime % 15 == 0) {
+        if (Math.floorMod(gameTime + posStagger(), 15) == 0) {
             float volume = hasLid ? 0.3f : 0.6f;
             float pitch = 0.9f + (float) ThreadLocalRandom.current().nextDouble() * 0.2f;
             super.blockEntity.world.world().playSound(
@@ -199,7 +221,8 @@ public class StockpotController extends BlockEntityController {
         }
 
         if (!hasLid) {
-            if (gameTime % behavior.particleInterval == 0) {
+            flushProgress();
+            if (Math.floorMod(gameTime + posStagger(), behavior.particleInterval) == 0) {
                 double bx = super.blockEntity.pos.x() + 0.3 + ThreadLocalRandom.current().nextDouble() * 0.4;
                 double by = super.blockEntity.pos.y() + 0.4;
                 double bz = super.blockEntity.pos.z() + 0.3 + ThreadLocalRandom.current().nextDouble() * 0.4;
@@ -211,13 +234,13 @@ public class StockpotController extends BlockEntityController {
                     Particles.emit(super.blockEntity.world, Particle.BUBBLE_POP, bx, by, bz, pc, 0.05, 0.0, 0.05, 0.02, null);
                 }
             }
-            if (gameTime % ANIM_INTERVAL == 0) {
+            if (Math.floorMod(gameTime + posStagger(), ANIM_INTERVAL) == 0) {
                 refreshAnimation(ANIM_INTERVAL);
             }
             return;
         }
 
-        if (gameTime % behavior.particleInterval == 0) {
+        if (Math.floorMod(gameTime + posStagger(), behavior.particleInterval) == 0) {
             int pc = behavior.particleCount;
             if (stage == StockpotStage.FINISHED) {
                 double bx = super.blockEntity.pos.x() + 0.5 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6;
@@ -233,25 +256,34 @@ public class StockpotController extends BlockEntityController {
             }
         }
 
-        if (stage == StockpotStage.PUT_INGREDIENT && !ingredients.isEmpty() && gameTime % 5 == 0) {
+        if (stage == StockpotStage.PUT_INGREDIENT && !ingredients.isEmpty() && Math.floorMod(gameTime + posStagger(), 5) == 0) {
+            cookingPlan = FoodRecipeRegistry.instance()
+                    .planFlex(ApplianceType.STOCKPOT, ingredientIds(), this.soupBaseId, behavior.cookingTime);
             stage = StockpotStage.COOKING;
-            currentTick = behavior.cookingTime;
+            currentTick = cookingPlan.workRequired();
+            completionBlocked = false;
+            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
             this.refreshRendering();
             return;
         }
 
         if (stage == StockpotStage.COOKING) {
-            if (currentTick > 0) {
-                currentTick--;
+            if (completionBlocked) return;
+            if (cookingPlan == null || !cookingPlan.valid()) {
+                blockCompletion();
                 return;
             }
-
-            stage = StockpotStage.FINISHED;
-            currentTick = -1;
-
+            if (currentTick > 0) {
+                currentTick--;
+                progressDirty = true;
+                if (currentTick > 0) return;
+            }
             List<Key> ids = ingredientIds();
-            Optional<FoodRecipeResult> res = FoodRecipeRegistry.instance()
-                    .cookFlex(ApplianceType.STOCKPOT, ids, this.soupBaseId);
+            Optional<FoodRecipeResult> res = cookingPlan.matched() ? cookingPlan.buildResult() : Optional.empty();
+            if (cookingPlan.matched() && res.isEmpty()) {
+                blockCompletion();
+                return;
+            }
 
             int servings;
             if (res.isPresent()) {
@@ -264,6 +296,9 @@ public class StockpotController extends BlockEntityController {
                 this.resultCarrier = this.result.isEmpty() ? null : behavior.failedResultCarrier;
                 servings = 1;
             }
+            stage = StockpotStage.FINISHED;
+            currentTick = -1;
+            progressDirty = false;
             servings = Math.min(servings, MAX_INGREDIENTS);
             this.takeoutCount = servings;
             this.finishedMax = servings;
@@ -274,6 +309,26 @@ public class StockpotController extends BlockEntityController {
             refreshDynamicElement(StockpotElement::onFinished);
             super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
         }
+    }
+
+    private void flushProgress() {
+        if (progressDirty) {
+            progressDirty = false;
+            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+        }
+    }
+
+    private int posStagger() {
+        return super.blockEntity.pos.x() * 31 + super.blockEntity.pos.z();
+    }
+
+    private void blockCompletion() {
+        completionBlocked = true;
+        progressDirty = false;
+        super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+        var plugin = KaleidoscopeCookeryPlugin.instance();
+        if (plugin != null) plugin.getLogger().warning("Stockpot cooking paused at " + blockEntity.pos
+                + ": saved recipe or result is unavailable; ingredients retained.");
     }
 
     private List<Key> ingredientIds() {
@@ -379,6 +434,9 @@ public class StockpotController extends BlockEntityController {
         if (stage == StockpotStage.COOKING) {
             stage = StockpotStage.PUT_INGREDIENT;
             currentTick = -1;
+            cookingPlan = null;
+            completionBlocked = false;
+            progressDirty = false;
         }
         this.refreshRendering();
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
@@ -405,6 +463,9 @@ public class StockpotController extends BlockEntityController {
             }
             stage = StockpotStage.PUT_INGREDIENT;
             currentTick = -1;
+            cookingPlan = null;
+            completionBlocked = false;
+            progressDirty = false;
         }
 
         this.refreshRendering();
@@ -451,6 +512,9 @@ public class StockpotController extends BlockEntityController {
         this.result = Item.empty();
         this.stage = StockpotStage.PUT_SOUP_BASE;
         this.currentTick = -1;
+        this.cookingPlan = null;
+        this.completionBlocked = false;
+        this.progressDirty = false;
         this.takeoutCount = 0;
         this.soupBaseId = ItemKeys.WATER;
         this.seed = System.currentTimeMillis();
@@ -509,6 +573,8 @@ public class StockpotController extends BlockEntityController {
         data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
         data.putInt(K_STATUS, this.stage.ordinal());
         data.putInt(K_CURRENT_TICK, this.currentTick);
+        if (cookingPlan != null) data.put(K_PLAN, cookingPlan.save());
+        data.putBoolean(K_BLOCKED, completionBlocked);
         data.putInt(K_TAKEOUT_COUNT, this.takeoutCount);
         data.putInt(K_FINISHED_MAX, this.finishedMax);
         if (!this.lastCookedIngredients.isEmpty()) {
@@ -529,6 +595,8 @@ public class StockpotController extends BlockEntityController {
 
     @Override
     public void loadCustomData(CompoundTag tag) {
+        progressDirty = false;
+        heatCacheInitialized = false;
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data == null) return;
 
@@ -536,6 +604,8 @@ public class StockpotController extends BlockEntityController {
 
         this.stage = StockpotStage.fromOrdinal(data.getInt(K_STATUS, 0));
         this.currentTick = data.getInt(K_CURRENT_TICK, -1);
+        this.cookingPlan = data.containsKey(K_PLAN) ? CookingPlan.load(data.getCompound(K_PLAN)) : null;
+        this.completionBlocked = data.getBoolean(K_BLOCKED, false);
         this.takeoutCount = data.getInt(K_TAKEOUT_COUNT, 0);
         this.finishedMax = data.getInt(K_FINISHED_MAX, this.takeoutCount);
         this.lastCookedIngredients.clear();
