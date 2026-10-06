@@ -14,4 +14,10 @@ public record ChoppingBoardRecipe(
         ChoppingMode mode,
         List<ChoppingResult> results,
         List<ChoppingResult> extras
-) {}
+) {
+    public ChoppingBoardRecipe {
+        values = List.copyOf(values);
+        results = List.copyOf(results);
+        extras = List.copyOf(extras);
+    }
+}

@@ -214,31 +214,29 @@ public final class AccurateEditMenu {
 
     private static GuiElement rotationSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                            AccurateRecipeDraft draft) {
+        if (draft.cook() == ApplianceType.STEAMER || draft.cook() == ApplianceType.SHAWARMA) {
+            return RecipeProcessingControls.time(bukkitPlayer, viewer, draft.originalRecipe(), draft.cook(), draft.cookingTime(),
+                    draft::cookingTime, () -> reopen(bukkitPlayer, draft));
+        }
         if (draft.cook() != ApplianceType.MILLSTONE) {
             return MenuIcons.filler(viewer);
         }
-        Item icon = MenuIcons.icon(MenuButton.ROTATION, viewer,
-                MenuIcons.text("研磨圈数", NamedTextColor.GOLD),
-                MenuIcons.lore(draft.rotations() <= 0 ? "跟随石磨默认值" : "当前 " + draft.rotations(),
-                        "左键输入新值 填 0 用默认"));
-        return MenuIcons.button(icon, () -> MenuInput.requestInt(bukkitPlayer, "研磨圈数", "圈数",
-                draft.rotations(), 0, MAX_ROTATIONS,
-                value -> {
-                    draft.rotations(value);
-                    reopen(bukkitPlayer, draft);
-                },
-                () -> reopen(bukkitPlayer, draft)));
+        return RecipeProcessingControls.count(bukkitPlayer, viewer, draft.originalRecipe(), draft.cook(), "研磨圈数", draft.rotations(),
+                MAX_ROTATIONS, draft::rotations, () -> reopen(bukkitPlayer, draft));
     }
 
     private static GuiElement saveSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                        AccurateRecipeDraft draft) {
         Item icon = MenuIcons.icon(MenuButton.SAVE, viewer,
                 MenuIcons.text("保存", NamedTextColor.GREEN),
-                MenuIcons.lore("立即生效 并写回配置文件"));
+                MenuIcons.lore("写回原配置，下一批次使用新值"));
         return MenuIcons.button(icon, () -> {
             RecipeMenus.message(bukkitPlayer, "正在保存食谱...");
-            RecipeEditService.saveAccurate(draft).thenAccept(error ->
+            var saving = RecipeEditSaves.save(draft, () -> RecipeEditService.saveAccurate(draft));
+            if (saving == null) return;
+            saving.thenAccept(error ->
                     MenuTasks.runFor(bukkitPlayer, () -> {
+                        if (RecipeEditService.isClosed()) return;
                         if (error != null) {
                             RecipeMenus.message(bukkitPlayer, error);
                             reopen(bukkitPlayer, draft);

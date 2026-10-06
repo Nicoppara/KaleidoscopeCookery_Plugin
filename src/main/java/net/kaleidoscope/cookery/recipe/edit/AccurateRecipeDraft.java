@@ -20,6 +20,7 @@ public final class AccurateRecipeDraft {
     private Key input;
     private final List<WeightedResult> results = new ArrayList<>();
     private int rotations;
+    private int cookingTime;
     private int resultCount = 1;
     private final List<String> lore = new ArrayList<>();
 
@@ -39,6 +40,7 @@ public final class AccurateRecipeDraft {
         draft.input = recipe.input();
         draft.results.addAll(recipe.results());
         draft.rotations = recipe.rotations();
+        draft.cookingTime = recipe.cookingTime();
         draft.resultCount = recipe.resultCount();
         draft.lore.addAll(recipe.lore());
         return draft;
@@ -92,6 +94,10 @@ public final class AccurateRecipeDraft {
         return resultCount;
     }
 
+    public int cookingTime() { return cookingTime; }
+
+    public void cookingTime(int value) { this.cookingTime = Math.max(0, value); }
+
     public void resultCount(int value) {
         this.resultCount = Math.max(1, value);
     }
@@ -107,6 +113,6 @@ public final class AccurateRecipeDraft {
 
     public AccurateFoodRecipe toRecipe() {
         return new AccurateFoodRecipe(id, input, List.copyOf(results), cook,
-                rotations, resultCount, List.copyOf(lore));
+                rotations, resultCount, List.copyOf(lore), cookingTime);
     }
 }

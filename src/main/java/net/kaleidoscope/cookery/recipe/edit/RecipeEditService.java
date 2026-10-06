@@ -22,6 +22,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -29,6 +34,11 @@ import java.util.function.Supplier;
 public final class RecipeEditService {
     private static final String SAVE_FAILED = "配置文件写入失败，原食谱未修改";
     private static final String HOT_UPDATE_FAILED = "配置文件已写入，运行时更新失败，请重载配置";
+    private static final ConcurrentLinkedQueue<Runnable> IO_QUEUE = new ConcurrentLinkedQueue<>();
+    private static final AtomicBoolean DRAINING = new AtomicBoolean();
+    private static final AtomicBoolean WAITING_FOR_CE = new AtomicBoolean();
+    private static final java.util.Set<CompletableFuture<?>> PENDING = ConcurrentHashMap.newKeySet();
+    private static volatile boolean closed;
 
     private RecipeEditService() {
     }
@@ -214,6 +224,9 @@ public final class RecipeEditService {
                                                         RecipeSourceIndex.Kind kind, String[] sections,
                                                         Supplier<Path> defaultFile,
                                                         Map<String, Object> node) {
+        if (old != null && RecipeSourceIndex.instance().target(old) == null) {
+            return CompletableFuture.completedFuture("食谱已被修改或重载，请重新打开编辑菜单");
+        }
         Path file = resolveFile(old, defaultFile);
         if (file == null) {
             return CompletableFuture.completedFuture("找不到可写入的配方文件");
@@ -221,10 +234,24 @@ public final class RecipeEditService {
         RecipeSourceIndex index = RecipeSourceIndex.instance();
         RecipeFileStore.SourceTarget oldTarget = index.target(old);
         String nodePath = resolveNodePath(index.nodePath(old), sections, id);
+        Map<String, Object> changes = changedFields(old == null ? Map.of() : recipeNode(old), node);
+        if (old != null && changes.isEmpty() && id.equals(oldId)) {
+            return CompletableFuture.completedFuture(null);
+        }
+        AtomicReference<RecipeFileStore.PatchedRecipe> saved = new AtomicReference<>();
+        AtomicReference<Runnable> relocate = new AtomicReference<>(() -> {});
         return persistThenApply(id, kind,
-                afterSave -> RecipeFileStore.replaceTarget(file, oldTarget, nodePath, node, afterSave),
+                afterSave -> {
+                    saved.set(RecipeFileStore.patchTarget(file, oldTarget, nodePath, id, changes,
+                            () -> CraftEngine.instance().isReloading()));
+                    relocate.set(index.prepareRelocations(file));
+                    afterSave.run();
+                },
                 () -> {
-                    Object replaced = index.removeSource(kind, id, file, nodePath);
+                    RecipeFileStore.PatchedRecipe patched = saved.get();
+                    Object effectiveRecipe = savedRecipe(recipe, patched.expanded());
+                    relocate.get().run();
+                    Object replaced = index.removeSource(kind, id, file, patched.target());
                     removeMenuRecipe(replaced);
                     if (replaced != null) {
                         removeRuntime(kind, id);
@@ -234,12 +261,12 @@ public final class RecipeEditService {
                         removeMenuRecipe(old);
                         index.remove(old);
                     }
-                    index.restore(kind, id, file, nodePath);
-                    boolean duplicate = index.hasOtherSource(kind, id, file, nodePath);
-                    registerMenuRecipe(recipe);
-                    index.put(kind, id, file, nodePath, recipe, duplicate);
+                    index.restore(kind, id, file, patched.target());
+                    boolean duplicate = index.hasOtherSource(kind, id, file, patched.target());
+                    registerMenuRecipe(effectiveRecipe);
+                    index.put(kind, id, file, patched.target(), effectiveRecipe, duplicate);
                     if (!duplicate) {
-                        registerRuntime(recipe, kind);
+                        registerRuntime(effectiveRecipe, kind);
                     }
                     // 放在重新登记之后 原料没变时新配方已占着它 stillUsed 恒真 不会误摘
                     if (old != null) {
@@ -250,22 +277,26 @@ public final class RecipeEditService {
 
     private static CompletableFuture<String> persistThenApply(Key id, RecipeSourceIndex.Kind kind,
                                                                SaveAction save, Runnable hotUpdate) {
-        CompletableFuture<String> result = new CompletableFuture<>();
+        CompletableFuture<String> result = pendingResult();
         try {
             runAsync(() -> {
-                try {
-                    save.run(() -> RecipeSourceIndex.instance().afterCurrentLoad(kind, () -> {
+                try (var resourceLease = CraftEngine.instance().resourceOperations().acquire()) {
+                    // Keep one CE generation across expansion, disk replacement, source relocation and publication.
+                    save.run(() -> {
                         try {
-                            hotUpdate.run();
+                            if (closed) return;
+                            FoodRecipeRegistry.instance().atomicUpdate(hotUpdate);
                             result.complete(null);
                         } catch (RuntimeException error) {
                             RecipeFileStore.logFailure("热更新", id, error);
                             result.complete(HOT_UPDATE_FAILED);
                         }
-                    }));
+                    });
                 } catch (Exception error) {
                     RecipeFileStore.logFailure("保存", id, error);
-                    result.complete(SAVE_FAILED);
+                    result.complete(error instanceof net.momirealms.craftengine.core.plugin.ResourceOperationCoordinator.BusyException
+                            ? "CraftEngine 正在更新资源，请稍后保存"
+                            : error instanceof java.io.IOException ? error.getMessage() : SAVE_FAILED);
                 }
             });
         } catch (RuntimeException error) {
@@ -299,7 +330,7 @@ public final class RecipeEditService {
         if (file == null || target == null || kind == null) {
             return CompletableFuture.completedFuture(false);
         }
-        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        CompletableFuture<Boolean> result = pendingResult();
         runAsync(() -> {
             try {
                 if (!RecipeFileStore.deleteTarget(file, target)) {
@@ -316,9 +347,10 @@ public final class RecipeEditService {
 
             RecipeSourceIndex sourceIndex = RecipeSourceIndex.instance();
             sourceIndex.markDeleted(kind, id, file, target);
-            sourceIndex.afterCurrentLoad(kind, () -> {
+            FoodRecipeRegistry.instance().afterConfigurationLoad(() -> sourceIndex.afterCurrentLoad(kind, () -> {
                 try {
-                    applyHotDeletion(recipe, kind, id, file, target);
+                    if (closed) return;
+                    FoodRecipeRegistry.instance().atomicUpdate(() -> applyHotDeletion(recipe, kind, id, file, target));
                     result.complete(true);
                 } catch (RuntimeException error) {
                     // 文件已经删除 此处失败不能再向玩家谎报配置仍在 下次重载会按磁盘结果收敛
@@ -327,7 +359,7 @@ public final class RecipeEditService {
                 } finally {
                     RecipeSourceIndex.instance().restore(kind, id, file, target);
                 }
-            });
+            }));
         });
         return result;
     }
@@ -532,7 +564,7 @@ public final class RecipeEditService {
             return CompletableFuture.completedFuture(error);
         }
         List<Key> snapshot = List.copyOf(members);
-        CompletableFuture<String> result = new CompletableFuture<>();
+        CompletableFuture<String> result = pendingResult();
         runAsync(() -> {
             try {
                 RecipeFileStore.writeFoodGroup(tag, snapshot, kind);
@@ -542,15 +574,20 @@ public final class RecipeEditService {
                 return;
             }
             // 解析器是 add 合并语义 这里必须整体替换 否则删掉的成员残留到下次重载
-            ItemTags.instance().register(tag, snapshot.stream().map(Key::asString).toList());
-            FoodGroups.instance().put(tag, kind);
-            result.complete(null);
+            FoodRecipeRegistry.instance().afterConfigurationLoad(() -> {
+                if (closed) return;
+                FoodRecipeRegistry.instance().atomicUpdate(() -> {
+                    ItemTags.instance().register(tag, snapshot.stream().map(Key::asString).toList());
+                    FoodGroups.instance().put(tag, kind);
+                });
+                result.complete(null);
+            });
         });
         return result;
     }
 
     public static CompletableFuture<Boolean> deleteFoodGroup(Key tag) {
-        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        CompletableFuture<Boolean> result = pendingResult();
         runAsync(() -> {
             try {
                 RecipeFileStore.deleteFoodGroup(tag);
@@ -559,9 +596,14 @@ public final class RecipeEditService {
                 result.complete(false);
                 return;
             }
-            FoodGroups.instance().remove(tag);
-            ItemTags.instance().remove(tag);
-            result.complete(true);
+            FoodRecipeRegistry.instance().afterConfigurationLoad(() -> {
+                if (closed) return;
+                FoodRecipeRegistry.instance().atomicUpdate(() -> {
+                    FoodGroups.instance().remove(tag);
+                    ItemTags.instance().remove(tag);
+                });
+                result.complete(true);
+            });
         });
         return result;
     }
@@ -578,7 +620,67 @@ public final class RecipeEditService {
     }
 
     private static void runAsync(Runnable task) {
-        CraftEngine.instance().scheduler().executeAsync(task);
+        if (closed) throw new IllegalStateException("插件已关闭");
+        if (IO_QUEUE.size() >= 256) throw new IllegalStateException("保存队列已满，请稍后重试");
+        IO_QUEUE.add(task);
+        scheduleDrain();
+    }
+
+    private static void scheduleDrain() {
+        if (WAITING_FOR_CE.get() && configurationBusy()) return;
+        if (closed || !DRAINING.compareAndSet(false, true)) return;
+        try {
+            CraftEngine.instance().scheduler().executeAsync(RecipeEditService::drain);
+        } catch (RuntimeException error) {
+            DRAINING.set(false);
+            close();
+            throw error;
+        }
+    }
+
+    private static void drain() {
+        try {
+            while (!closed) {
+                // TemplateManager is mutable during CE's load. Validate only against a completed generation.
+                if (configurationBusy()) {
+                    if (WAITING_FOR_CE.compareAndSet(false, true)) {
+                        CompletableFuture.delayedExecutor(25, TimeUnit.MILLISECONDS,
+                                CraftEngine.instance().scheduler().async()).execute(() -> {
+                            WAITING_FOR_CE.set(false);
+                            scheduleDrain();
+                        });
+                    }
+                    return;
+                }
+                Runnable task = IO_QUEUE.poll();
+                if (task == null) return;
+                task.run();
+            }
+        } finally {
+            DRAINING.set(false);
+            if (!closed && !IO_QUEUE.isEmpty() && !configurationBusy()) scheduleDrain();
+        }
+    }
+
+    private static boolean configurationBusy() {
+        return CraftEngine.instance().resourceOperations().isBusy()
+                || CraftEngine.instance().isReloading() || FoodRecipeRegistry.instance().isConfigurationLoading();
+    }
+
+    private static <T> CompletableFuture<T> pendingResult() {
+        CompletableFuture<T> result = new CompletableFuture<>();
+        PENDING.add(result);
+        result.whenComplete((value, error) -> PENDING.remove(result));
+        return result;
+    }
+
+    public static boolean isClosed() { return closed; }
+
+    /** Does not interrupt an atomic write already in progress. */
+    public static void close() {
+        closed = true;
+        IO_QUEUE.clear();
+        PENDING.forEach(future -> future.completeExceptionally(new IllegalStateException("插件已关闭")));
     }
 
     private static Map<String, Object> accurateNode(AccurateFoodRecipe recipe) {
@@ -602,6 +704,7 @@ public final class RecipeEditService {
         if (recipe.cook() == ApplianceType.MILLSTONE && recipe.rotations() > 0) {
             node.put("rotations", recipe.rotations());
         }
+        if (recipe.cookingTime() > 0) node.put("cooking_time", recipe.cookingTime());
         if (!recipe.lore().isEmpty()) {
             node.put("lore", new ArrayList<>(recipe.lore()));
         }
@@ -613,7 +716,7 @@ public final class RecipeEditService {
     private static Map<String, Object> choppingNode(ChoppingRecipeDraft draft) {
         Map<String, Object> node = new LinkedHashMap<>();
         node.put("require", draft.input().asString());
-        node.put("stage", draft.stage());
+        if (draft.stage() > 0) node.put("stage", draft.stage());
         if (draft.modelPrefix() != null) {
             node.put("values", draft.modelPrefix());
         }
@@ -639,7 +742,7 @@ public final class RecipeEditService {
         node.put("fluid", draft.fluid().asString());
         node.put("require", draft.input().asString() + " " + draft.ingredientCount());
         node.put("result", draft.result().asString() + " " + draft.resultCount());
-        node.put("time", draft.time());
+        if (draft.time() > 0) node.put("cooking_time", draft.time());
         return node;
     }
 
@@ -669,6 +772,105 @@ public final class RecipeEditService {
         if (!draft.useSeasonings()) {
             node.put("use_seasonings", false);
         }
+        if (draft.cookingTime() > 0) node.put("cooking_time", draft.cookingTime());
+        if (draft.stirFryCount() > 0) node.put("stir_fry_count", draft.stirFryCount());
         return node;
+    }
+
+    private static Map<String, Object> recipeNode(Object recipe) {
+        if (recipe instanceof AccurateFoodRecipe value) return accurateNode(value);
+        if (recipe instanceof FlexFoodRecipe value) return flexNode(FlexRecipeDraft.editing(value));
+        if (recipe instanceof ChoppingBoardRecipe value) return choppingNode(ChoppingRecipeDraft.editing(value));
+        if (recipe instanceof TeapotRecipe value) return teapotNode(TeapotRecipeDraft.editing(value));
+        return Map.of();
+    }
+
+    private static Map<String, Object> changedFields(Map<String, Object> old, Map<String, Object> next) {
+        java.util.Set<String> keys = new java.util.LinkedHashSet<>(old.keySet());
+        keys.addAll(next.keySet());
+        Map<String, Object> changes = new LinkedHashMap<>();
+        for (String key : keys) {
+            if (!java.util.Objects.equals(old.get(key), next.get(key))) changes.put(key, next.get(key));
+        }
+        return changes;
+    }
+
+    private static int savedInt(Map<String, Object> expanded, String field, int fallback) {
+        for (String alias : RecipePatchWriter.aliases(field)) {
+            Object value = expanded.get(alias);
+            if (value instanceof Number number) return number.intValue();
+            if (value instanceof String text) {
+                try { return Integer.parseInt(text); } catch (NumberFormatException ignored) { }
+            }
+        }
+        return fallback;
+    }
+
+    private static Object savedRecipe(Object recipe, Map<String, Object> expanded) {
+        net.momirealms.craftengine.core.plugin.config.ConfigSection section =
+                net.momirealms.craftengine.core.plugin.config.ConfigSection.of("saved_recipe", expanded);
+        if (recipe instanceof AccurateFoodRecipe value) {
+            List<WeightedResult> results = new ArrayList<>();
+            Object raw = section.get("result");
+            if (raw instanceof List<?> list) {
+                for (Object result : list) {
+                    String[] parts = result.toString().trim().split("\\s+", 2);
+                    results.add(new WeightedResult(Key.of(parts[0]), parts.length > 1 ? Integer.parseInt(parts[1]) : 100));
+                }
+            } else results.add(new WeightedResult(section.getNonNullIdentifier("result"), 100));
+            return new AccurateFoodRecipe(value.id(), section.getNonNullIdentifier("require"), results, value.cook(),
+                    savedInt(expanded, "rotations", 0), Math.max(1, savedInt(expanded, "result_count", 1)), section.getStringList("lore"),
+                    savedInt(expanded, "cooking_time", 0));
+        }
+        if (recipe instanceof FlexFoodRecipe value) {
+            Map<Key, Integer> perfect = new LinkedHashMap<>();
+            var weights = section.getSection("perfect");
+            if (weights != null) {
+                for (String key : weights.keySet()) perfect.put(Key.of(key), weights.getInt(key, 1));
+            } else {
+                for (String raw : section.getStringList("perfect")) {
+                    String[] parts = raw.trim().split("\\s+", 2);
+                    perfect.put(Key.of(parts[0]), parts.length > 1 ? Integer.parseInt(parts[1]) : 1);
+                }
+            }
+            String carrier = section.getString("carrier", (String) null);
+            return FlexFoodRecipe.of(value.id(), section.getNonNullIdentifier("result"), value.cook(), perfect,
+                    section.getStringList("liquid").stream().map(Key::of).toList(),
+                    carrier == null || carrier.isEmpty() || "minecraft:air".equals(carrier) ? null : Key.of(carrier),
+                    section.getBoolean(new String[]{"use_equivalent_foods", "use-equivalent-foods"}, true),
+                    section.getBoolean(new String[]{"use_seasonings", "use-seasonings"}, true),
+                    savedInt(expanded, "cooking_time", 0), savedInt(expanded, "stir_fry_count", 0));
+        }
+        if (recipe instanceof TeapotRecipe value) {
+            String[] input = section.getNonNullString("require").trim().split("\\s+", 2);
+            String[] output = section.getNonNullString("result").trim().split("\\s+", 2);
+            return new TeapotRecipe(value.id(), section.getNonNullIdentifier("fluid"), Key.of(input[0]),
+                    input.length > 1 ? Integer.parseInt(input[1]) : 1, Key.of(output[0]),
+                    output.length > 1 ? Integer.parseInt(output[1]) : 1, savedInt(expanded, "time", 200));
+        }
+        if (recipe instanceof ChoppingBoardRecipe value) {
+            int stage = section.getInt("stage", 1);
+            String prefix = section.getString("values", (String) null);
+            List<String> models = new ArrayList<>();
+            if (prefix != null && !prefix.isEmpty()) {
+                for (int index = 0; index < stage; index++) models.add(prefix + "/" + index);
+            }
+            return new ChoppingBoardRecipe(value.id(), section.getNonNullIdentifier("require"), stage, models,
+                    ChoppingMode.valueOf(section.getString("mode", "single").toUpperCase(java.util.Locale.ROOT)),
+                    savedChoppingResults(section.get("result")), savedChoppingResults(section.get("extra")));
+        }
+        return recipe;
+    }
+
+    private static List<ChoppingResult> savedChoppingResults(Object raw) {
+        if (raw == null) return List.of();
+        List<?> values = raw instanceof List<?> list ? list : List.of(raw);
+        List<ChoppingResult> results = new ArrayList<>();
+        for (Object value : values) {
+            String[] parts = value.toString().trim().split("\\s+", 3);
+            results.add(new ChoppingResult(Key.of(parts[0]), parts.length > 1 ? Integer.parseInt(parts[1]) : 1,
+                    parts.length > 2 ? Integer.parseInt(parts[2]) : 100));
+        }
+        return results;
     }
 }

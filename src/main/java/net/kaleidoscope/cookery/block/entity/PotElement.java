@@ -55,7 +55,6 @@ public final class PotElement implements BlockEntityElement {
 
     @Override
     public void hide(@NotNull Player player) {
-        cancelAnimationTasks();
         display.removeAll(player);
     }
 
@@ -115,11 +114,10 @@ public final class PotElement implements BlockEntityElement {
         return (brightness << 4) | (brightness << 20);
     }
 
-    public void playStirFryAnimation(Runnable onComplete) {
+    public void playStirFryAnimation() {
         CEChunk chunk = controller.blockEntity().world.getChunkAtIfLoaded(controller.blockEntity().pos.x >> 4, controller.blockEntity().pos.z >> 4);
         int ingredientCount = controller.ingredients().size();
         if (chunk == null || ingredientCount == 0) {
-            onComplete.run();
             return;
         }
         cancelAnimationTasks();
@@ -157,10 +155,7 @@ public final class PotElement implements BlockEntityElement {
             if (delay == 0) phaseRunnable.run();
             else animationTasks.add(FoliaUtil.runLater(phaseRunnable, delay, world, chunkX, chunkZ));
         }
-        animationTasks.add(FoliaUtil.runLater(() -> {
-            onComplete.run();
-            animationTasks.clear();
-        }, stepDuration * 8L, world, chunkX, chunkZ));
+        animationTasks.add(FoliaUtil.runLater(animationTasks::clear, stepDuration * 8L, world, chunkX, chunkZ));
     }
 
     private float getParabolaHeightForStep(int step, float baseH, float topH, float range) {

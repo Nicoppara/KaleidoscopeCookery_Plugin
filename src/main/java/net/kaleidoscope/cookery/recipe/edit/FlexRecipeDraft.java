@@ -23,6 +23,8 @@ public final class FlexRecipeDraft {
     private Key carrier;
     private boolean useEquivalentFoods = true;
     private boolean useSeasonings = true;
+    private int cookingTime;
+    private int stirFryCount;
 
     private FlexRecipeDraft(ApplianceType cook, Key originalId, Key id) {
         this.cook = cook;
@@ -43,6 +45,8 @@ public final class FlexRecipeDraft {
         draft.carrier = recipe.carrier();
         draft.useEquivalentFoods = recipe.useEquivalentFoods();
         draft.useSeasonings = recipe.useSeasonings();
+        draft.cookingTime = recipe.cookingTime();
+        draft.stirFryCount = recipe.stirFryCount();
         return draft;
     }
 
@@ -112,6 +116,14 @@ public final class FlexRecipeDraft {
 
     public FlexFoodRecipe toRecipe() {
         return FlexFoodRecipe.of(id, result, cook, perfect, liquids, carrier,
-                useEquivalentFoods, useSeasonings);
+                useEquivalentFoods, useSeasonings, cookingTime, stirFryCount);
     }
+
+    public int cookingTime() { return cookingTime; }
+
+    public void cookingTime(int value) { cookingTime = Math.max(0, value); }
+
+    public int stirFryCount() { return stirFryCount; }
+
+    public void stirFryCount(int value) { stirFryCount = Math.max(0, value); }
 }

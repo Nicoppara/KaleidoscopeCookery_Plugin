@@ -26,6 +26,8 @@ import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
+import net.kaleidoscope.cookery.recipe.CookingPlan;
+import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
@@ -51,11 +53,15 @@ public class SteamerController extends BlockEntityController {
     private static final String K_ITEMS = "items";
     private static final String K_COOKING_PROGRESS = "cooking_progress";
     private static final String K_COOKING_TIME = "cooking_time";
+    private static final String K_COOKING_PLANS = "cooking_plans";
+    private static final String K_BLOCKED = "completion_blocked";
     private static final int MAX_LIT_LEVEL = 4;
     private static final int SLOTS = 8;
     private final SteamerBehavior behavior;
     private final int[] cookingProgress = new int[SLOTS];
     private final int[] cookingTime = new int[SLOTS];
+    private final CookingPlan[] cookingPlans = new CookingPlan[SLOTS];
+    private final boolean[] completionBlocked = new boolean[SLOTS];
     private final Item[] items = new Item[SLOTS];
     private final Random random = new Random();
     private int itemCount = 0;
@@ -63,8 +69,13 @@ public class SteamerController extends BlockEntityController {
     private boolean hasLid = false;
     private boolean wasCovered = false;
     private long seed = System.currentTimeMillis();
-    private int tickCounter = 0;
+    private int tickCounter;
     private int particleTick = 0;
+    private int dirtyTick;
+    private boolean progressDirty;
+    private boolean aboveSteamerCache;
+    private boolean needsPlanHydration;
+    private boolean environmentInitialized;
     private int litLevel = 0;
     private boolean fallingAway = false;
     private boolean skipFoodDrop = false;
@@ -72,6 +83,8 @@ public class SteamerController extends BlockEntityController {
     public SteamerController(BlockEntity blockEntity, SteamerBehavior behavior) {
         super(blockEntity);
         this.behavior = behavior;
+        this.dirtyTick = Math.floorMod(blockEntity.pos.x() * 31 + blockEntity.pos.z(), 20);
+        this.particleTick = Math.floorMod(blockEntity.pos.x() * 31 + blockEntity.pos.z(), Math.max(1, behavior.particleInterval));
         Arrays.fill(this.items, Item.empty());
         this.element = new SteamerElement(this, new WorldPosition(
                 null, (float) super.blockEntity.pos.x() + 0.5f,
@@ -98,18 +111,22 @@ public class SteamerController extends BlockEntityController {
     }
 
     public void tick() {
-        boolean aboveSteamer = isAboveSteamer();
+        hydrateLegacyPlans();
+        if (!environmentInitialized || ++tickCounter >= 5) {
+            tickCounter = environmentInitialized ? 0 : Math.floorMod(super.blockEntity.pos.x() * 31 + super.blockEntity.pos.z(), 5);
+            environmentInitialized = true;
+            aboveSteamerCache = isAboveSteamer();
+            updateLitLevel();
+        }
+        boolean aboveSteamer = aboveSteamerCache;
         boolean currentlyCovered = hasLid || aboveSteamer;
         if (currentlyCovered != wasCovered) {
             wasCovered = currentlyCovered;
             refreshElementState();
+            flushProgress();
         }
 
         particleTick++;
-        if (++tickCounter >= 5) {
-            tickCounter = 0;
-            updateLitLevel();
-        }
         if (particleTick % behavior.particleInterval == 0) {
             for (int i = 0; i < itemCount; i++) {
                 if (cookingTime[i] == -1) {
@@ -123,9 +140,31 @@ public class SteamerController extends BlockEntityController {
         } else {
             cooldownTick();
         }
+        if (++dirtyTick >= 20) {
+            dirtyTick = 0;
+            if (progressDirty) {
+                flushProgress();
+            }
+        }
+    }
+
+    private void hydrateLegacyPlans() {
+        if (!needsPlanHydration) return;
+        needsPlanHydration = false;
+        boolean changed = false;
+        for (int i = 0; i < itemCount; i++) {
+            if (cookingTime[i] > 0 && cookingPlans[i] == null && !items[i].isEmpty()) {
+                cookingPlans[i] = FoodRecipeRegistry.instance()
+                        .planAccurate(ApplianceType.STEAMER, items[i].id(), cookingTime[i])
+                        .withWorkRequired(cookingTime[i]);
+                changed = true;
+            }
+        }
+        if (changed) super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
     }
 
     private void updateLitLevel() {
+        int previousLitLevel = this.litLevel;
         Object level = super.blockEntity.world.world().minecraftWorld();
         Object belowPos = LocationUtils.below(LocationUtils.toBlockPos(super.blockEntity.pos));
 
@@ -152,6 +191,7 @@ public class SteamerController extends BlockEntityController {
                                 SteamerController belowController = belowEntity.controller.get(SteamerController.class, belowBehavior.getControllerId());
                                 if (belowController != null) {
                                     this.litLevel = Math.max(belowController.getLitLevel() - 1, 0);
+                                    if (previousLitLevel > 0 && this.litLevel == 0) flushProgress();
                                     return;
                                 }
                             }
@@ -161,6 +201,7 @@ public class SteamerController extends BlockEntityController {
             }
             this.litLevel = 0;
         }
+        if (previousLitLevel > 0 && this.litLevel == 0) flushProgress();
     }
 
     private void cookingTick(boolean aboveIsSteamer) {
@@ -173,22 +214,36 @@ public class SteamerController extends BlockEntityController {
 
         boolean stateChanged = false;
         for (int i = 0; i < itemCount; i++) {
-            if (cookingTime[i] <= 0) {
+            if (cookingTime[i] <= 0 || completionBlocked[i]) {
+                continue;
+            }
+            CookingPlan plan = cookingPlans[i];
+            if (plan == null || !plan.valid()) {
+                blockCompletion(i);
+                stateChanged = true;
                 continue;
             }
             cookingProgress[i]++;
+            progressDirty = true;
             if (cookingProgress[i] >= cookingTime[i]) {
-                Item resultItem = getRecipeResult(items[i]);
+                Optional<FoodRecipeResult> recipeResult = plan.matched() ? plan.buildResult() : Optional.empty();
+                if (plan.matched() && recipeResult.isEmpty()) {
+                    blockCompletion(i);
+                    stateChanged = true;
+                    continue;
+                }
+                Item resultItem = recipeResult.map(fr -> fr.item().copyWithCount(fr.count())).orElse(items[i]);
                 if (!resultItem.isEmpty()) {
                     items[i] = resultItem;
                     cookingTime[i] = -1;
                     cookingProgress[i] = 0;
                     stateChanged = true;
-                    this.refreshElementState();
                 }
             }
         }
         if (stateChanged) {
+            this.refreshElementState();
+            progressDirty = false;
             super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
         }
     }
@@ -197,14 +252,23 @@ public class SteamerController extends BlockEntityController {
         for (int i = 0; i < itemCount; i++) {
             if (cookingProgress[i] > 0) {
                 cookingProgress[i] = Math.max(0, cookingProgress[i] - 2);
+                progressDirty = true;
             }
         }
     }
 
-    private Item getRecipeResult(Item input) {
-        Optional<FoodRecipeResult> result = FoodRecipeRegistry.instance().findAccurate(ApplianceType.STEAMER, input.id());
-        // 份数由配方的 result_count 决定 只取 item 会把它吞掉
-        return result.map(fr -> fr.item().count(fr.count())).orElse(input);
+    private void flushProgress() {
+        if (progressDirty) {
+            progressDirty = false;
+            super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
+        }
+    }
+
+    private void blockCompletion(int slot) {
+        completionBlocked[slot] = true;
+        var plugin = KaleidoscopeCookeryPlugin.instance();
+        if (plugin != null) plugin.getLogger().warning("Steamer cooking paused at " + blockEntity.pos
+                + " (slot " + slot + "): saved recipe or result is unavailable; input retained.");
     }
 
     public int capacity() {
@@ -221,12 +285,19 @@ public class SteamerController extends BlockEntityController {
     }
 
     public boolean tryAddOne(Item food) {
+        return FoodRecipeRegistry.instance().readSnapshot(() -> tryAddOneInSnapshot(food));
+    }
+
+    private boolean tryAddOneInSnapshot(Item food) {
         if (!hasSpace() || !canSteam(food)) {
             return false;
         }
         items[itemCount] = food.copyWithCount(1);
         cookingProgress[itemCount] = 0;
-        cookingTime[itemCount] = behavior.cookingTime;
+        cookingPlans[itemCount] = FoodRecipeRegistry.instance()
+                .planAccurate(ApplianceType.STEAMER, food.id(), behavior.cookingTime);
+        cookingTime[itemCount] = cookingPlans[itemCount].workRequired();
+        completionBlocked[itemCount] = false;
         itemCount++;
         refreshElementState();
         super.blockEntity.world.blockEntityChanged(super.blockEntity.pos);
@@ -259,10 +330,14 @@ public class SteamerController extends BlockEntityController {
             items[i] = items[i + 1];
             cookingProgress[i] = cookingProgress[i + 1];
             cookingTime[i] = cookingTime[i + 1];
+            cookingPlans[i] = cookingPlans[i + 1];
+            completionBlocked[i] = completionBlocked[i + 1];
         }
         items[itemCount - 1] = Item.empty();
         cookingProgress[itemCount - 1] = 0;
         cookingTime[itemCount - 1] = 0;
+        cookingPlans[itemCount - 1] = null;
+        completionBlocked[itemCount - 1] = false;
         itemCount--;
 
         refreshElementState();
@@ -372,6 +447,8 @@ public class SteamerController extends BlockEntityController {
         int oldCount = this.itemCount;
         this.itemCount = 0;
         Arrays.fill(this.items, Item.empty());
+        Arrays.fill(this.cookingPlans, null);
+        Arrays.fill(this.completionBlocked, false);
         if (oldCount > 0) {
             this.refreshElementState();
         }
@@ -396,13 +473,29 @@ public class SteamerController extends BlockEntityController {
         data.putBoolean(K_HAS_LID, hasLid);
         data.putInt(K_LIT_LEVEL, litLevel);
         data.put(K_ITEMS, BlockEntityNbt.saveItems(items, itemCount));
-        data.putIntArray(K_COOKING_PROGRESS, cookingProgress);
-        data.putIntArray(K_COOKING_TIME, cookingTime);
+        // CE serializes this tag later on its storage worker; detach mutable slot arrays now.
+        data.putIntArray(K_COOKING_PROGRESS, cookingProgress.clone());
+        data.putIntArray(K_COOKING_TIME, cookingTime.clone());
+        CompoundTag plans = new CompoundTag();
+        int[] blocked = new int[SLOTS];
+        for (int i = 0; i < itemCount; i++) {
+            if (cookingPlans[i] != null) plans.put(Integer.toString(i), cookingPlans[i].save());
+            blocked[i] = completionBlocked[i] ? 1 : 0;
+        }
+        data.put(K_COOKING_PLANS, plans);
+        data.putIntArray(K_BLOCKED, blocked);
         tag.put(DATA_KEY, data);
     }
 
     @Override
     public void loadCustomData(CompoundTag tag) {
+        Arrays.fill(cookingProgress, 0);
+        Arrays.fill(cookingTime, 0);
+        Arrays.fill(cookingPlans, null);
+        Arrays.fill(completionBlocked, false);
+        needsPlanHydration = false;
+        progressDirty = false;
+        environmentInitialized = false;
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data != null) {
             this.seed = data.getLong(K_SEED, System.currentTimeMillis());
@@ -416,6 +509,19 @@ public class SteamerController extends BlockEntityController {
             int[] time = data.getIntArray(K_COOKING_TIME);
             if (time != null && time.length == SLOTS) {
                 System.arraycopy(time, 0, this.cookingTime, 0, SLOTS);
+            } else {
+                for (int i = 0; i < itemCount; i++) this.cookingTime[i] = Math.max(1, behavior.cookingTime);
+            }
+            CompoundTag plans = data.getCompound(K_COOKING_PLANS);
+            int[] blocked = data.getIntArray(K_BLOCKED);
+            for (int i = 0; i < itemCount; i++) {
+                if (plans != null && plans.containsKey(Integer.toString(i))) {
+                    cookingPlans[i] = CookingPlan.load(plans.getCompound(Integer.toString(i)));
+                } else if (plans == null && data.containsKey(K_COOKING_PLANS)) {
+                    cookingPlans[i] = CookingPlan.load(null);
+                }
+                completionBlocked[i] = blocked != null && i < blocked.length && blocked[i] != 0;
+                if (cookingTime[i] > 0 && cookingPlans[i] == null) needsPlanHydration = true;
             }
         }
     }

@@ -158,16 +158,8 @@ public final class TeapotEditMenu {
 
     private static GuiElement timeSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                        TeapotRecipeDraft draft) {
-        Item icon = MenuIcons.icon(MenuButton.ROTATION, viewer,
-                MenuIcons.text("熬煮 " + draft.time() + " tick", NamedTextColor.GOLD),
-                MenuIcons.lore("约 " + String.format("%.1f", draft.time() / 20.0) + " 秒", "左键修改"));
-        return MenuIcons.button(icon, () -> MenuInput.requestInt(bukkitPlayer, "熬煮时间", "tick",
-                draft.time(), 1, TeapotRecipeDraft.MAX_TIME,
-                value -> {
-                    draft.time(value);
-                    open(bukkitPlayer, draft);
-                },
-                () -> open(bukkitPlayer, draft)));
+        return RecipeProcessingControls.time(bukkitPlayer, viewer, draft.originalRecipe(), ApplianceType.TEAPOT, draft.time(), draft::time,
+                () -> open(bukkitPlayer, draft));
     }
 
     private static GuiElement idSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
@@ -195,8 +187,11 @@ public final class TeapotEditMenu {
                 MenuIcons.text("保存", NamedTextColor.GREEN));
         return MenuIcons.button(icon, () -> {
             RecipeMenus.message(bukkitPlayer, "正在保存食谱...");
-            RecipeEditService.saveTeapot(draft).thenAccept(error ->
+            var saving = RecipeEditSaves.save(draft, () -> RecipeEditService.saveTeapot(draft));
+            if (saving == null) return;
+            saving.thenAccept(error ->
                     MenuTasks.runFor(bukkitPlayer, () -> {
+                        if (RecipeEditService.isClosed()) return;
                         if (error != null) {
                             RecipeMenus.message(bukkitPlayer, error);
                             open(bukkitPlayer, draft);

@@ -64,10 +64,7 @@ public final class RecipeDetailMenu {
                 MenuIcons.itemName(recipe.input()).colorIfAbsent(NamedTextColor.WHITE),
                 MenuIcons.lore("需要 1 个")));
 
-        List<Component> extra = new ArrayList<>();
-        if (recipe.cook() == ApplianceType.MILLSTONE && recipe.rotations() > 0) {
-            extra.add(MenuIcons.gray("研磨圈数 " + recipe.rotations()));
-        }
+        List<Component> extra = RecipeProcessingDisplay.lore(recipe);
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_ACCURATE, "recipe",
                 MenuIcons.itemNameText(recipe.primaryResult())), inputs, results, null, List.of(), extra, back);
     }
@@ -90,9 +87,10 @@ public final class RecipeDetailMenu {
                 MenuIcons.itemName(recipe.result()).colorIfAbsent(NamedTextColor.GOLD),
                 MenuIcons.lore("按凑齐的套数产出")));
 
-        List<Component> extra = List.of(
+        List<Component> extra = new ArrayList<>(List.of(
                 MenuIcons.gray("投料越接近理想配比 品质越高"),
-                MenuIcons.gray("多放杂料会拉低品质"));
+                MenuIcons.gray("多放杂料会拉低品质")));
+        extra.addAll(RecipeProcessingDisplay.lore(recipe));
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_FLEX, "recipe",
                 MenuIcons.itemNameText(recipe.result())), inputs, results,
                 recipe.carrier(), recipe.liquids(), extra, back);
@@ -110,7 +108,7 @@ public final class RecipeDetailMenu {
         }
         List<Item> inputs = List.of(MenuIcons.icon(recipe.input(), viewer,
                 MenuIcons.itemName(recipe.input()).colorIfAbsent(NamedTextColor.WHITE),
-                MenuIcons.lore("需要切 " + recipe.stage() + " 刀")));
+                MenuIcons.lore("需要 1 个")));
         List<Item> results = new ArrayList<>();
         for (ChoppingResult r : recipe.results()) {
             results.add(MenuIcons.icon(r.key(), viewer,
@@ -118,6 +116,7 @@ public final class RecipeDetailMenu {
                     MenuIcons.lore("数量 " + r.count(), "权重 " + r.weight())));
         }
         List<Component> extra = new ArrayList<>();
+        extra.addAll(RecipeProcessingDisplay.lore(recipe));
         extra.add(MenuIcons.gray("产出模式 " + recipe.mode().name().toLowerCase()));
         if (recipe.values().isEmpty()) {
             extra.add(MenuIcons.gray("切的时候不换模型"));
@@ -142,7 +141,7 @@ public final class RecipeDetailMenu {
         List<Item> results = List.of(MenuIcons.icon(recipe.result(), viewer,
                 MenuIcons.itemName(recipe.result()).colorIfAbsent(NamedTextColor.GOLD),
                 MenuIcons.lore("产出 " + recipe.resultCount() + " 个")));
-        List<Component> extra = List.of(MenuIcons.gray("熬煮 " + recipe.time() + " tick"));
+        List<Component> extra = RecipeProcessingDisplay.lore(recipe);
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_TEAPOT, "recipe",
                 MenuIcons.itemNameText(recipe.result())), inputs, results,
                 null, List.of(recipe.fluid()), extra, back);

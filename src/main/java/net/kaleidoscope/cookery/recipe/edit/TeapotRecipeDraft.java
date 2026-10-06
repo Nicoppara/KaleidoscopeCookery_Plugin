@@ -7,7 +7,7 @@ import net.momirealms.craftengine.core.util.Key;
 // fluid 与 input 共同决定产物 同一液体下 input 不能重复 否则先注册的赢
 public final class TeapotRecipeDraft {
     public static final int DEFAULT_TIME = 200;
-    public static final int MAX_TIME = 72000;
+    public static final int MAX_TIME = Integer.MAX_VALUE;
     public static final int MAX_COUNT = 64;
 
     private final Key originalId;
@@ -106,7 +106,7 @@ public final class TeapotRecipeDraft {
     }
 
     public void time(int value) {
-        this.time = Math.max(1, Math.min(MAX_TIME, value));
+        this.time = Math.max(0, value);
     }
 
     public TeapotRecipe toRecipe() {

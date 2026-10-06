@@ -53,6 +53,7 @@ public final class ItemTags {
      */
     public void register(Key tag, Collection<String> members) {
         this.tags.put(tag, Tag.of(members));
+        net.kaleidoscope.cookery.recipe.FoodRecipeRegistry.instance().refreshGroupView();
     }
 
     /**
@@ -63,6 +64,7 @@ public final class ItemTags {
      */
     public void add(Key tag, Collection<String> members) {
         this.tags.merge(tag, Tag.of(members), Tag::merge);
+        net.kaleidoscope.cookery.recipe.FoodRecipeRegistry.instance().refreshGroupView();
     }
 
     /**
@@ -72,7 +74,9 @@ public final class ItemTags {
      * @return {@code true} if the tag existed
      */
     public boolean remove(Key tag) {
-        return this.tags.remove(tag) != null;
+        boolean removed = this.tags.remove(tag) != null;
+        if (removed) net.kaleidoscope.cookery.recipe.FoodRecipeRegistry.instance().refreshGroupView();
+        return removed;
     }
 
     /**
@@ -226,6 +230,10 @@ public final class ItemTags {
     }
 
     private static final class ItemTagsParser extends SectionConfigParser {
+        @Override
+        public void setErrorHandler(java.util.function.Consumer<net.momirealms.craftengine.core.plugin.config.ResourceException> handler) {
+            super.setErrorHandler(net.kaleidoscope.cookery.recipe.FoodRecipeManager.trackRecipeLoadErrors(handler));
+        }
         private int count;
 
         @Override
@@ -245,7 +253,7 @@ public final class ItemTags {
 
         @Override
         public List<LoadingStage> dependencies() {
-            return List.of();
+            return List.of(net.kaleidoscope.cookery.recipe.FoodRecipeManager.RECIPE_LOAD_BEGIN);
         }
 
         @Override
@@ -261,6 +269,7 @@ public final class ItemTags {
 
         @Override
         protected void parseSection(Pack pack, Path path, ConfigSection section) {
+            net.kaleidoscope.cookery.recipe.FoodRecipeRegistry.instance().configurationUpdate(() -> {
             for (String tagId : section.keySet()) {
                 List<String> members = section.getStringList(tagId);
                 if (members.isEmpty()) {
@@ -271,6 +280,8 @@ public final class ItemTags {
                 INSTANCE.add(Key.of(tagId.trim()), members);
                 this.count++;
             }
+
+            });
         }
     }
 }
