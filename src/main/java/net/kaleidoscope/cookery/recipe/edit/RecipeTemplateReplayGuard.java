@@ -162,18 +162,6 @@ public final class RecipeTemplateReplayGuard {
         verifyLoaded(evaluated, sources);
     }
 
-    /** Pure-data entry for tests: no server, template evaluation, or file IO. */
-    static void verify(Object evaluated, List<DefinitionSource> sources) throws IOException {
-        if (!hasReference(evaluated)) return;
-        Index index = index(sources);
-        check(evaluated, index, null, new HashSet<>(), new HashSet<>());
-    }
-
-    static void verify(Object evaluated, List<DefinitionSource> current, List<DefinitionSource> loaded) throws IOException {
-        if (!hasReference(evaluated)) return;
-        check(evaluated, index(current), index(loaded), new HashSet<>(), new HashSet<>());
-    }
-
     static void verifyLoaded(Object evaluated, List<DefinitionSource> current) throws IOException {
         check(evaluated, index(current), requireManifest(), new HashSet<>(), new HashSet<>());
     }

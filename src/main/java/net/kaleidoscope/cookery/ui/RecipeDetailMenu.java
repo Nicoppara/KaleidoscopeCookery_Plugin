@@ -178,7 +178,7 @@ public final class RecipeDetailMenu {
         Item result = results.isEmpty()
                 ? MenuIcons.icon(MenuButton.INVALID, viewer, MenuIcons.text("无成品", NamedTextColor.RED))
                 : results.get(0);
-        layout.addIngredient('R', MenuIcons.button(withLore(viewer, result, resultLore), () -> {}));
+        layout.addIngredient('R', MenuIcons.button(MenuIcons.appendLore(result, resultLore), () -> {}));
 
         layout.addIngredient('C', MenuIcons.button(carrierIcon(viewer, carrier), () -> {}));
         layout.addIngredient('L', MenuIcons.button(liquidIcon(viewer, liquids), () -> {}));
@@ -191,14 +191,6 @@ public final class RecipeDetailMenu {
         gui.title(title)
                 .refresh()
                 .open(viewer);
-    }
-
-    private static Item withLore(Player viewer, Item base, List<Component> lore) {
-        if (lore.isEmpty()) {
-            return base;
-        }
-        base.loreComponent(lore);
-        return base;
     }
 
     private static Item carrierIcon(Player viewer, Key carrier) {
