@@ -81,7 +81,7 @@ public final class ItemKeys {
     public static final Key EMPTY_CUP = Key.of("kaleidoscopecookery:empty_cup");
     public static final Key EMPTY_CUP_MODEL = Key.of("show:empty_cup");
 
-    // 食谱菜单图标 全部用原版物品 不依赖资源包 缺资源包的服也能正常显示
+    // 通用菜单图标使用原版物品；品质提示可使用森罗自有贴图，并保留原版回退。
     public static final Key MENU_FILLER = Key.of("minecraft:gray_stained_glass_pane");
     public static final Key MENU_INVALID = Key.of("minecraft:barrier");
     public static final Key MENU_BACK = Key.of("minecraft:arrow");
@@ -95,6 +95,7 @@ public final class ItemKeys {
     public static final Key MENU_MODE = Key.of("minecraft:lever");
     public static final Key MENU_ROTATION = Key.of("minecraft:clock");
     public static final Key MENU_LIQUID = Key.of("minecraft:water_bucket");
+    public static final Key MENU_QUALITY_HINT = Key.of("kaleidoscopecookery:recipe_quality_hint");
     // 盛装容器槽 空手态要和灰玻璃背景区分开 否则看不见
     public static final Key MENU_CARRIER_NONE = Key.of("minecraft:leather");
     public static final Key MENU_POT = Key.of("kaleidoscopecookery:pot");

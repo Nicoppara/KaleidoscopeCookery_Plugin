@@ -34,6 +34,7 @@ recipe_menu:
   #   rotation      研磨圈数
   #   liquid        汤底 / 液体
   #   carrier_none  空手盛出
+  #   quality_hint  成品左侧悬停品质提示（森罗图标缺失时回退为黄色染料）
   buttons: {}
   # 示例：
   # buttons:

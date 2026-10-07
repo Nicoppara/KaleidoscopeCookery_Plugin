@@ -143,17 +143,22 @@ public final class MenuIcons {
         return text(value, NamedTextColor.GRAY);
     }
 
-    // 按 id 建图标 id 无效时退回屏障
-    public static Item icon(Key id, Player viewer, Component name, List<Component> lore) {
+    // 食谱中的真实物品直接使用 CE 在当前玩家语境下生成的名称和说明。
+    public static Item nativePreview(Key id, Player viewer) {
         Item item = InventoryUtils.createOrEmpty(id, viewer);
         if (ItemUtils.isEmpty(item)) {
             item = InventoryUtils.createOrEmpty(iconKey(MenuButton.INVALID), viewer);
         }
+        return ItemUtils.isEmpty(item) ? item : item.copy();
+    }
+
+    // 按 id 建图标 id 无效时退回屏障
+    public static Item icon(Key id, Player viewer, Component name, List<Component> lore) {
+        Item item = nativePreview(id, viewer);
         if (ItemUtils.isEmpty(item)) {
             return item;
         }
-        // 只修改菜单副本；原物品的数量、组件及玩家语境下生成的说明保持原样。
-        item = item.copy();
+        // 控件提示只修改菜单副本；真实物品预览直接使用 nativePreview。
         if (name != null) {
             item.customNameComponent(name);
         }
@@ -223,6 +228,31 @@ public final class MenuIcons {
 
     public static GuiElement back(Player viewer, Runnable action) {
         return button(icon(MenuButton.BACK, viewer, text("返回", NamedTextColor.YELLOW)), action);
+    }
+
+    static GuiElement editingHelp(Player viewer, String... lines) {
+        return button(icon(MenuButton.CREATE, viewer, text("编辑操作", NamedTextColor.AQUA), lore(lines)), () -> {});
+    }
+
+    static GuiElement qualityHint(Player viewer) {
+        Item item = InventoryUtils.createOrEmpty(iconKey(MenuButton.QUALITY_HINT), viewer);
+        if (ItemUtils.isEmpty(item)) {
+            item = InventoryUtils.createOrEmpty(Key.of("minecraft:yellow_dye"), viewer);
+        }
+        if (ItemUtils.isEmpty(item)) return empty();
+        item = item.copy();
+        item.customNameComponent(text("注意：料理品质", NamedTextColor.GOLD));
+        item.loreComponent(lore("投料越接近理想配比 品质越高", "多放杂料会拉低品质"));
+        try {
+            item.setComponent(Key.of("minecraft:tooltip_display"), Map.of("hide_tooltip", false));
+        } catch (RuntimeException unsupported) {
+            try {
+                item.removeComponent(Key.of("minecraft:hide_tooltip"));
+            } catch (RuntimeException ignored) {
+                // Older servers do not have a tooltip-hiding component.
+            }
+        }
+        return GuiElement.constant(item, (element, click) -> click.cancel());
     }
 
     public static GuiElement previousPage(Player viewer) {
