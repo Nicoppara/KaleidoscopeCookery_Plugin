@@ -791,6 +791,7 @@ recipe_menu:
     back: "minecraft:barrier"
     next_page: "minecraft:feather"
     filler: "minecraft:black_stained_glass_pane"
+    quality_hint: "kaleidoscopecookery:recipe_quality_hint"
 
   # 厨具图标与名字 两项都可以只写一个
   appliances:
@@ -1519,6 +1520,8 @@ pot_flex_foods:
 **修改从下一批次生效**：蒸笼、烤架和石磨在投料时，砧板在放料时，炒锅在首次有效翻炒时，高汤锅在开始炖煮时，茶壶在投料时冻结配方计划。当前批次的目标时间/次数、已选成品 ID、数量、品质、lore 和容器会随进度保存，重载及读档后继续使用；重新投料、改变炒锅/汤锅的原料等操作会重新开始批次。旧存档没有计划时沿用原进度，并在首次恢复时补齐计划。
 
 食谱列表、详情和编辑页中的物品预览直接保留 CraftEngine 生成的原名称、原始 lore 与颜色，不追加配方说明、加工时间或来源信息；物品本身没有 lore 时不添加 lore。编辑页的操作说明放在独立按钮中。加工时间与次数在专用设置按钮中查看和修改，按钮仅显示数值、继承来源和操作说明。
+
+炒锅和高汤锅的模糊配方详情在成品左侧显示黄色注意图标。鼠标悬停即可查看“投料越接近理想配比 品质越高”“多放杂料会拉低品质”，该图标只展示提示。图标配置和贴图位于 `Kaleidoscope/kaleidoscopecookery/configuration/gui/recipe_menu_hint.yml` 与 `resourcepack/assets/kaleidoscopecookery/textures/gui/recipe_quality_hint.png`；复制这两个新增文件到现有森罗包后，重载 CE 并重新分发资源包即可。未安装图标资源时使用原版黄色染料，提示仍可显示；`recipe_menu.buttons.quality_hint` 可替换图标。
 
 计划保存的是配方结果数据，成品物品仍在完成时按 CraftEngine 的物品定义构建。若产物已被删除或计划损坏，厨具保留原料并暂停完成，不会重新匹配或重抽产物。
 

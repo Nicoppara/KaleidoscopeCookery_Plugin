@@ -234,6 +234,27 @@ public final class MenuIcons {
         return button(icon(MenuButton.CREATE, viewer, text("编辑操作", NamedTextColor.AQUA), lore(lines)), () -> {});
     }
 
+    static GuiElement qualityHint(Player viewer) {
+        Item item = InventoryUtils.createOrEmpty(iconKey(MenuButton.QUALITY_HINT), viewer);
+        if (ItemUtils.isEmpty(item)) {
+            item = InventoryUtils.createOrEmpty(Key.of("minecraft:yellow_dye"), viewer);
+        }
+        if (ItemUtils.isEmpty(item)) return empty();
+        item = item.copy();
+        item.customNameComponent(text("注意：料理品质", NamedTextColor.GOLD));
+        item.loreComponent(lore("投料越接近理想配比 品质越高", "多放杂料会拉低品质"));
+        try {
+            item.setComponent(Key.of("minecraft:tooltip_display"), Map.of("hide_tooltip", false));
+        } catch (RuntimeException unsupported) {
+            try {
+                item.removeComponent(Key.of("minecraft:hide_tooltip"));
+            } catch (RuntimeException ignored) {
+                // Older servers do not have a tooltip-hiding component.
+            }
+        }
+        return GuiElement.constant(item, (element, click) -> click.cancel());
+    }
+
     public static GuiElement previousPage(Player viewer) {
         return GuiElement.paged(e -> {
             int page = ((PagedGui) e.gui()).currentPage();

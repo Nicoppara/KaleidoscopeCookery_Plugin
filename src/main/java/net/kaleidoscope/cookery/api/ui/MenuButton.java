@@ -30,7 +30,9 @@ public enum MenuButton {
     /** Whether the recipe honours the equivalent-food tags. Defaults to the generic mode icon. */
     EQUIVALENT_FOODS(ItemKeys.MENU_MODE),
     /** Whether the recipe honours the seasoning tags. Defaults to the generic mode icon. */
-    SEASONINGS(ItemKeys.MENU_MODE);
+    SEASONINGS(ItemKeys.MENU_MODE),
+    /** Hover-only quality guidance beside a flexible recipe's result. */
+    QUALITY_HINT(ItemKeys.MENU_QUALITY_HINT);
 
     private final Key defaultIcon;
 

@@ -33,12 +33,12 @@ public final class RecipeDetailMenu {
     private RecipeDetailMenu() {
     }
 
-    // R 成品 I 原料 C 盛装容器 L 汤底 B 返回
+    // R 成品 I 原料 H 品质提示 C 盛装容器 L 汤底 B 返回
     private static final String[] LAYOUT = {
             "#########",
             "#IIIIIII#",
             "#########",
-            "##R#C#L##",
+            "#HR#C#L##",
             "#B#######"};
 
     private static final int MAX_SLOTS = 7;
@@ -59,7 +59,7 @@ public final class RecipeDetailMenu {
         List<Item> inputs = List.of(MenuIcons.nativePreview(recipe.input(), viewer));
 
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_ACCURATE, "recipe",
-                MenuIcons.itemNameText(recipe.primaryResult())), inputs, results, null, List.of(), back);
+                MenuIcons.itemNameText(recipe.primaryResult())), inputs, results, null, List.of(), false, back);
     }
 
     public static void openFlex(org.bukkit.entity.Player bukkitPlayer, FlexFoodRecipe recipe, Runnable back) {
@@ -78,7 +78,7 @@ public final class RecipeDetailMenu {
 
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_FLEX, "recipe",
                 MenuIcons.itemNameText(recipe.result())), inputs, results,
-                recipe.carrier(), recipe.liquids(), back);
+                recipe.carrier(), recipe.liquids(), true, back);
     }
 
 
@@ -98,7 +98,7 @@ public final class RecipeDetailMenu {
         }
         Key titleKey = recipe.results().isEmpty() ? recipe.input() : recipe.results().get(0).key();
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_CHOPPING, "recipe",
-                MenuIcons.itemNameText(titleKey)), inputs, results, null, List.of(), back);
+                MenuIcons.itemNameText(titleKey)), inputs, results, null, List.of(), false, back);
     }
 
     public static void openTeapot(org.bukkit.entity.Player bukkitPlayer,
@@ -114,11 +114,11 @@ public final class RecipeDetailMenu {
         List<Item> results = List.of(MenuIcons.nativePreview(recipe.result(), viewer));
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_TEAPOT, "recipe",
                 MenuIcons.itemNameText(recipe.result())), inputs, results,
-                null, List.of(recipe.fluid()), back);
+                null, List.of(recipe.fluid()), false, back);
     }
 
     private static void openTitled(Player viewer, Component title, List<Item> inputs, List<Item> results,
-                             Key carrier, List<Key> liquids, Runnable back) {
+                             Key carrier, List<Key> liquids, boolean showQualityHint, Runnable back) {
         GuiLayout layout = new GuiLayout(LAYOUT);
         layout.addIngredient('#', Ingredient.simple(MenuIcons.filler(viewer)));
 
@@ -145,6 +145,7 @@ public final class RecipeDetailMenu {
                 ? MenuIcons.icon(MenuButton.INVALID, viewer, MenuIcons.text("无成品", NamedTextColor.RED))
                 : results.get(0);
         layout.addIngredient('R', MenuIcons.button(result, () -> {}));
+        layout.addIngredient('H', showQualityHint ? MenuIcons.qualityHint(viewer) : MenuIcons.filler(viewer));
 
         layout.addIngredient('C', MenuIcons.button(carrierIcon(viewer, carrier), () -> {}));
         layout.addIngredient('L', MenuIcons.button(liquidIcon(viewer, liquids), () -> {}));
