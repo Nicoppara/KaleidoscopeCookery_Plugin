@@ -67,6 +67,8 @@
 
 - **独立安装**：森罗物语和农夫乐事是两个独立插件。森罗 JAR 不包含或自动释放农夫乐事的插件及资源包；森罗的物品图标字体只在已有且 `pack.yml` 声明 `namespace: kaleidoscopecookery` 的包内生成。
 
+- **1.3.0**：每配方加工时间与工作量、批次计划与原文件安全保存、CE 原物品 Lore 预览，以及成品左侧独立的悬停品质提示。完整资源包保留原有玩法配置与模型，并补齐成就文本和菜单图标。
+
 - **Java**：Minecraft 1.21.x 使用 Java 21；Minecraft 26.x 使用 Java 25。构建完整的多版本插件需要同时安装 JDK 21 和 JDK 25。
 
 - **领地保护**：内置打包 [AntiGriefLib](https://github.com/Xiao-MoMi/AntiGriefLib)（shadow 重定位到 `net.kaleidoscope.cookery.libs.antigrieflib`），自动复用服务器上的领地 / 保护插件做交互与破坏判定。
