@@ -26,7 +26,6 @@ import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 // 只读的食谱详情 原料与成品各占一排真实物品图标 比挤在 lore 里直观
 // 没有任何可写入口 所有点击一律 cancel 浏览权限的玩家也能安全打开
@@ -55,18 +54,12 @@ public final class RecipeDetailMenu {
         }
         List<Item> results = new ArrayList<>();
         for (WeightedResult r : recipe.results()) {
-            List<Component> lore = MenuIcons.lore("产出 " + recipe.resultCount() + " 份");
-            lore.add(MenuIcons.gray(r.weight() >= 100 ? "必定产出" : "概率 " + r.weight() + "%"));
-            results.add(MenuIcons.icon(r.key(), viewer,
-                    MenuIcons.itemName(r.key()).colorIfAbsent(NamedTextColor.GOLD), lore));
+            results.add(MenuIcons.nativePreview(r.key(), viewer));
         }
-        List<Item> inputs = List.of(MenuIcons.icon(recipe.input(), viewer,
-                MenuIcons.itemName(recipe.input()).colorIfAbsent(NamedTextColor.WHITE),
-                MenuIcons.lore("需要 1 个")));
+        List<Item> inputs = List.of(MenuIcons.nativePreview(recipe.input(), viewer));
 
-        List<Component> extra = RecipeProcessingDisplay.lore(recipe);
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_ACCURATE, "recipe",
-                MenuIcons.itemNameText(recipe.primaryResult())), inputs, results, null, List.of(), extra, back);
+                MenuIcons.itemNameText(recipe.primaryResult())), inputs, results, null, List.of(), back);
     }
 
     public static void openFlex(org.bukkit.entity.Player bukkitPlayer, FlexFoodRecipe recipe, Runnable back) {
@@ -78,22 +71,14 @@ public final class RecipeDetailMenu {
             return;
         }
         List<Item> inputs = new ArrayList<>();
-        for (Map.Entry<Key, Integer> e : recipe.perfect().entrySet()) {
-            inputs.add(MenuIcons.icon(e.getKey(), viewer,
-                    MenuIcons.itemName(e.getKey()).colorIfAbsent(NamedTextColor.WHITE),
-                    MenuIcons.lore("理想配比 " + e.getValue())));
+        for (Key input : recipe.perfect().keySet()) {
+            inputs.add(MenuIcons.nativePreview(input, viewer));
         }
-        List<Item> results = List.of(MenuIcons.icon(recipe.result(), viewer,
-                MenuIcons.itemName(recipe.result()).colorIfAbsent(NamedTextColor.GOLD),
-                MenuIcons.lore("按凑齐的套数产出")));
+        List<Item> results = List.of(MenuIcons.nativePreview(recipe.result(), viewer));
 
-        List<Component> extra = new ArrayList<>(List.of(
-                MenuIcons.gray("投料越接近理想配比 品质越高"),
-                MenuIcons.gray("多放杂料会拉低品质")));
-        extra.addAll(RecipeProcessingDisplay.lore(recipe));
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_FLEX, "recipe",
                 MenuIcons.itemNameText(recipe.result())), inputs, results,
-                recipe.carrier(), recipe.liquids(), extra, back);
+                recipe.carrier(), recipe.liquids(), back);
     }
 
 
@@ -106,24 +91,14 @@ public final class RecipeDetailMenu {
         if (viewer == null) {
             return;
         }
-        List<Item> inputs = List.of(MenuIcons.icon(recipe.input(), viewer,
-                MenuIcons.itemName(recipe.input()).colorIfAbsent(NamedTextColor.WHITE),
-                MenuIcons.lore("需要 1 个")));
+        List<Item> inputs = List.of(MenuIcons.nativePreview(recipe.input(), viewer));
         List<Item> results = new ArrayList<>();
         for (ChoppingResult r : recipe.results()) {
-            results.add(MenuIcons.icon(r.key(), viewer,
-                    MenuIcons.itemName(r.key()).colorIfAbsent(NamedTextColor.GOLD),
-                    MenuIcons.lore("数量 " + r.count(), "权重 " + r.weight())));
-        }
-        List<Component> extra = new ArrayList<>();
-        extra.addAll(RecipeProcessingDisplay.lore(recipe));
-        extra.add(MenuIcons.gray("产出模式 " + recipe.mode().name().toLowerCase()));
-        if (recipe.values().isEmpty()) {
-            extra.add(MenuIcons.gray("切的时候不换模型"));
+            results.add(MenuIcons.nativePreview(r.key(), viewer));
         }
         Key titleKey = recipe.results().isEmpty() ? recipe.input() : recipe.results().get(0).key();
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_CHOPPING, "recipe",
-                MenuIcons.itemNameText(titleKey)), inputs, results, null, List.of(), extra, back);
+                MenuIcons.itemNameText(titleKey)), inputs, results, null, List.of(), back);
     }
 
     public static void openTeapot(org.bukkit.entity.Player bukkitPlayer,
@@ -135,24 +110,19 @@ public final class RecipeDetailMenu {
         if (viewer == null) {
             return;
         }
-        List<Item> inputs = List.of(MenuIcons.icon(recipe.input(), viewer,
-                MenuIcons.itemName(recipe.input()).colorIfAbsent(NamedTextColor.WHITE),
-                MenuIcons.lore("消耗 " + recipe.ingredientCount() + " 个")));
-        List<Item> results = List.of(MenuIcons.icon(recipe.result(), viewer,
-                MenuIcons.itemName(recipe.result()).colorIfAbsent(NamedTextColor.GOLD),
-                MenuIcons.lore("产出 " + recipe.resultCount() + " 个")));
-        List<Component> extra = RecipeProcessingDisplay.lore(recipe);
+        List<Item> inputs = List.of(MenuIcons.nativePreview(recipe.input(), viewer));
+        List<Item> results = List.of(MenuIcons.nativePreview(recipe.result(), viewer));
         openTitled(viewer, RecipeMenuStyle.instance().title(MenuScreen.DETAIL_TEAPOT, "recipe",
                 MenuIcons.itemNameText(recipe.result())), inputs, results,
-                null, List.of(recipe.fluid()), extra, back);
+                null, List.of(recipe.fluid()), back);
     }
 
     private static void openTitled(Player viewer, Component title, List<Item> inputs, List<Item> results,
-                             Key carrier, List<Key> liquids, List<Component> extra, Runnable back) {
+                             Key carrier, List<Key> liquids, Runnable back) {
         GuiLayout layout = new GuiLayout(LAYOUT);
         layout.addIngredient('#', Ingredient.simple(MenuIcons.filler(viewer)));
 
-        // 原料超过一排就截断 并在成品的 lore 里说明 免得玩家以为配方只有这些
+        // 原料栏沿用当前菜单的一排布局。
         List<Item> shown = inputs.size() > MAX_SLOTS ? inputs.subList(0, MAX_SLOTS) : inputs;
         List<GuiElement> slots = new ArrayList<>();
         for (Item item : shown) {
@@ -171,14 +141,10 @@ public final class RecipeDetailMenu {
             }
         });
 
-        List<Component> resultLore = new ArrayList<>(extra);
-        if (inputs.size() > MAX_SLOTS) {
-            resultLore.add(MenuIcons.gray("另有 " + (inputs.size() - MAX_SLOTS) + " 种原料未显示"));
-        }
         Item result = results.isEmpty()
                 ? MenuIcons.icon(MenuButton.INVALID, viewer, MenuIcons.text("无成品", NamedTextColor.RED))
                 : results.get(0);
-        layout.addIngredient('R', MenuIcons.button(MenuIcons.appendLore(result, resultLore), () -> {}));
+        layout.addIngredient('R', MenuIcons.button(result, () -> {}));
 
         layout.addIngredient('C', MenuIcons.button(carrierIcon(viewer, carrier), () -> {}));
         layout.addIngredient('L', MenuIcons.button(liquidIcon(viewer, liquids), () -> {}));
@@ -199,9 +165,7 @@ public final class RecipeDetailMenu {
                     MenuIcons.text("空手盛出", NamedTextColor.GREEN),
                     MenuIcons.lore("这道菜不需要容器"));
         }
-        return MenuIcons.icon(carrier, viewer,
-                Component.text("盛装容器 ").append(MenuIcons.itemName(carrier)).colorIfAbsent(NamedTextColor.AQUA),
-                MenuIcons.lore("手持它右键锅盛出", "每份消耗一个"));
+        return MenuIcons.nativePreview(carrier, viewer);
     }
 
     private static Item liquidIcon(Player viewer, List<Key> liquids) {
@@ -209,11 +173,6 @@ public final class RecipeDetailMenu {
             return MenuIcons.icon(MenuButton.FILLER, viewer,
                     MenuIcons.text("不限汤底", NamedTextColor.GRAY));
         }
-        List<Component> lore = new ArrayList<>();
-        for (Key liquid : liquids) {
-            lore.add(MenuIcons.grayLiquidWith("", liquid, ""));
-        }
-        return MenuIcons.icon(MenuIcons.liquidIconKey(liquids.get(0)), viewer,
-                MenuIcons.text("限定汤底", NamedTextColor.AQUA), lore);
+        return MenuIcons.nativePreview(MenuIcons.liquidIconKey(liquids.get(0)), viewer);
     }
 }

@@ -17,7 +17,6 @@ import net.momirealms.craftengine.core.plugin.gui.GuiElement;
 import net.momirealms.craftengine.core.plugin.gui.GuiLayout;
 import net.momirealms.craftengine.core.plugin.gui.Ingredient;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
 
 import java.util.ArrayList;
@@ -35,11 +34,16 @@ public final class TeapotEditMenu {
             return;
         }
         GuiLayout layout = new GuiLayout(
-                "#########",
+                "####?####",
                 "#F#I#R#T#",
                 "#####C###",
                 "B###S###D");
         layout.addIngredient('#', Ingredient.simple(MenuIcons.filler(viewer)));
+        layout.addIngredient('?', MenuIcons.editingHelp(viewer,
+                "液体：左键从已登记的液体里选择",
+                "原料与成品：左键替换，光标持物品可直接选取",
+                "原料与成品：右键修改对应数量",
+                "成品须有茶杯模型；熬煮时间使用独立按钮"));
         layout.addIngredient('F', fluidSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('I', inputSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('R', resultSlot(bukkitPlayer, viewer, draft));
@@ -60,18 +64,14 @@ public final class TeapotEditMenu {
     }
 
     // 液体存的是流体 id minecraft:water 这不是物品 拿它建图标只会得到屏障
-    // 所以图标换成对应的桶 名字用 teapot_liquid 里登记的 display_name 那是翻译键
+    // 所以使用对应的桶作为原物品预览。
     private static GuiElement fluidSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                         TeapotRecipeDraft draft) {
         Key fluid = draft.fluid();
-        List<Component> lore = new ArrayList<>();
-        lore.add(fluid == null
-                ? MenuIcons.gray("未设置")
-                : MenuIcons.grayLiquidWith("", fluid, ""));
-        lore.add(MenuIcons.text("左键从已登记的液体里选", NamedTextColor.YELLOW));
-
-        Item icon = MenuIcons.icon(MenuIcons.liquidIconKey(fluid), viewer,
-                MenuIcons.text("液体", NamedTextColor.AQUA), lore);
+        Item icon = fluid == null
+                ? MenuIcons.icon(MenuButton.LIQUID, viewer, MenuIcons.text("设置液体", NamedTextColor.AQUA),
+                        MenuIcons.lore("左键从已登记的液体里选择"))
+                : MenuIcons.nativePreview(MenuIcons.liquidIconKey(fluid), viewer);
         return MenuIcons.button(icon, () -> DialogChoicePrompt.open(bukkitPlayer, "选择液体",
                 "只能用 teapot_liquid 里登记过的 自定义可填别的",
                 liquidChoices(),
@@ -109,11 +109,10 @@ public final class TeapotEditMenu {
 
     private static GuiElement inputSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                         TeapotRecipeDraft draft) {
-        Item icon = MenuIcons.icon(draft.input(), viewer,
-                MenuIcons.text("原料 x" + draft.ingredientCount(), NamedTextColor.GOLD),
-                MenuIcons.loreNamed(draft.input(),
-                        "左键换物品",
-                        "右键改消耗数量"));
+        Item icon = draft.input() == null
+                ? MenuIcons.icon(MenuButton.INVALID, viewer, MenuIcons.text("设置原料", NamedTextColor.GOLD),
+                        MenuIcons.lore("左键选取物品，右键修改消耗数量"))
+                : MenuIcons.nativePreview(draft.input(), viewer);
         return GuiElement.constant(icon, (element, click) -> {
             click.cancel();
             if ("RIGHT".equals(click.type()) || "SHIFT_RIGHT".equals(click.type())) {
@@ -133,12 +132,10 @@ public final class TeapotEditMenu {
 
     private static GuiElement resultSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                          TeapotRecipeDraft draft) {
-        Item icon = MenuIcons.icon(draft.result(), viewer,
-                MenuIcons.text("成品 x" + draft.resultCount(), NamedTextColor.GOLD),
-                MenuIcons.loreNamed(draft.result(),
-                        "必须在 tea_cup 里定义过模型",
-                        "左键换物品",
-                        "右键改产出数量"));
+        Item icon = draft.result() == null
+                ? MenuIcons.icon(MenuButton.INVALID, viewer, MenuIcons.text("设置成品", NamedTextColor.GOLD),
+                        MenuIcons.lore("左键选取物品，右键修改产出数量", "须有茶杯模型"))
+                : MenuIcons.nativePreview(draft.result(), viewer);
         return GuiElement.constant(icon, (element, click) -> {
             click.cancel();
             if ("RIGHT".equals(click.type()) || "SHIFT_RIGHT".equals(click.type())) {

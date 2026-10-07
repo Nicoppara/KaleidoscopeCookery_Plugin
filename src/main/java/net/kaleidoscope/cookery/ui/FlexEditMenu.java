@@ -19,7 +19,6 @@ import net.momirealms.craftengine.core.plugin.gui.GuiLayout;
 import net.momirealms.craftengine.core.plugin.gui.Ingredient;
 import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
 
 import java.util.ArrayList;
@@ -50,13 +49,18 @@ public final class FlexEditMenu {
             return;
         }
         GuiLayout layout = new GuiLayout(
-                "#########",
+                "####?####",
                 "#R#T#L#C#",
                 "#PPPPPPP#",
                 "#PPPPPPP#",
                 "#########",
                 "BHE#S#G#D");
         layout.addIngredient('#', Ingredient.simple(MenuIcons.filler(viewer)));
+        layout.addIngredient('?', MenuIcons.editingHelp(viewer,
+                "原料与成品：左键替换，光标持物品可直接选取",
+                "原料：右键修改配比，Shift 右键删除",
+                "容器：左键选择，右键恢复空手",
+                "汤底：左键添加，Shift 右键清空"));
         layout.addIngredient('R', resultSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('T', idSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('L', liquidSlot(bukkitPlayer, viewer, draft));
@@ -86,11 +90,10 @@ public final class FlexEditMenu {
 
     private static GuiElement resultSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                          FlexRecipeDraft draft) {
-        Item icon = MenuIcons.icon(draft.result(), viewer,
-                MenuIcons.text("成品", NamedTextColor.GOLD),
-                MenuIcons.loreNamed(draft.result(),
-                        "光标持物品左键 直接取该物品",
-                        "空手左键 手动输入物品 id"));
+        Item icon = draft.result() == null
+                ? MenuIcons.icon(MenuButton.INVALID, viewer, MenuIcons.text("设置成品", NamedTextColor.GOLD),
+                        MenuIcons.lore("光标持物品左键选取，空手左键输入物品 id"))
+                : MenuIcons.nativePreview(draft.result(), viewer);
         return GuiElement.constant(icon, (element, click) -> {
             click.cancel();
             AccurateEditMenu.pickItem(bukkitPlayer, click, "设置成品", draft.result(),
@@ -127,12 +130,7 @@ public final class FlexEditMenu {
                         MenuIcons.lore("这道菜空手就能盛出",
                                 "左键 从常用容器里选",
                                 "光标持物品左键 直接设为容器"))
-                : MenuIcons.icon(carrier, viewer,
-                        MenuIcons.text("盛装容器", NamedTextColor.AQUA),
-                        MenuIcons.loreNamed(carrier,
-                                "每份消耗一个",
-                                "左键 从常用容器里选",
-                                "右键 改回空手"));
+                : MenuIcons.nativePreview(carrier, viewer);
         return GuiElement.constant(icon, (element, click) -> {
             click.cancel();
             if ("RIGHT".equals(click.type()) || "SHIFT_RIGHT".equals(click.type())) {
@@ -200,22 +198,10 @@ public final class FlexEditMenu {
         if (draft.cook() != ApplianceType.STOCKPOT) {
             return MenuIcons.filler(viewer);
         }
-        List<Component> lore = new ArrayList<>();
-        if (draft.liquids().isEmpty()) {
-            lore.add(MenuIcons.gray("不限汤底 任何液体都能煮"));
-        } else {
-            for (Key liquid : draft.liquids()) {
-                lore.add(MenuIcons.grayLiquidWith("", liquid, ""));
-            }
-        }
-        lore.add(MenuIcons.text("光标持桶左键 直接加该液体", NamedTextColor.YELLOW));
-        lore.add(MenuIcons.text("空手左键 从已登记的汤底里选", NamedTextColor.YELLOW));
-        lore.add(MenuIcons.text("Shift 右键清空", NamedTextColor.RED));
-
-        Key iconKey = draft.liquids().isEmpty()
-                ? MenuIcons.iconKey(MenuButton.LIQUID) : MenuIcons.liquidIconKey(draft.liquids().get(0));
-        Item icon = MenuIcons.icon(iconKey, viewer,
-                MenuIcons.text("限定汤底", NamedTextColor.GOLD), lore);
+        Item icon = draft.liquids().isEmpty()
+                ? MenuIcons.icon(MenuButton.LIQUID, viewer, MenuIcons.text("不限汤底", NamedTextColor.GOLD),
+                        MenuIcons.lore("光标持桶左键添加，空手左键选择汤底", "Shift 右键清空"))
+                : MenuIcons.nativePreview(MenuIcons.liquidIconKey(draft.liquids().get(0)), viewer);
         return GuiElement.constant(icon, (element, click) -> {
             click.cancel();
             if ("SHIFT_RIGHT".equals(click.type())) {
@@ -302,13 +288,7 @@ public final class FlexEditMenu {
         Map.Entry<Key, Integer> entry = entries.get(index);
         Key key = entry.getKey();
         int weight = entry.getValue();
-        List<Component> lore = MenuIcons.loreNamed(key, "配比 " + weight);
-        lore.add(MenuIcons.text("左键换物品", NamedTextColor.YELLOW));
-        lore.add(MenuIcons.text("右键改配比", NamedTextColor.YELLOW));
-        lore.add(MenuIcons.text("Shift 右键删除", NamedTextColor.RED));
-
-        Item icon = MenuIcons.icon(key, viewer,
-                MenuIcons.text("原料 " + (index + 1), NamedTextColor.GOLD), lore);
+        Item icon = MenuIcons.nativePreview(key, viewer);
         return GuiElement.constant(icon, (element, click) -> {
             click.cancel();
             String type = click.type();

@@ -9,22 +9,18 @@ import net.kaleidoscope.cookery.recipe.AccurateFoodRecipe;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.FlexFoodRecipe;
 import net.kaleidoscope.cookery.recipe.ChoppingBoardRecipe;
-import net.kaleidoscope.cookery.recipe.ChoppingResult;
 import net.kaleidoscope.cookery.recipe.TeapotRecipe;
 import net.kaleidoscope.cookery.recipe.edit.ChoppingRecipeDraft;
 import net.kaleidoscope.cookery.recipe.edit.TeapotRecipeDraft;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.WeightedResult;
 import net.kaleidoscope.cookery.recipe.edit.AccurateRecipeDraft;
 import net.kaleidoscope.cookery.recipe.edit.FlexRecipeDraft;
-import net.kaleidoscope.cookery.recipe.edit.RecipeSourceIndex;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.plugin.gui.GuiLayout;
 import net.momirealms.craftengine.core.plugin.gui.Ingredient;
 import net.momirealms.craftengine.core.plugin.gui.ItemWithAction;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
 
 import java.util.ArrayList;
@@ -116,25 +112,8 @@ public final class RecipeListMenu {
 
     private static ItemWithAction choppingEntry(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                                 ChoppingBoardRecipe recipe, boolean editable) {
-        List<Component> lore = new ArrayList<>();
-        lore.add(MenuIcons.text("砧板食谱", NamedTextColor.LIGHT_PURPLE));
-        if (editable) {
-            lore.add(MenuIcons.gray("id " + recipe.id().asString()));
-            addDuplicateLore(lore, recipe);
-        }
-        lore.add(MenuIcons.grayWith("原料 ", recipe.input(), ""));
-        lore.addAll(RecipeProcessingDisplay.lore(recipe));
-        if (recipe.values().isEmpty()) {
-            lore.add(MenuIcons.gray("不换模型 直接展示原料"));
-        }
-        for (ChoppingResult r : recipe.results()) {
-            lore.add(MenuIcons.grayWith("成品 ", r.key(), " x" + r.count() + " 权重 " + r.weight()));
-        }
-        lore.add(MenuIcons.text(editable ? "左键编辑" : "左键查看详情", NamedTextColor.YELLOW));
-
         Key icon = recipe.results().isEmpty() ? recipe.input() : recipe.results().get(0).key();
-        Item item = MenuIcons.icon(icon, viewer,
-                MenuIcons.itemName(icon).colorIfAbsent(NamedTextColor.GOLD), lore);
+        Item item = MenuIcons.nativePreview(icon, viewer);
         return new ItemWithAction(item, (element, click) -> {
             click.cancel();
             if (editable) {
@@ -148,20 +127,7 @@ public final class RecipeListMenu {
 
     private static ItemWithAction teapotEntry(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                               TeapotRecipe recipe, boolean editable) {
-        List<Component> lore = new ArrayList<>();
-        lore.add(MenuIcons.text("茶壶食谱", NamedTextColor.AQUA));
-        if (editable) {
-            lore.add(MenuIcons.gray("id " + recipe.id().asString()));
-            addDuplicateLore(lore, recipe);
-        }
-        lore.add(MenuIcons.grayLiquidWith("液体 ", recipe.fluid(), ""));
-        lore.add(MenuIcons.grayWith("原料 ", recipe.input(), " x" + recipe.ingredientCount()));
-        lore.add(MenuIcons.grayWith("成品 ", recipe.result(), " x" + recipe.resultCount()));
-        lore.addAll(RecipeProcessingDisplay.lore(recipe));
-        lore.add(MenuIcons.text(editable ? "左键编辑" : "左键查看详情", NamedTextColor.YELLOW));
-
-        Item item = MenuIcons.icon(recipe.result(), viewer,
-                MenuIcons.itemName(recipe.result()).colorIfAbsent(NamedTextColor.GOLD), lore);
+        Item item = MenuIcons.nativePreview(recipe.result(), viewer);
         return new ItemWithAction(item, (element, click) -> {
             click.cancel();
             if (editable) {
@@ -175,24 +141,7 @@ public final class RecipeListMenu {
 
     private static ItemWithAction accurateEntry(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                                 AccurateFoodRecipe recipe, boolean editable) {
-        List<Component> lore = new ArrayList<>();
-        lore.add(MenuIcons.text("精准食谱", NamedTextColor.LIGHT_PURPLE));
-        if (editable) {
-            lore.add(MenuIcons.gray("id " + recipe.id().asString()));
-            addDuplicateLore(lore, recipe);
-        }
-        lore.add(MenuIcons.grayWith("原料 ", recipe.input(), ""));
-        for (WeightedResult result : recipe.results()) {
-            lore.add(MenuIcons.grayWith("成品 ", result.key(), " 权重 " + result.weight()));
-        }
-        if (recipe.resultCount() > 1) {
-            lore.add(MenuIcons.gray("每次产出 " + recipe.resultCount() + " 份"));
-        }
-        lore.addAll(RecipeProcessingDisplay.lore(recipe));
-        lore.add(MenuIcons.text(editable ? "左键编辑" : "左键查看详情", NamedTextColor.YELLOW));
-
-        Item icon = MenuIcons.icon(recipe.primaryResult(), viewer,
-                MenuIcons.itemName(recipe.primaryResult()).colorIfAbsent(NamedTextColor.GOLD), lore);
+        Item icon = MenuIcons.nativePreview(recipe.primaryResult(), viewer);
         return new ItemWithAction(icon, (element, click) -> {
             click.cancel();
             if (editable) {
@@ -206,22 +155,7 @@ public final class RecipeListMenu {
 
     private static ItemWithAction flexEntry(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                             FlexFoodRecipe recipe, boolean editable) {
-        List<Component> lore = new ArrayList<>();
-        lore.add(MenuIcons.text("模糊食谱", NamedTextColor.AQUA));
-        if (editable) {
-            lore.add(MenuIcons.gray("id " + recipe.id().asString()));
-            addDuplicateLore(lore, recipe);
-        }
-        lore.add(MenuIcons.gray("理想配比"));
-        recipe.perfect().forEach((key, weight) -> lore.add(MenuIcons.grayWith("  ", key, " x" + weight)));
-        if (!recipe.liquids().isEmpty()) {
-            lore.add(MenuIcons.gray("限定汤底 " + recipe.liquids().size() + " 种"));
-        }
-        lore.addAll(RecipeProcessingDisplay.lore(recipe));
-        lore.add(MenuIcons.text(editable ? "左键编辑" : "左键查看详情", NamedTextColor.YELLOW));
-
-        Item icon = MenuIcons.icon(recipe.result(), viewer,
-                MenuIcons.itemName(recipe.result()).colorIfAbsent(NamedTextColor.GOLD), lore);
+        Item icon = MenuIcons.nativePreview(recipe.result(), viewer);
         return new ItemWithAction(icon, (element, click) -> {
             click.cancel();
             if (editable) {
@@ -231,13 +165,6 @@ public final class RecipeListMenu {
                         () -> open(bukkitPlayer, recipe.cook(), false));
             }
         });
-    }
-
-    private static void addDuplicateLore(List<Component> lore, Object recipe) {
-        RecipeSourceIndex index = RecipeSourceIndex.instance();
-        if (index.isDuplicate(recipe)) {
-            lore.add(MenuIcons.text("重复 ID：运行时未加载", NamedTextColor.RED));
-        }
     }
 
 }
