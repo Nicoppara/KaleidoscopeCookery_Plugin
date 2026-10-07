@@ -1,0 +1,7 @@
+items:
+  # 仅用于食谱菜单的悬停说明，没有放置或使用行为。
+  kaleidoscopecookery:recipe_quality_hint:
+    material: minecraft:paper
+    texture: kaleidoscopecookery:gui/recipe_quality_hint
+    data:
+      item_name: <!i><gold>注意：料理品质

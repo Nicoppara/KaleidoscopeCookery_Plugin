@@ -17,7 +17,6 @@ import net.momirealms.craftengine.core.plugin.gui.GuiElement;
 import net.momirealms.craftengine.core.plugin.gui.GuiLayout;
 import net.momirealms.craftengine.core.plugin.gui.Ingredient;
 import net.momirealms.craftengine.core.util.Key;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.adventure.text.format.NamedTextColor;
 
 import java.util.ArrayList;
@@ -41,13 +40,18 @@ public final class ChoppingEditMenu {
             return;
         }
         GuiLayout layout = new GuiLayout(
-                "#########",
+                "####?####",
                 "#I#T#N#M#",
                 "#V#######",
                 "#RRRRRRR#",
                 "#EEEEEEE#",
                 "B###S###D");
         layout.addIngredient('#', Ingredient.simple(MenuIcons.filler(viewer)));
+        layout.addIngredient('?', MenuIcons.editingHelp(viewer,
+                "原料：左键替换，光标持物品可直接选取",
+                "成品与附带产物：左键修改数量，右键修改权重",
+                "成品与附带产物：Shift 右键删除",
+                "刀数和产出模式使用独立按钮"));
         layout.addIngredient('I', inputSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('T', idSlot(bukkitPlayer, viewer, draft));
         layout.addIngredient('N', stageSlot(bukkitPlayer, viewer, draft));
@@ -71,11 +75,10 @@ public final class ChoppingEditMenu {
 
     private static GuiElement inputSlot(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                         ChoppingRecipeDraft draft) {
-        Item icon = MenuIcons.icon(draft.input(), viewer,
-                MenuIcons.text("原料", NamedTextColor.GOLD),
-                MenuIcons.loreNamed(draft.input(),
-                        "光标持物品左键 直接取该物品",
-                        "空手左键 手动输入物品 id"));
+        Item icon = draft.input() == null
+                ? MenuIcons.icon(MenuButton.INVALID, viewer, MenuIcons.text("设置原料", NamedTextColor.GOLD),
+                        MenuIcons.lore("光标持物品左键选取，空手左键输入物品 id"))
+                : MenuIcons.nativePreview(draft.input(), viewer);
         return GuiElement.constant(icon, (element, click) -> {
             click.cancel();
             AccurateEditMenu.pickItem(bukkitPlayer, click, "设置原料", draft.input(),
@@ -201,14 +204,7 @@ public final class ChoppingEditMenu {
     private static GuiElement existingResult(org.bukkit.entity.Player bukkitPlayer, Player viewer,
                                              ChoppingRecipeDraft draft, List<ChoppingResult> list, int index) {
         ChoppingResult result = list.get(index);
-        List<Component> lore = MenuIcons.loreNamed(result.key(),
-                "数量 " + result.count(),
-                draft.mode() == ChoppingMode.SINGLE ? "相对权重 " + result.weight() : "概率 " + result.weight() + "%");
-        lore.add(MenuIcons.text("左键改数量", NamedTextColor.YELLOW));
-        lore.add(MenuIcons.text("右键改权重", NamedTextColor.YELLOW));
-        lore.add(MenuIcons.text("Shift+右键 移除", NamedTextColor.RED));
-        Item icon = MenuIcons.icon(result.key(), viewer,
-                MenuIcons.itemName(result.key()).colorIfAbsent(NamedTextColor.GOLD), lore);
+        Item icon = MenuIcons.nativePreview(result.key(), viewer);
         return GuiElement.constant(icon, (element, click) -> {
             click.cancel();
             String type = click.type();

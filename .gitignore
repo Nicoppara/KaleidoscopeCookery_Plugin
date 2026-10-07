@@ -3,6 +3,10 @@
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+# 测试与验收资料在仓库外单独保存
+/src/test/
+/verification/
+
 # 构建产物
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
@@ -23,7 +27,7 @@ bin/
 # VS Code
 .vscode/
 
-# CraftEngine 资源包内容；只分发包元数据和成就文本补丁
+# CraftEngine 资源包内容；只分发包元数据、成就文本和自有菜单图标
 /Kaleidoscope/*
 !/Kaleidoscope/*/
 /Kaleidoscope/*/*
@@ -31,6 +35,14 @@ bin/
 !/Kaleidoscope/kaleidoscopecookery/configuration/
 /Kaleidoscope/kaleidoscopecookery/configuration/*
 !/Kaleidoscope/kaleidoscopecookery/configuration/advancements.yml
+!/Kaleidoscope/asset_sources/recipe_quality_hint.svg
+!/Kaleidoscope/kaleidoscopecookery/configuration/gui/
+/Kaleidoscope/kaleidoscopecookery/configuration/gui/*
+!/Kaleidoscope/kaleidoscopecookery/configuration/gui/recipe_menu_hint.yml
+!/Kaleidoscope/kaleidoscopecookery/resourcepack/
+/Kaleidoscope/kaleidoscopecookery/resourcepack/**
+!/Kaleidoscope/kaleidoscopecookery/resourcepack/**/
+!/Kaleidoscope/kaleidoscopecookery/resourcepack/assets/kaleidoscopecookery/textures/gui/recipe_quality_hint.png
 
 # 本地配置 / 凭据
 .claude/settings.local.json

@@ -63,7 +63,11 @@
 
 ## 📦 依赖与构建
 
-- **运行环境**：Paper / Folia，前置为 [CraftEngine](https://github.com/Xiao-MoMi/craft-engine)（`plugin.yml` 的 `depend` 声明）。插件 **1.2.3 同时兼容 CraftEngine 26.9.2 和 26.10**，补齐 Minecraft **26.3** 蒸笼下落的新数据包转换；26.10 已验证本地使用的 `26.10-SNAPSHOT`，精确构建及验证范围见[兼容记录](verification/craftengine/README.md)。
+- **运行环境**：Paper / Folia，前置为 [CraftEngine](https://github.com/Xiao-MoMi/craft-engine)（`plugin.yml` 的 `depend` 声明）。同时兼容 **CraftEngine 26.9.2 和 26.10**，支持 Minecraft **26.3** 蒸笼下落的新数据包转换；26.10 对应 `26.10-SNAPSHOT`。
+
+- **独立安装**：森罗物语和农夫乐事是两个独立插件。森罗 JAR 不包含或自动释放农夫乐事的插件及资源包；森罗的物品图标字体只在已有且 `pack.yml` 声明 `namespace: kaleidoscopecookery` 的包内生成。
+
+- **1.3.0**：每配方加工时间与工作量、批次计划与原文件安全保存、CE 原物品 Lore 预览，以及成品左侧独立的悬停品质提示。完整资源包保留原有玩法配置与模型，并补齐成就文本和菜单图标。
 
 - **Java**：Minecraft 1.21.x 使用 Java 21；Minecraft 26.x 使用 Java 25。构建完整的多版本插件需要同时安装 JDK 21 和 JDK 25。
 
@@ -80,9 +84,9 @@
   # 产物：build/libs/KaleidoscopeCookeryPlugin-<version>.jar
   ```
 
-  Windows 使用 `gradlew.bat build`。构建会运行测试并编译所有服务端适配模块；Spigot NMS 依赖可从 CodeMC 获取，也可用 BuildTools 安装到本地 Maven 仓库。
+  Windows 使用 `gradlew.bat build`。构建会编译正式插件源码和所有服务端适配模块并生成插件 JAR；Spigot NMS 依赖可从 CodeMC 获取，也可用 BuildTools 安装到本地 Maven 仓库。
 
-  `gradle.properties` 中的 `craftEngineVersion` 统一控制 Bukkit、Core、Proxy 和测试使用的 **公开 API 版本**。默认保持 **26.9.1** 编译基线，避免引入只在 26.10 中存在的接口；同一个构建产物已在 **26.9.2** 与 **26.10-SNAPSHOT** 的隔离 Paper 26.3 测试服中通过回归。新数据包在运行时按实际服务器接口绑定，发送给客户端的蒸笼状态使用 CE 的编号映射，服务端方块状态和食材数据保持原样。实际插件包的编译检查可使用[验证脚本](verification/craftengine/README.md)。Core API 已包含重定位的 Adventure 类型，无需再混用旧版 `craft-engine-adventure`。
+  `gradle.properties` 中的 `craftEngineVersion` 统一控制 Bukkit、Core 和 Proxy 使用的 **公开 API 版本**。默认保持 **26.9.1** 编译基线，兼容运行环境中的 **26.9.2** 与 **26.10-SNAPSHOT**。新数据包在运行时按实际服务器接口绑定，发送给客户端的蒸笼状态使用 CE 的编号映射，服务端方块状态和食材数据保持原样。Core API 已包含重定位的 Adventure 类型，无需再混用旧版 `craft-engine-adventure`。
 
   **Minecraft 26.3 蒸笼下落修复（1.2.3）**：旧版会把服务器专用的蒸笼状态编号写入 `add_transient_block` 数据包，原版客户端无法识别时会断线。1.2.3 补充该数据包及其所在 bundle 的转换，保留包内其他数据、原始方块状态、下落实体与落地食材恢复；CE 模组客户端沿用自身状态编号。未提供此新包的旧版 Minecraft 自动跳过处理。森罗资源包的模型、贴图和配置无需为本次修复修改。
 
@@ -116,7 +120,7 @@
 .\gradlew.bat build "-PultimateAdvancementApiJar=C:/path/UltimateAdvancementAPI-Plugin-2.8.1-pro.2.jar"
 ```
 
-成就接口不会被打包到本插件中。游戏行为可通过 `KaleidoscopeAdvancements.recordEvent(player, event)` 在操作成功后发送对应模组事件；未注册或尚未移植的事件会忽略。成就目录位于 `src/main/resources/advancements/kaleidoscope.json`，上游许可和来源说明随插件保存在 `licenses/` 中。持久化验证夹具见 `verification/advancements/`。
+成就接口不会被打包到本插件中。游戏行为可通过 `KaleidoscopeAdvancements.recordEvent(player, event)` 在操作成功后发送对应模组事件；未注册或尚未移植的事件会忽略。成就目录位于 `src/main/resources/advancements/kaleidoscope.json`，上游许可和来源说明随插件保存在 `licenses/` 中。
 
 ### 🛡️ 领地权限
 
@@ -789,6 +793,7 @@ recipe_menu:
     back: "minecraft:barrier"
     next_page: "minecraft:feather"
     filler: "minecraft:black_stained_glass_pane"
+    quality_hint: "kaleidoscopecookery:recipe_quality_hint"
 
   # 厨具图标与名字 两项都可以只写一个
   appliances:
@@ -1512,9 +1517,13 @@ pot_flex_foods:
 
 茶壶的时间字段只控制**熬煮段**。投料后原有的 200 tick 准备段仍然存在；例如 `time: 47` 表示准备 200 tick，再熬煮 47 tick。断火、开盖、冷却等条件继续按各厨具原有规则处理，时间不是脱离这些条件的现实时间倒计时。
 
-**菜单修改**：`/kcrecipe edit` → 选厨具 → 选配方。时间按钮输入正数秒数，必须是 0.05 秒的整数倍，换算后不得超过 `2147483647` tick（`107374182.35` 秒）；保存时不做四舍五入。翻炒、刀数、圈数按钮继续输入次数，翻炒允许完整正整数范围，刀数与圈数沿用原编辑菜单范围。列表、详情和编辑按钮显示当前值，以及配方字段、模板、工厂实例或厨具默认的来源；默认值按标准厨具显示，自定义厨具以自身设置为准。右键按钮恢复继承，并删除该配方的局部设置；如果配方套用了含时间或次数的模板，恢复的是该模板的实际值。模板局部覆盖在保存前显示“保存后确认”，避免为了预览重复执行模板参数。保存写回原文件，连续点击保存只发起一次写入。
+**菜单修改**：`/kcrecipe edit` → 选厨具 → 选配方。时间按钮输入正数秒数，必须是 0.05 秒的整数倍，换算后不得超过 `2147483647` tick（`107374182.35` 秒）；保存时不做四舍五入。翻炒、刀数、圈数按钮继续输入次数，翻炒允许完整正整数范围，刀数与圈数沿用原编辑菜单范围。专用编辑按钮显示当前值和简短继承来源，默认值按标准厨具显示，自定义厨具以自身设置为准。右键按钮恢复继承，并删除该配方的局部设置；如果配方套用了含时间或次数的模板，恢复的是该模板的实际值。模板局部覆盖在保存前显示“保存后确认”，避免为了预览重复执行模板参数。保存写回原文件，连续点击保存只发起一次写入。
 
 **修改从下一批次生效**：蒸笼、烤架和石磨在投料时，砧板在放料时，炒锅在首次有效翻炒时，高汤锅在开始炖煮时，茶壶在投料时冻结配方计划。当前批次的目标时间/次数、已选成品 ID、数量、品质、lore 和容器会随进度保存，重载及读档后继续使用；重新投料、改变炒锅/汤锅的原料等操作会重新开始批次。旧存档没有计划时沿用原进度，并在首次恢复时补齐计划。
+
+食谱列表、详情和编辑页中的物品预览直接保留 CraftEngine 生成的原名称、原始 lore 与颜色，不追加配方说明、加工时间或来源信息；物品本身没有 lore 时不添加 lore。编辑页的操作说明放在独立按钮中。加工时间与次数在专用设置按钮中查看和修改，按钮仅显示数值、继承来源和操作说明。
+
+炒锅和高汤锅的模糊配方详情在成品左侧显示黄色注意图标。鼠标悬停即可查看“投料越接近理想配比 品质越高”“多放杂料会拉低品质”，该图标只展示提示。图标配置和贴图位于 `Kaleidoscope/kaleidoscopecookery/configuration/gui/recipe_menu_hint.yml` 与 `resourcepack/assets/kaleidoscopecookery/textures/gui/recipe_quality_hint.png`；复制这两个新增文件到现有森罗包后，重载 CE 并重新分发资源包即可。未安装图标资源时使用原版黄色染料，提示仍可显示；`recipe_menu.buttons.quality_hint` 可替换图标。
 
 计划保存的是配方结果数据，成品物品仍在完成时按 CraftEngine 的物品定义构建。若产物已被删除或计划损坏，厨具保留原料并暂停完成，不会重新匹配或重抽产物。
 
@@ -1524,7 +1533,7 @@ pot_flex_foods:
 
 同一原文件内的配方按原 YAML 的位置保持顺序，包括工厂实例及其蓝图条目；保存拆分和 CraftEngine 重载后，菜单及运行时仍沿用这一顺序。
 
-**开发接口**：精准和模糊配方保留原构造器及 `FlexFoodRecipe.of(...)` 重载，新参数的内部 `0` 表示继承。读配方使用已发布的不可变快照；批次使用 `CookingPlan`，完成时才在厨具所属线程创建物品。YAML 读写与纯配置处理走串行异步队列，重载整代完成后再一次发布，不为每条配方新增定时任务。验收方法与覆盖边界见 [配方加工验收说明](verification/processing/README.md)。
+**开发接口**：精准和模糊配方保留原构造器及 `FlexFoodRecipe.of(...)` 重载，新参数的内部 `0` 表示继承。读配方使用已发布的不可变快照；批次使用 `CookingPlan`，完成时才在厨具所属线程创建物品。YAML 读写与纯配置处理走串行异步队列，重载整代完成后再一次发布，不为每条配方新增定时任务。
 
 ### 🎯 精准配方 `accurate_foods`
 

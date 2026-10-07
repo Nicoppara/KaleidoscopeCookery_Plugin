@@ -1,6 +1,5 @@
 plugins {
     id 'java'
-    id("xyz.jpenilla.run-paper") version "2.3.1"
     id("com.gradleup.shadow") version "9.2.2"
 }
 
@@ -88,14 +87,6 @@ dependencies {
     compileOnly("me.clip:placeholderapi:2.11.6")
     implementation("net.momirealms:antigrieflib:1.0.11")
     implementation("org.bstats:bstats-bukkit:3.2.1")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
-    testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    testImplementation("net.momirealms:craft-engine-core:${craftEngineVersion}")
-    testImplementation("it.unimi.dsi:fastutil:8.5.18")
-    testImplementation("com.google.guava:guava:33.6.0-jre")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
-    // CraftEngine's static public API references Log4j Core even when no server instance is installed.
-    testRuntimeOnly("org.apache.logging.log4j:log4j-core:2.25.3")
 
     nmsVersions.each { sourceSetName, version ->
         def notation = "org.spigotmc:spigot:${version.dependency}"
@@ -124,12 +115,6 @@ tasks.named('assemble') {
     dependsOn('javadocJar')
 }
 
-tasks {
-    runServer {
-        minecraftVersion("26.1.2")
-    }
-}
-
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -140,10 +125,6 @@ java {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release.set(21)
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
 }
 
 nmsVersions.each { sourceSetName, version ->
