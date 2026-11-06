@@ -1,6 +1,6 @@
 # 开发与 API
 
-[返回首页](../README.md) · [配置与配方](CONFIGURATION.zh-CN.md) · [森罗厨房成就](ADVANCEMENTS.zh-CN.md)
+[返回中文首页](../README.zh-CN.md) · [English](../README.md) · [配置与配方](CONFIGURATION.zh-CN.md) · [森罗厨房成就](ADVANCEMENTS.zh-CN.md)
 
 - [项目结构](#project) · [构建](#build)
 - [事件](#api) · [运行时注册表](#registries)

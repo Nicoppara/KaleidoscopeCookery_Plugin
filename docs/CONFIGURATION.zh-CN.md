@@ -1,6 +1,6 @@
 # 配置与配方指南
 
-[返回首页](../README.md) · [开发与 API](DEVELOPMENT.zh-CN.md) · [森罗厨房成就](ADVANCEMENTS.zh-CN.md)
+[返回中文首页](../README.zh-CN.md) · [English](../README.md) · [开发与 API](DEVELOPMENT.zh-CN.md) · [森罗厨房成就](ADVANCEMENTS.zh-CN.md)
 
 插件设置在 `plugins/KaleidoscopeCookeryPlugin/config.yml`；厨具、食材、配方与模型在 CraftEngine 内容包中配置。下列目录和示例以完整森罗内容包为准，仓库中的少量资源文件不能代替完整内容包。更新前请备份已有修改。
 
