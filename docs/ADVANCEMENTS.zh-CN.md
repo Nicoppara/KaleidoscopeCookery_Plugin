@@ -1,6 +1,6 @@
 # 森罗厨房成就
 
-[返回首页](../README.md) · [配置与配方](CONFIGURATION.zh-CN.md) · [开发与 API](DEVELOPMENT.zh-CN.md)
+[返回中文首页](../README.zh-CN.md) · [English](../README.md) · [配置与配方](CONFIGURATION.zh-CN.md) · [开发与 API](DEVELOPMENT.zh-CN.md)
 
 成就功能可选安装兼容的 UltimateAdvancementAPI Pro；未安装时，厨具、烹饪和包子投掷等原有玩法正常运行。
 
