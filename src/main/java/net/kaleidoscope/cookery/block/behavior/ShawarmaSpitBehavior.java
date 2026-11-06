@@ -12,6 +12,7 @@ import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.block.property.type.DoubleBlockHalf;
+import net.momirealms.craftengine.core.block.setting.PushReaction;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.entity.player.Player;
@@ -50,6 +51,11 @@ public final class ShawarmaSpitBehavior extends BukkitBlockBehavior implements E
         this.halfProperty = halfProperty;
         this.facingProperty = facingProperty;
         this.grillTime = grillTime;
+        // CE creates behaviors after variant overrides and before applying native block settings.
+        // Moving either half independently can destroy the double-height structure and duplicate drops.
+        for (ImmutableBlockState state : blockDefinition.variantProvider().states()) {
+            state.settings().pushReaction(PushReaction.BLOCK);
+        }
     }
 
     @Override
