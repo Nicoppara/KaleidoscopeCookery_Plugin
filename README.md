@@ -27,6 +27,16 @@
 
 CraftEngine supplies the custom items, blocks and resource pack; this plugin handles cookware interactions, processing, recipe menus and advancement integration. Kaleidoscope Cookery Plugin and [Farmer's Delight](https://github.com/Nodemc-developing/Farmersdelight-Plugin-Pro) are installed separately and can be used with your server's content packs.
 
+## 📊 Usage statistics
+
+<p align="center">
+  <a href="https://bstats.org/plugin/bukkit/KaleidoscopeCookeryPlugin/32444">
+    <img src="https://bstats.org/signatures/bukkit/KaleidoscopeCookeryPlugin.svg" width="800" alt="bStats server and player statistics for Kaleidoscope Cookery Plugin">
+  </a>
+</p>
+
+Reports from servers with bStats enabled. Data updates every 30 minutes; image caches may delay changes. Click the chart for the full dashboard.
+
 ## ✨ Features
 
 | Feature | Included |
