@@ -27,6 +27,16 @@
 
 CraftEngine 提供自定义物品、方块与资源包，本插件负责厨具交互、加工流程、食谱菜单及成就联动。森罗物语与[农夫乐事](https://github.com/Nodemc-developing/Farmersdelight-Plugin-Pro)独立安装，也可配合服务器的内容包使用。
 
+## 📊 使用统计
+
+<p align="center">
+  <a href="https://bstats.org/plugin/bukkit/KaleidoscopeCookeryPlugin/32444">
+    <img src="https://bstats.org/signatures/bukkit/KaleidoscopeCookeryPlugin.svg" width="800" alt="森罗物语厨房插件的 bStats 服务器与玩家统计">
+  </a>
+</p>
+
+统计来自启用 bStats 的服务器，每 30 分钟更新一次；页面图片缓存可能带来额外延迟。点击图表可查看完整统计。
+
 ## ✨ 功能
 
 | 功能 | 包含内容 |
