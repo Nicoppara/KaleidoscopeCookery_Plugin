@@ -120,6 +120,8 @@ The detailed guides below are currently in Chinese.
 
 ## 🙏 Credits & licenses
 
+The standalone source file explicitly listed in [LICENSE-OWN-CODE.txt](LICENSE-OWN-CODE.txt) is marked `LicenseRef-ARR` (All Rights Reserved). This limited notice does not relicense the plugin as a whole; all other content retains its existing terms.
+
 Thanks to the **Kaleidoscope Official Production Team** for the [original mod](https://github.com/KaleidoscopeMods/KaleidoscopeCookery), its gameplay, artwork and game text, and to projects including [CraftEngine](https://github.com/Xiao-MoMi/craft-engine) and [AntiGriefLib](https://github.com/Xiao-MoMi/AntiGriefLib).
 
 Upstream code uses [BSD-3-Clause](src/main/resources/licenses/KaleidoscopeCookery-LICENSE-CODE.txt). Upstream artwork and game text use [CC BY-NC-SA 4.0](src/main/resources/licenses/KaleidoscopeCookery-LICENSE-ASSETS.txt), retaining their attribution and license terms. See the [source notice](src/main/resources/licenses/KaleidoscopeCookery-NOTICE.txt) for the ported material.

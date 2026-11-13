@@ -1,3 +1,10 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Ydxc20091
+ * SPDX-License-Identifier: LicenseRef-ARR
+ *
+ * This file alone is covered by LICENSE-OWN-CODE.txt at the repository root.
+ * Other source files, assets and dependencies retain their existing terms.
+ */
 package net.kaleidoscope.cookery.ui;
 
 import java.util.Collections;
