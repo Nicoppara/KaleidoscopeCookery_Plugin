@@ -1,0 +1,21 @@
+All Rights Reserved
+
+Copyright (c) 2026 Ydxc20091. All rights reserved.
+
+This notice applies only to the current version of the following source file
+when it is explicitly marked SPDX-License-Identifier: LicenseRef-ARR:
+
+    src/main/java/net/kaleidoscope/cookery/ui/RecipeEditSaves.java
+
+Except as permitted by applicable law or separately authorized by the copyright
+holder, no permission is granted to copy, modify, redistribute, sublicense, or
+incorporate the covered source into another work.
+
+This notice does not apply to the plugin as a whole, any other source file,
+documentation, artwork, game text, or third-party dependency. Their existing
+licenses and notices remain in effect. This notice does not withdraw permissions
+previously granted for earlier versions.
+
+The source-file identifier does not establish permission to distribute a
+combined work with CraftEngine or other dependencies. All applicable third-party
+license conditions must still be satisfied.
