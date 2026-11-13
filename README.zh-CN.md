@@ -118,6 +118,8 @@ CraftEngine 提供自定义物品、方块与资源包，本插件负责厨具�
 
 ## 🙏 致谢与许可
 
+[LICENSE-OWN-CODE.txt](LICENSE-OWN-CODE.txt) 明确列出的独立源码文件标记为 `LicenseRef-ARR`（保留所有权利）。该声明不将整个插件改为 ARR，其他内容仍保留各自现有条款。
+
 感谢 **Kaleidoscope Official Production Team（森罗物语官方制作组）**提供[原模组](https://github.com/KaleidoscopeMods/KaleidoscopeCookery)的玩法、美术与游戏文本，以及 [CraftEngine](https://github.com/Xiao-MoMi/craft-engine)、[AntiGriefLib](https://github.com/Xiao-MoMi/AntiGriefLib) 等项目。
 
 上游代码采用 [BSD-3-Clause](src/main/resources/licenses/KaleidoscopeCookery-LICENSE-CODE.txt)，上游美术与游戏文本采用 [CC BY-NC-SA 4.0](src/main/resources/licenses/KaleidoscopeCookery-LICENSE-ASSETS.txt)，保留各自署名及许可；移植范围见[来源说明](src/main/resources/licenses/KaleidoscopeCookery-NOTICE.txt)。
