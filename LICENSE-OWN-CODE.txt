@@ -1,6 +1,6 @@
 All Rights Reserved
 
-Copyright (c) 2026 Ydxc20091. All rights reserved.
+Copyright (c) 2026 KaleidoscopeCookery_Plugin. All rights reserved.
 
 This notice applies only to the current version of the following source file
 when it is explicitly marked SPDX-License-Identifier: LicenseRef-ARR:

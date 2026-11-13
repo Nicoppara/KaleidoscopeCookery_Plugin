@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 Ydxc20091
+ * SPDX-FileCopyrightText: 2026 KaleidoscopeCookery_Plugin
  * SPDX-License-Identifier: LicenseRef-ARR
  *
  * This file alone is covered by LICENSE-OWN-CODE.txt at the repository root.
